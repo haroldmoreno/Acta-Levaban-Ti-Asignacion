@@ -1,0 +1,34 @@
+{
+  "fechaCarga": "2026-01-01T00:00:00.000Z",
+  "totalEquipos": 2,
+  "datos": [
+    {
+      "placa": "EJEMPLO-001",
+      "serial": "SN-DEMO-0001",
+      "marca": "Dell",
+      "modelo": "Latitude 5420",
+      "tipo": "Portátil",
+      "procesador": "Intel Core i5-1145G7",
+      "ram": "16 GB",
+      "disco": "SSD 512 GB",
+      "hostname": "LEV-DEMO-001",
+      "nombreusuario": "Usuario Demo",
+      "estado": "Asignación",
+      "linea": 2
+    },
+    {
+      "placa": "EJEMPLO-002",
+      "serial": "SN-DEMO-0002",
+      "marca": "HP",
+      "modelo": "ProBook 440 G8",
+      "tipo": "Portátil",
+      "procesador": "Intel Core i7-1165G7",
+      "ram": "8 GB",
+      "disco": "SSD 256 GB",
+      "hostname": "LEV-DEMO-002",
+      "nombreusuario": "Usuario Demo 2",
+      "estado": "Asignación",
+      "linea": 3
+    }
+  ]
+}

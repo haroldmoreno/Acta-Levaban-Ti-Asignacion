@@ -1,0 +1,14 @@
+{
+  "name": "acta-levapan",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Acta de Tecnología Levapan con inventario SQLite, historial y guardado local de PDFs.",
+  "scripts": {
+    "start": "node server.js",
+    "importar": "node tools/importar-inventario.js"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  }
+}

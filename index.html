@@ -3,288 +3,394 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#981127" />
     <title>Acta de Tecnología | Levapan</title>
+    <link rel="icon" href="images/ico-levadesk.ico" sizes="any" />
     <link rel="shortcut icon" href="images/ico-levadesk.ico" type="image/x-icon" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="application-name" content="Acta TI Levapan" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Acta TI" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
-    <main class="main">
-      <header class="header">
-        <h1 class="tittle">Acta de Tecnología</h1>
-        <p class="paragraph">Esta es una herramienta para la gestión de actas de entrega, devolución y prestamo de tecnología.</p>
+    <!-- Fondo animado (video) -->
+    <video
+      id="videoFondo"
+      class="video-fondo"
+      autoplay
+      muted
+      loop
+      playsinline
+      preload="auto"
+      poster="images/fondo-poster.jpg"
+      aria-hidden="true"
+    >
+      <source src="media/fondo.mp4" type="video/mp4" />
+    </video>
+    <div class="velo-fondo" aria-hidden="true"></div>
+
+    <main class="contenedor">
+      <header class="cabecera">
+        <div class="cabecera-superior">
+          <img
+            class="logo-app"
+            src="images/logo-levadesk.png"
+            alt="Levadesk"
+            width="177"
+            height="144"
+          />
+          <div class="cabecera-texto">
+            <span class="marca">LEVAPAN</span>
+            <span class="marca-sub">Gestión de Activos de TI</span>
+          </div>
+        </div>
+        <h1 class="titulo">Acta de Tecnología</h1>
+        <p class="subtitulo">
+          Registro oficial de entrega, devolución y préstamo de equipos de tecnología.
+        </p>
+
+        <div class="acciones-superiores">
+          <button type="button" id="btnInstalarApp" class="btn btn-secundario" hidden>
+            Instalar App
+          </button>
+          <button type="button" id="btnConfigFolder" class="btn btn-secundario">
+            Configurar Carpeta Destino
+          </button>
+          <span id="folderStatus" class="estado" role="status">Ninguna carpeta vinculada</span>
+          <span id="serverStatus" class="estado" role="status">Conectando con el servidor…</span>
+        </div>
+        <span id="inventarioStatus" class="estado estado-inventario" role="status"></span>
       </header>
-      <form class="form" action="">
-        <fieldset class="fieldset">
-          <legend>Datos Personales</legend>
-          <div class="form-group">
-            <div class="item">
-              <input type="text" id="name" name="name" placeholder="Nombre completo" required />
+
+      <form id="actaForm" class="formulario" autocomplete="off">
+        <!-- a) Datos personales -->
+        <section class="seccion">
+          <h2 class="seccion-titulo">Datos Personales</h2>
+          <div class="grid-campos">
+            <div class="campo">
+              <label for="nombre">Nombre completo</label>
+              <input
+                type="text"
+                id="nombre"
+                name="nombre"
+                placeholder="Nombre y apellidos"
+                required
+              />
             </div>
-            <div class="item">
-              <input type="number" id="ID" name="cedula" placeholder="Cédula" required />
-            </div>
-            <div class="item">
-              <select name="nameTi" id="nameTi">
-                <option value="">Seleccione el Técnico</option>
-              </select>
-            </div>
-            <div class="item">
-              <input type="numberTi" id="IDTI" name="cedulaTi" placeholder="Cédula Ti" required />
+            <div class="campo">
+              <label for="documento">CC / TI</label>
+              <input
+                type="text"
+                id="documento"
+                name="documento"
+                inputmode="numeric"
+                placeholder="Número de documento"
+                required
+              />
             </div>
           </div>
-        </fieldset>
-        <fieldset class="fieldset">
-          <legend>Características Equipo</legend>
-          <div class="form-group">
-            <div class="item">
-              <select name="tipoEquipo" id="tipoEquipo">
+
+          <div class="subbloque-ti">
+            <h3 class="subbloque-ti-titulo">Agente TI</h3>
+            <div class="grid-campos">
+              <div class="campo">
+                <label for="nombreTi">Nombre del Agente TI</label>
+                <select id="nombreTi" name="nombreTi" required>
+                  <option value="">Seleccione el Agente TI</option>
+                  <option value="Harold Hurtado">Harold Hurtado</option>
+                  <option value="Michael Wilson">Michael Wilson</option>
+                </select>
+              </div>
+              <div class="campo">
+                <label for="documentoTi">Cédula TI</label>
+                <input
+                  type="text"
+                  id="documentoTi"
+                  name="documentoTi"
+                  inputmode="numeric"
+                  placeholder="Número de cédula del Agente TI"
+                  required
+                />
+                <small class="ayuda">Se recuerda para la próxima acta de este Agente TI.</small>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- b) Características del equipo -->
+        <section class="seccion">
+          <h2 class="seccion-titulo">Características del Equipo</h2>
+          <div class="grid-campos">
+            <div class="campo">
+              <label for="tipo">Tipo</label>
+              <select id="tipo" name="tipo" required>
                 <option value="">Seleccione el Tipo</option>
+                <option value="CPU">CPU</option>
+                <option value="Handheld">Handheld</option>
+                <option value="Impresora">Impresora</option>
+                <option value="Impresora portátil">Impresora portátil</option>
+                <option value="Jabra">Jabra</option>
+                <option value="Monitor">Monitor</option>
+                <option value="Portátil">Portátil</option>
+                <option value="Proyector">Proyector</option>
+                <option value="Tablet">Tablet</option>
               </select>
             </div>
-            <div class="item">
-              <select name="marcaEquipo" id="marcaEquipo">
+            <div class="campo">
+              <label for="marca">Marca</label>
+              <select id="marca" name="marca" required>
                 <option value="">Seleccione la Marca</option>
               </select>
             </div>
-            <div class="item">
-              <select name="modeloEquipo" id="modeloEquipo">
+            <div class="campo">
+              <label for="modelo">Modelo</label>
+              <select id="modelo" name="modelo" required>
                 <option value="">Seleccione el Modelo</option>
               </select>
             </div>
-            <div class="item">
-              <input type="text" id="serial" name="serial" placeholder="Serial" required />
+            <div class="campo">
+              <label for="serial">Serial</label>
+              <input type="text" id="serial" name="serial" placeholder="Número de serie" required />
             </div>
-            <div class="item">
-              <input type="text" id="placa" name="placa" placeholder="Placa" required />
-            </div>
-            <div class="item">
-              <select name="estado" id="estado">
-                <option value="">Seleccione el Estado</option>
-              </select>
-            </div>
-          </div>
-        </fieldset>
-        <fieldset class="fieldset accesorios">
-          <legend>Accesorios</legend>
-          <div class="accesorios-container">
-            <div class="item">
-              <label for="cargador">
-                <input type="checkbox" name="cargador" id="cargador" checked />
-                Cargador
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="mouse">
-                <input type="checkbox" name="mouse" id="mouse" />
-                Mouse
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="teclado">
-                <input type="checkbox" name="teclado" id="teclado" />
-                Teclado
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="morral">
-                <input type="checkbox" name="morral" id="morral" />
-                Morral
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="forro">
-                <input type="checkbox" name="forro" id="forro" />
-                Forro
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="base">
-                <input type="checkbox" name="base" id="base" />
-                Base
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="soporte">
-                <input type="checkbox" name="soporte" id="soporte" />
-                Base Soporte
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="usb">
-                <input type="checkbox" name="usb" id="usb" />
-                Multipuerto USB
-              </label>
-              <br />
+            <div class="campo">
+              <label for="placa">Placa</label>
+              <input
+                type="text"
+                id="placa"
+                name="placa"
+                placeholder="Escriba la placa y presione Enter"
+                autocomplete="off"
+                required
+              />
+              <small class="ayuda">Al salir del campo se autocompleta el equipo.</small>
             </div>
           </div>
-        </fieldset>
-        <fieldset class="fieldset">
-          <legend>Programas</legend>
-          <div class="accesorios-container">
-            <div class="item">
-              <label for="office">
-                <input type="checkbox" name="office" id="office" checked />
-                Office
-              </label>
-              <br />
+
+          <div id="equipoInfo" class="equipo-info" role="status" hidden>
+            <div class="equipo-info-item">
+              <span class="equipo-info-etiqueta">Estado en inventario</span>
+              <span id="equipoInfoEstado" class="equipo-info-valor">—</span>
             </div>
-            <div class="item">
-              <label for="antivirus">
-                <input type="checkbox" name="antivirus" id="antivirus" checked />
-                Antivirus
-              </label>
-              <br />
+            <div class="equipo-info-item">
+              <span class="equipo-info-etiqueta">Responsable actual</span>
+              <span id="equipoInfoResponsable" class="equipo-info-valor">—</span>
             </div>
-            <div class="item">
-              <label for="impresora">
-                <input type="checkbox" name="impresora" id="impresora" checked />
-                Impresora
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="softphone">
-                <input type="checkbox" name="softphone" id="softphone" />
-                Softphone
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="google">
-                <input type="checkbox" name="google" id="google" checked />
-                Google Chrome
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="winrar">
-                <input type="checkbox" name="winrar" id="winrar" checked />
-                WinRAR
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="adobe">
-                <input type="checkbox" name="adobe" id="adobe" checked />
-                Adobe Reader
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="foxitreader">
-                <input type="checkbox" name="foxitreader" id="foxitreader" />
-                Foxit Reader
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="sapgui">
-                <input type="checkbox" name="sapgui" id="sapgui" checked />
-                SAP GUI
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="adobeCloud">
-                <input type="checkbox" name="adobeCloud" id="adobeCloud" />
-                Adobe Cloud
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="zip">
-                <input type="checkbox" name="zip" id="zip" checked />
-                7-Zip
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="forticlient">
-                <input type="checkbox" name="forticlient" id="forticlient" checked />
-                forticlient
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="teamviewer">
-                <input type="checkbox" name="teamviewer" id="teamviewer" checked />
-                TeamViewer
-              </label>
-              <br />
-            </div>
-            <div class="item">
-              <label for="sofsin">
-                <input type="checkbox" name="sofsin" id="sofsin" />
-                Sofsin
-              </label>
-              <br />
+            <div class="equipo-info-item">
+              <span class="equipo-info-etiqueta">Accesorios registrados</span>
+              <span id="equipoInfoAccesorios" class="equipo-info-valor">—</span>
             </div>
           </div>
-        </fieldset>
-        <fieldset class="fieldset observaciones">
-          <legend>Observaciones</legend>
-          <div class="item">
-            <textarea name="observaciones" id="observaciones" cols="30" rows="10" placeholder="Observaciones"></textarea>
+
+          <div class="grupo-radio">
+            <span class="grupo-etiqueta">Tipo de acta</span>
+            <label class="radio">
+              <input type="radio" name="tipoActa" value="Asignación" checked required />
+              <span>Asignación</span>
+            </label>
+            <label class="radio">
+              <input type="radio" name="tipoActa" value="Devolución" />
+              <span>Devolución</span>
+            </label>
           </div>
-        </fieldset>
-        <fieldset class="fieldset">
-          <legend>Fotos Evidencia</legend>
-          <div class="fotos-container">
-            <div class="item">
-              <label for="fileUpload">Equipo Encendido</label>
-              <input type="file" id="signature" accept="image/png, image/jpeg, image/jpg" />
+        </section>
+
+        <!-- c) Accesorios -->
+        <section class="seccion">
+          <h2 class="seccion-titulo">Accesorios</h2>
+          <div class="grid-checks">
+            <label class="check"><input type="checkbox" name="accesorios" value="Cargador" /><span>Cargador</span></label>
+            <label class="check"><input type="checkbox" name="accesorios" value="Forro" /><span>Forro</span></label>
+            <label class="check"><input type="checkbox" name="accesorios" value="Mouse" /><span>Mouse</span></label>
+            <label class="check"><input type="checkbox" name="accesorios" value="Base Refrigerante" /><span>Base Refrigerante</span></label>
+            <label class="check"><input type="checkbox" name="accesorios" value="Teclado" /><span>Teclado</span></label>
+            <label class="check"><input type="checkbox" name="accesorios" value="Base Soporte" /><span>Base Soporte</span></label>
+            <label class="check"><input type="checkbox" name="accesorios" value="Morral" /><span>Morral</span></label>
+            <label class="check"><input type="checkbox" name="accesorios" value="Multipuerto USB" /><span>Multipuerto USB</span></label>
+            <label class="check"><input type="checkbox" name="accesorios" value="Adaptador" /><span>Adaptador</span></label>
+            <label class="check"><input type="checkbox" name="accesorios" value="Base" /><span>Base</span></label>
+            <label class="check"><input type="checkbox" name="accesorios" value="Guaya" /><span>Guaya</span></label>
+            <label class="check">
+              <input type="checkbox" name="accesorios" value="Otro" id="otroAccesorioChk" /><span>Otro</span>
+            </label>
+          </div>
+          <input
+            type="text"
+            id="otroAccesorio"
+            class="otro-input"
+            placeholder="¿Cuál otro accesorio?"
+            disabled
+          />
+        </section>
+
+        <!-- d) Software instalado -->
+        <section class="seccion">
+          <h2 class="seccion-titulo">Software Instalado</h2>
+          <div class="grid-checks">
+            <label class="check"><input type="checkbox" name="software" value="Microsoft Office" /><span>Microsoft Office</span></label>
+            <label class="check"><input type="checkbox" name="software" value="WinRAR" /><span>WinRAR</span></label>
+            <label class="check"><input type="checkbox" name="software" value="7zip" /><span>7zip</span></label>
+            <label class="check"><input type="checkbox" name="software" value="Antivirus" /><span>Antivirus</span></label>
+            <label class="check"><input type="checkbox" name="software" value="Adobe Reader" /><span>Adobe Reader</span></label>
+            <label class="check"><input type="checkbox" name="software" value="VPN" /><span>VPN</span></label>
+            <label class="check"><input type="checkbox" name="software" value="Impresora" /><span>Impresora</span></label>
+            <label class="check"><input type="checkbox" name="software" value="Foxit Reader" /><span>Foxit Reader</span></label>
+            <label class="check"><input type="checkbox" name="software" value="Team Viewer" /><span>Team Viewer</span></label>
+            <label class="check"><input type="checkbox" name="software" value="Softphone" /><span>Softphone</span></label>
+            <label class="check"><input type="checkbox" name="software" value="SAP GUI" /><span>SAP GUI</span></label>
+            <label class="check"><input type="checkbox" name="software" value="Sofsin" /><span>Sofsin</span></label>
+            <label class="check"><input type="checkbox" name="software" value="Google Chrome" /><span>Google Chrome</span></label>
+            <label class="check"><input type="checkbox" name="software" value="Adobe Creative Cloud" /><span>Adobe Creative Cloud</span></label>
+            <label class="check">
+              <input type="checkbox" name="software" value="Otro" id="otroSoftwareChk" /><span>Otro</span>
+            </label>
+          </div>
+          <input
+            type="text"
+            id="otroSoftware"
+            class="otro-input"
+            placeholder="¿Cuál otro programa?"
+            disabled
+          />
+        </section>
+
+        <!-- e) Registro fotográfico -->
+        <section class="seccion">
+          <h2 class="seccion-titulo">Registro Fotográfico</h2>
+          <div class="grid-fotos">
+            <div class="campo-foto">
+              <label for="fotoEncendido">Equipo Encendido</label>
+              <input type="file" id="fotoEncendido" accept="image/png,image/jpeg,image/jpg,image/webp" />
+              <img id="previewEncendido" class="preview" alt="Vista previa del equipo encendido" />
             </div>
-            <div class="item">
-              <label for="fileUpload">Frontal</label>
-              <input type="file" name="Frontal" id="signature2" accept="image/png, image/jpeg, image/jpg" />
+            <div class="campo-foto">
+              <label for="fotoFrontal">Frontal</label>
+              <input type="file" id="fotoFrontal" accept="image/png,image/jpeg,image/jpg,image/webp" />
+              <img id="previewFrontal" class="preview" alt="Vista previa frontal del equipo" />
             </div>
-            <div class="item">
-              <label for="fileUpload">Posterior</label>
-              <input type="file" name="Posterior" id="signature3" accept="image/png, image/jpeg, image/jpg" />
+            <div class="campo-foto">
+              <label for="fotoPosterior">Posterior</label>
+              <input type="file" id="fotoPosterior" accept="image/png,image/jpeg,image/jpg,image/webp" />
+              <img id="previewPosterior" class="preview" alt="Vista previa posterior del equipo" />
             </div>
           </div>
-        </fieldset>
-        <fieldset class="fieldset">
-          <legend>Localización</legend>
-          <div class="form-group localizacion">
-            <div class="item">
-              <select name="Ciudad" id="ciudad">
-                <option value="">Seleccione la Ciudad</option>
-              </select>
+        </section>
+
+        <!-- f) Observaciones -->
+        <section class="seccion">
+          <h2 class="seccion-titulo">Observaciones</h2>
+          <textarea
+            id="observaciones"
+            name="observaciones"
+            rows="4"
+            placeholder="Comentarios finales sobre el equipo, el estado o la entrega..."
+          ></textarea>
+        </section>
+
+        <!-- g) Firmas digitales -->
+        <section class="seccion seccion-firmas">
+          <h2 class="seccion-titulo">Firmas</h2>
+          <div class="grid-firmas">
+            <div class="bloque-firma">
+              <h3 class="firma-titulo">Colaborador</h3>
+              <div class="campo">
+                <label for="firmaNombreColaborador">Nombre</label>
+                <input
+                  type="text"
+                  id="firmaNombreColaborador"
+                  readonly
+                  placeholder="Se sincroniza con el nombre"
+                />
+              </div>
+              <div class="campo">
+                <label for="firmaDocumentoColaborador">N° DOC ID</label>
+                <input
+                  type="text"
+                  id="firmaDocumentoColaborador"
+                  readonly
+                  placeholder="Se sincroniza con la cédula"
+                />
+              </div>
+              <div class="lienzo-firma" id="lienzoFirmaColaborador">
+                <canvas
+                  id="firmaColaborador"
+                  class="canvas-firma"
+                  width="1000"
+                  height="340"
+                  aria-label="Firma del colaborador"
+                ></canvas>
+                <span class="firma-guia" aria-hidden="true">Firme aquí</span>
+              </div>
+              <button type="button" class="btn btn-firma" data-limpiar="firmaColaborador">
+                Limpiar
+              </button>
             </div>
-            <div class="item">
-              <input type="date" name="fecha" id="fecha" placeholder="fecha" />
+
+            <div class="bloque-firma">
+              <h3 class="firma-titulo">Agente TI</h3>
+              <div class="campo">
+                <label for="firmaNombreAgente">Nombre</label>
+                <input
+                  type="text"
+                  id="firmaNombreAgente"
+                  readonly
+                  placeholder="Se sincroniza con el Agente TI"
+                />
+              </div>
+              <div class="campo">
+                <label for="firmaDocumentoAgente">N° DOC ID</label>
+                <input
+                  type="text"
+                  id="firmaDocumentoAgente"
+                  readonly
+                  placeholder="Se sincroniza con la cédula TI"
+                />
+              </div>
+              <div class="lienzo-firma" id="lienzoFirmaAgente">
+                <canvas
+                  id="firmaAgente"
+                  class="canvas-firma"
+                  width="1000"
+                  height="340"
+                  aria-label="Firma del Agente TI"
+                ></canvas>
+                <span class="firma-guia" aria-hidden="true">Firme aquí</span>
+              </div>
+              <button type="button" class="btn btn-firma" data-limpiar="firmaAgente">
+                Limpiar
+              </button>
             </div>
           </div>
-        </fieldset>
-        <fieldset class="fieldset">
-          <legend>Firmas</legend>
-          <div class="firmas-container">
-            <div class="firma-item">
-              <label for="firmaUsuario">Firma Usuario</label>
-              <canvas id="firmaUsuario" aria-label="Área de firma del usuario" role="img" tabindex="0"></canvas>
-              <button type="button" onclick="limpiarFirma('firmaUsuario')">Limpiar</button>
-            </div>
-            <div class="firma-item">
-              <label for="firmaTecnico">Firma Técnico</label>
-              <canvas id="firmaTecnico" aria-label="Área de firma del técnico" role="img" tabindex="0"></canvas>
-              <button type="button" onclick="limpiarFirma('firmaTecnico')">Limpiar</button>
-            </div>
-          </div>
-        </fieldset>
-        <button type="button" id="btnEnviar">Enviar</button>
+        </section>
+
+        <div class="pie-formulario">
+          <button type="submit" id="btnGenerar" class="btn btn-primario">
+            Generar y Guardar / Enviar
+          </button>
+          <span id="envioStatus" class="estado" role="status"></span>
+        </div>
       </form>
+
+      <footer class="pie">
+        <span>Levapan · Acta de Tecnología</span>
+        <span>Documento generado automáticamente</span>
+      </footer>
     </main>
-    <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
-    <script src="js/llenar.js"></script>
+
+    <script src="js/pdf-lib.min.js"></script>
+    <script>
+      // Respaldo por si el archivo local no está disponible.
+      if (!window.PDFLib) {
+        document.write(
+          '<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"><\/script>'
+        );
+      }
+    </script>
     <script src="js/firmas.js"></script>
-    <script src="js/listas.js"></script>
+    <script src="js/inventario-storage.js"></script>
+    <script src="js/pwa.js"></script>
   </body>
 </html>
