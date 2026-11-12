@@ -6,7 +6,7 @@
    red: el inventario y las actas necesitan el servidor local.
    ============================================================ */
 
-const CACHE = "acta-levapan-v3";
+const CACHE = "acta-levapan-v4";
 
 const APP_SHELL = [
   "/",
@@ -24,7 +24,6 @@ const APP_SHELL = [
   "/images/ico-levadesk.ico",
   "/images/logo-levadesk.png",
   "/images/fondo-poster.jpg",
-  "/data/inventario.json",
 ];
 
 self.addEventListener("install", (event) => {

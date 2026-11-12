@@ -60,6 +60,26 @@ formulario, se agrega como opción en ese momento.
 La consulta la resuelve SQLite mediante `GET /api/equipos/buscar?q=ML-`, que busca
 primero por prefijo y, si no hay resultados, por cualquier parte de la placa (máximo 30).
 
+## Publicar en internet
+
+Para usar la app desde fuera de la oficina sin abrir puertos en el router:
+
+1. Crea el archivo `.env` a partir de `.env.example` y define una contraseña:
+   ```
+   ACTA_CLAVE=tu-clave-segura
+   ```
+   `.env` está excluido de Git; no se sube al repositorio.
+2. Doble clic en `publicar.bat`.
+3. Copia el enlace `https://....trycloudflare.com` que muestra la consola.
+
+Ese enlace es público: el navegador pedirá usuario y contraseña. Usa cualquier
+usuario (`TI` por convención) y la clave de `.env`. El equipo debe quedar
+encendido y con internet, y la URL gratuita cambia cada vez que se reinicia el
+túnel. Para una URL fija hace falta un dominio propio y un túnel con nombre de
+Cloudflare.
+
+Sin `.env`, el servidor queda sin contraseña y solo debe usarse en la red local.
+
 ## Datos y archivos
 
 | Qué | Dónde |

@@ -16,6 +16,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -31,6 +32,16 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ = __dirname;
+
+/* Credenciales locales (.env) para publicar la app en internet.
+   Si ACTA_CLAVE queda vacía, el acceso queda abierto (uso en la oficina). */
+try {
+  process.loadEnvFile?.(path.join(RAIZ, ".env"));
+} catch {
+  /* Sin .env: se usan las variables de entorno del sistema. */
+}
+
+const CLAVE_ACCESO = String(process.env.ACTA_CLAVE || "").trim();
 
 const PUERTO = Number(process.env.PORT || process.env.ACTA_PORT || 3000);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -131,6 +142,42 @@ async function leerJson(req) {
       status: 400,
     });
   }
+}
+
+/** Rutas con datos o interfaz: requieren contraseña cuando está configurada. */
+function esRutaProtegida(pathname) {
+  return (
+    pathname === "/" ||
+    pathname === "/index.html" ||
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/data/")
+  );
+}
+
+/** Autenticación básica con una sola contraseña (ACTA_CLAVE). */
+function accesoAutorizado(req) {
+  if (!CLAVE_ACCESO) return true;
+
+  const cabecera = String(req.headers.authorization || "");
+  const [esquema, valor] = cabecera.split(" ");
+  if (!/^basic$/i.test(esquema || "") || !valor) return false;
+
+  let credenciales = "";
+  try {
+    credenciales = Buffer.from(valor, "base64").toString("utf8");
+  } catch {
+    return false;
+  }
+
+  const separador = credenciales.indexOf(":");
+  const clave = separador >= 0 ? credenciales.slice(separador + 1) : "";
+  const recibida = Buffer.from(clave, "utf8");
+  const esperada = Buffer.from(CLAVE_ACCESO, "utf8");
+
+  return (
+    recibida.length === esperada.length &&
+    crypto.timingSafeEqual(recibida, esperada)
+  );
 }
 
 /** Deja un nombre de archivo seguro conservando tildes y espacios simples. */
@@ -417,6 +464,17 @@ const servidor = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
 
   try {
+    if (CLAVE_ACCESO && esRutaProtegida(url.pathname) && !accesoAutorizado(req)) {
+      res.writeHead(401, {
+        "WWW-Authenticate": 'Basic realm="Acta de Tecnologia Levapan", charset="UTF-8"',
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
+      return res.end(
+        "Acceso restringido. Ingresa la contraseña de Acta de Tecnología Levapan."
+      );
+    }
+
     if (url.pathname.startsWith("/api/")) {
       return await manejarApi(req, res, url);
     }
@@ -484,6 +542,11 @@ servidor.listen(PUERTO, HOST, () => {
   console.log(`  Equipos en inventario : ${estado.totalEquipos}`);
   console.log(`  Base de datos         : ${estado.dbPath}`);
   console.log(`  Carpeta de actas      : ${PDF_DIR}`);
+  console.log(
+    `  Acceso                : ${
+      CLAVE_ACCESO ? "protegido con contrasena" : "sin contrasena (red local)"
+    }`
+  );
   console.log(linea);
   console.log("  Abre la aplicación en:");
   console.log(`    http://localhost:${PUERTO}`);
