@@ -6,7 +6,7 @@
    red: el inventario y las actas necesitan el servidor local.
    ============================================================ */
 
-const CACHE = "acta-levapan-v2";
+const CACHE = "acta-levapan-v3";
 
 const APP_SHELL = [
   "/",

@@ -43,6 +43,23 @@ en `icons/`.
 El Service Worker guarda el código de la app, así que la interfaz abre aunque no haya red.
 Los datos (inventario, actas, guardado de PDF) sí necesitan el servidor local encendido.
 
+## Búsqueda por placa
+
+En el campo **Placa**, escribe al menos dos caracteres (por ejemplo `ML-`) y aparece una
+lista con las coincidencias del inventario:
+
+```
+ML-217067 — CPU HP ProDesk 400 G9 (Serial: 8CC5030J0J)
+```
+
+Al elegir una sugerencia con clic o `Enter`, o al escribir la placa exacta, se completan
+automáticamente el serial, tipo, marca, modelo, estado, responsable, cédula, accesorios y
+las firmas. Si un tipo, marca, modelo o estado del inventario no existe en las listas del
+formulario, se agrega como opción en ese momento.
+
+La consulta la resuelve SQLite mediante `GET /api/equipos/buscar?q=ML-`, que busca
+primero por prefijo y, si no hay resultados, por cualquier parte de la placa (máximo 30).
+
 ## Datos y archivos
 
 | Qué | Dónde |

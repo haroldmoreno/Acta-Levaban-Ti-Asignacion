@@ -156,17 +156,48 @@
               <label for="serial">Serial</label>
               <input type="text" id="serial" name="serial" placeholder="Número de serie" required />
             </div>
-            <div class="campo">
+            <div class="campo campo-placa">
               <label for="placa">Placa</label>
-              <input
-                type="text"
-                id="placa"
-                name="placa"
-                placeholder="Escriba la placa y presione Enter"
-                autocomplete="off"
-                required
-              />
-              <small class="ayuda">Al salir del campo se autocompleta el equipo.</small>
+              <div class="campo-placa-caja">
+                <input
+                  type="text"
+                  id="placa"
+                  name="placa"
+                  placeholder="Escriba ML- y elija una sugerencia"
+                  autocomplete="off"
+                  spellcheck="false"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded="false"
+                  aria-controls="placaSugerencias"
+                  required
+                />
+                <div
+                  id="placaSugerencias"
+                  class="placa-sugerencias"
+                  role="listbox"
+                  aria-label="Equipos encontrados"
+                  hidden
+                ></div>
+              </div>
+              <small class="ayuda">
+                Escribe ML- y aparece la lista de equipos del inventario.
+              </small>
+            </div>
+            <div class="campo">
+              <label for="estado">Estado</label>
+              <select id="estado" name="estado" disabled>
+                <option value="">Sin estado</option>
+                <option value="Disponible">Disponible</option>
+                <option value="Disponible Para Asignar">Disponible Para Asignar</option>
+                <option value="Asignado">Asignado</option>
+                <option value="Prestamo">Préstamo</option>
+                <option value="En laboratorio de pruebas">En laboratorio de pruebas</option>
+                <option value="En laboratorio para dar de baja">En laboratorio para dar de baja</option>
+                <option value="Para devolución a proveedor">Para devolución a proveedor</option>
+                <option value="Dado de baja">Dado de baja</option>
+              </select>
+              <small class="ayuda">Estado actual en el inventario.</small>
             </div>
           </div>
 

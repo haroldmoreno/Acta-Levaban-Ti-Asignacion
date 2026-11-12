@@ -359,6 +359,25 @@ export function buscarEquipo(placa) {
   };
 }
 
+/* Búsqueda para el desplegable de Placa: primero por prefijo y, si no hay
+   coincidencias, por cualquier parte de la placa. */
+const buscarPorPrefijo = db.prepare(
+  `SELECT * FROM equipos
+    WHERE UPPER(TRIM(placa)) LIKE UPPER(TRIM(?))
+    ORDER BY placa ASC
+    LIMIT 30`
+);
+
+export function buscarEquiposPorPrefijo(consulta = "") {
+  const texto = String(consulta ?? "").trim();
+  if (!texto) return { equipos: [], modo: "prefijo" };
+
+  const porPrefijo = buscarPorPrefijo.all(`${texto}%`);
+  if (porPrefijo.length) return { equipos: porPrefijo, modo: "prefijo" };
+
+  return { equipos: buscarPorPrefijo.all(`%${texto}%`), modo: "contiene" };
+}
+
 export function buscarEquipos(consulta = "", limite = 20) {
   const texto = String(consulta ?? "").trim();
   const tope = Math.min(100, Math.max(1, Number(limite) || 20));

@@ -34,7 +34,6 @@ const INVENTARIO_JSON_PATH = "./data/inventario.json";
 let servidorActivo = false;
 let infoServidor = null;
 let equipoActual = null;
-let consultaPlacaEnCurso = 0;
 
 /* ---------------- Utilidades generales ---------------- */
 
@@ -484,6 +483,36 @@ function llenarSelect(select, valores, etiqueta, seleccionado = "") {
   select.value = existe ? existe.value : "";
 }
 
+/**
+ * Deja seleccionado el valor en un <select>. Si el dato del inventario no
+ * existe entre las opciones, crea el <option> en ese momento.
+ */
+function seleccionarOcrear(select, valor) {
+  if (!select) return "";
+
+  const texto = String(valor ?? "").trim();
+  if (!texto) {
+    select.value = "";
+    return "";
+  }
+
+  let opcion = [...select.options].find(
+    (item) =>
+      item.value !== "" &&
+      normalizarTexto(item.value) === normalizarTexto(texto)
+  );
+
+  if (!opcion) {
+    opcion = document.createElement("option");
+    opcion.value = texto;
+    opcion.textContent = texto;
+    select.appendChild(opcion);
+  }
+
+  select.value = opcion.value;
+  return opcion.value;
+}
+
 function actualizarModelos(tipo, marca, modeloSeleccionado = "") {
   llenarSelect(
     document.getElementById("modelo"),
@@ -818,34 +847,46 @@ function autocompletarEquipo(equipo) {
   const tipo = String(equipo.tipo ?? "").trim();
   const marca = String(equipo.marca ?? "").trim();
   const modelo = String(equipo.modelo ?? "").trim();
+  const estado = String(equipo.estado ?? "").trim();
 
   // Registra los valores del inventario que no existen en el catálogo.
   if (tipo) agregarExtraTipo(tipo);
   if (tipo && marca) agregarExtraMarca(tipo, marca);
   if (tipo && marca && modelo) agregarExtraModelo(tipo, marca, modelo);
 
-  llenarSelect(
-    document.getElementById("tipo"),
-    valoresTipos(),
-    "Seleccione el Tipo",
-    tipo
-  );
+  const selectTipo = document.getElementById("tipo");
+  const selectMarca = document.getElementById("marca");
+  const selectModelo = document.getElementById("modelo");
 
-  const tipoSeleccionado = document.getElementById("tipo")?.value || "";
-  actualizarMarcas(tipoSeleccionado, marca);
+  llenarSelect(selectTipo, valoresTipos(), "Seleccione el Tipo", tipo);
+  const tipoFinal = seleccionarOcrear(selectTipo, tipo);
 
-  const marcaSeleccionada = document.getElementById("marca")?.value || "";
-  actualizarModelos(tipoSeleccionado, marcaSeleccionada, modelo);
+  actualizarMarcas(tipoFinal, marca);
+  const marcaFinal = seleccionarOcrear(selectMarca, marca);
+
+  actualizarModelos(tipoFinal, marcaFinal, modelo);
+  seleccionarOcrear(selectModelo, modelo);
+
+  // El estado se muestra en su select; si el valor del inventario no está en
+  // la lista se agrega como opción nueva.
+  seleccionarOcrear(document.getElementById("estado"), estado);
 
   asignarValor("serial", equipo.serial, true);
+
+  // Responsable y cédula registrados en SQLite, sincronizados con Firmas.
+  // Si el equipo no tiene responsable se limpian para no arrastrar datos de
+  // una búsqueda anterior.
+  asignarValor("nombre", equipo.usuario_actual, true);
+  asignarValor("documento", equipo.cedula_usuario, true);
+
   sincronizarAccesoriosDesdeInventario(equipo.accesorios);
   mostrarFichaEquipo(equipo);
 
-  if (equipo.estado) {
-    const estado = normalizarTexto(equipo.estado);
+  if (estado) {
+    const estadoNormalizado = normalizarTexto(estado);
     let valorRadio = null;
-    if (estado.includes("devol")) valorRadio = "Devolución";
-    else if (estado.includes("asign")) valorRadio = "Asignación";
+    if (estadoNormalizado.includes("devol")) valorRadio = "Devolución";
+    else if (estadoNormalizado.includes("asign")) valorRadio = "Asignación";
 
     if (valorRadio) {
       const radio = document.querySelector(
@@ -858,16 +899,162 @@ function autocompletarEquipo(equipo) {
   autocompletarResponsableActual();
 }
 
+/* ---------------- Búsqueda desplegable de Placa ---------------- */
+
+/** Busca equipos por prefijo en SQLite (/api/equipos/buscar) o en el JSON. */
+async function buscarEquiposSugeridos(consulta) {
+  const texto = String(consulta ?? "").trim();
+  if (!texto) return [];
+
+  if (servidorActivo) {
+    try {
+      const respuesta = await fetch(
+        `${API_BASE}/api/equipos/buscar?q=${encodeURIComponent(texto)}`,
+        { cache: "no-store" }
+      );
+      if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
+
+      const datos = await respuesta.json();
+      if (!datos?.ok) throw new Error("Respuesta inválida del servidor");
+      return (datos.equipos || []).map(normalizarEquipo);
+    } catch (err) {
+      console.warn(
+        "No se pudo buscar en el servidor, se usa el respaldo local:",
+        err
+      );
+    }
+  }
+
+  if (!inventarioActual || !Array.isArray(inventarioActual.datos)) return [];
+
+  const objetivo = normalizarTexto(texto);
+  const porPrefijo = inventarioActual.datos.filter((equipo) =>
+    normalizarTexto(equipo.placa).startsWith(objetivo)
+  );
+  const lista = porPrefijo.length
+    ? porPrefijo
+    : inventarioActual.datos.filter((equipo) =>
+        normalizarTexto(equipo.placa).includes(objetivo)
+      );
+
+  return lista.slice(0, 30).map(normalizarEquipo);
+}
+
+function describirEquipo(equipo) {
+  return (
+    [equipo.tipo, equipo.marca, equipo.modelo].filter(Boolean).join(" ") ||
+    "Equipo sin descripción"
+  );
+}
+
+function detalleSugerencia(equipo) {
+  const serial = equipo.serial ? ` (Serial: ${equipo.serial})` : "";
+  return `— ${describirEquipo(equipo)}${serial}`;
+}
+
 function inicializarAutocompletadoPlaca() {
   const placaInput = document.getElementById("placa");
-  if (!placaInput) return;
+  const contenedor = document.getElementById("placaSugerencias");
+  if (!placaInput || !contenedor) return;
 
   let temporizador = null;
+  let indiceActivo = -1;
+  let sugerencias = [];
+  let turno = 0;
 
-  const buscar = async () => {
+  const cerrar = () => {
+    contenedor.hidden = true;
+    contenedor.innerHTML = "";
+    placaInput.setAttribute("aria-expanded", "false");
+    placaInput.removeAttribute("aria-activedescendant");
+    indiceActivo = -1;
+    sugerencias = [];
+  };
+
+  const marcarActiva = (nuevoIndice) => {
+    const items = [...contenedor.querySelectorAll(".placa-sugerencia")];
+    if (!items.length) return;
+
+    indiceActivo = ((nuevoIndice % items.length) + items.length) % items.length;
+    items.forEach((item, indice) => {
+      const activa = indice === indiceActivo;
+      item.classList.toggle("activa", activa);
+      item.setAttribute("aria-selected", activa ? "true" : "false");
+    });
+
+    const activo = items[indiceActivo];
+    placaInput.setAttribute("aria-activedescendant", activo.id);
+    activo.scrollIntoView({ block: "nearest" });
+  };
+
+  const marcarValida = () => {
+    placaInput.removeAttribute("aria-invalid");
+    placaInput.style.borderColor = "#15803d";
+  };
+
+  const marcarInvalida = () => {
+    placaInput.setAttribute("aria-invalid", "true");
+    placaInput.style.borderColor = "#b91c1c";
+  };
+
+  /** Aplica el equipo elegido y rellena todo el formulario al instante. */
+  const elegir = (equipo) => {
+    if (!equipo) return;
+    cerrar();
+    placaInput.value = equipo.placa;
+    marcarValida();
+    autocompletarEquipo(equipo);
+    estadoInventario(`Equipo seleccionado: ${describirEquipo(equipo)}`, "ok");
+  };
+
+  const mostrar = (equipos) => {
+    sugerencias = equipos;
+    indiceActivo = -1;
+    contenedor.innerHTML = "";
+
+    if (!equipos.length) {
+      const vacio = document.createElement("div");
+      vacio.className = "placa-sugerencias-vacia";
+      vacio.textContent = "No se encontraron equipos con esa placa.";
+      contenedor.appendChild(vacio);
+      contenedor.hidden = false;
+      placaInput.setAttribute("aria-expanded", "true");
+      placaInput.removeAttribute("aria-activedescendant");
+      return;
+    }
+
+    equipos.forEach((equipo, indice) => {
+      const boton = document.createElement("button");
+      boton.type = "button";
+      boton.id = `placaSugerencia-${indice}`;
+      boton.className = "placa-sugerencia";
+      boton.setAttribute("role", "option");
+      boton.setAttribute("aria-selected", "false");
+
+      const placa = document.createElement("span");
+      placa.className = "placa-sugerencia-placa";
+      placa.textContent = equipo.placa;
+
+      const detalle = document.createElement("span");
+      detalle.className = "placa-sugerencia-detalle";
+      detalle.textContent = detalleSugerencia(equipo);
+
+      boton.append(placa, detalle);
+      boton.addEventListener("pointerdown", (evento) => evento.preventDefault());
+      boton.addEventListener("click", () => elegir(equipo));
+      boton.addEventListener("mouseenter", () => marcarActiva(indice));
+      contenedor.appendChild(boton);
+    });
+
+    contenedor.hidden = false;
+    placaInput.setAttribute("aria-expanded", "true");
+  };
+
+  /** Consulta exacta por Placa (Enter, blur o sin sugerencias). */
+  const consultarExacta = async (mostrarError) => {
     const valor = placaInput.value.trim();
 
-    if (valor.length < 2) {
+    if (!valor) {
       limpiarFichaEquipo();
       placaInput.removeAttribute("aria-invalid");
       placaInput.style.borderColor = "";
@@ -875,47 +1062,124 @@ function inicializarAutocompletadoPlaca() {
     }
 
     if (!servidorActivo && !inventarioActual) {
-      placaInput.removeAttribute("aria-invalid");
       estadoInventario("Sin conexión al inventario. Inicia el servidor.", "error");
       return;
     }
 
-    const turno = ++consultaPlacaEnCurso;
-    estadoInventario(`Consultando la placa ${valor}…`);
-
+    const actual = ++turno;
     const equipo = await buscarEquipoPorPlaca(valor);
-    if (turno !== consultaPlacaEnCurso) return;
+    if (actual !== turno) return;
 
     if (equipo) {
+      placaInput.value = equipo.placa;
+      marcarValida();
       autocompletarEquipo(equipo);
-      placaInput.removeAttribute("aria-invalid");
-      placaInput.style.borderColor = "#15803d";
-      estadoInventario(
-        `Equipo encontrado: ${equipo.tipo || "Equipo"} ${equipo.marca || ""} ${equipo.modelo || ""}`.trim(),
-        "ok"
-      );
-    } else {
+      estadoInventario(`Equipo encontrado: ${describirEquipo(equipo)}`, "ok");
+    } else if (mostrarError) {
       limpiarFichaEquipo();
-      placaInput.setAttribute("aria-invalid", "true");
-      placaInput.style.borderColor = "#b91c1c";
+      marcarInvalida();
       estadoInventario("Placa no registrada en el inventario", "error");
     }
   };
 
+  /** Consulta en vivo desde el segundo carácter y pinta la lista. */
+  const actualizarSugerencias = async () => {
+    const valor = placaInput.value.trim();
+    const actual = ++turno;
+
+    if (valor.length < 2) {
+      cerrar();
+      placaInput.removeAttribute("aria-invalid");
+      placaInput.style.borderColor = "";
+      if (!valor) limpiarFichaEquipo();
+      return;
+    }
+
+    if (!servidorActivo && !inventarioActual) {
+      cerrar();
+      estadoInventario("Sin conexión al inventario. Inicia el servidor.", "error");
+      return;
+    }
+
+    estadoInventario(`Buscando equipos con "${valor}"…`);
+    const equipos = await buscarEquiposSugeridos(valor);
+    if (actual !== turno) return;
+
+    const exacto = equipos.find(
+      (equipo) => normalizarTexto(equipo.placa) === normalizarTexto(valor)
+    );
+    if (exacto) {
+      elegir(exacto);
+      return;
+    }
+
+    if (equipos.length) {
+      placaInput.removeAttribute("aria-invalid");
+      placaInput.style.borderColor = "";
+      estadoInventario(
+        `${equipos.length} equipo(s) encontrado(s). Elige uno de la lista.`,
+        "ok"
+      );
+    } else {
+      limpiarFichaEquipo();
+      marcarInvalida();
+      estadoInventario("Placa no registrada en el inventario", "error");
+    }
+
+    mostrar(equipos);
+  };
+
   const programar = () => {
     clearTimeout(temporizador);
-    temporizador = setTimeout(buscar, 450);
+    temporizador = setTimeout(actualizarSugerencias, 160);
   };
 
   placaInput.addEventListener("input", programar);
-  placaInput.addEventListener("blur", buscar);
-  placaInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      clearTimeout(temporizador);
-      buscar();
-      placaInput.blur();
+
+  placaInput.addEventListener("keydown", (evento) => {
+    const abierto = !contenedor.hidden && sugerencias.length > 0;
+
+    if (evento.key === "ArrowDown" && abierto) {
+      evento.preventDefault();
+      marcarActiva(indiceActivo + 1);
+      return;
     }
+
+    if (evento.key === "ArrowUp" && abierto) {
+      evento.preventDefault();
+      marcarActiva(indiceActivo <= 0 ? sugerencias.length - 1 : indiceActivo - 1);
+      return;
+    }
+
+    if (evento.key === "Enter") {
+      evento.preventDefault();
+      clearTimeout(temporizador);
+
+      if (abierto) {
+        const elegido = sugerencias[indiceActivo >= 0 ? indiceActivo : 0];
+        if (elegido) {
+          elegir(elegido);
+          return;
+        }
+      }
+
+      cerrar();
+      consultarExacta(true);
+      return;
+    }
+
+    if (evento.key === "Escape") {
+      cerrar();
+    }
+  });
+
+  placaInput.addEventListener("blur", () => {
+    clearTimeout(temporizador);
+    // Deja terminar el clic en una sugerencia antes de cerrar la lista.
+    setTimeout(() => {
+      cerrar();
+      consultarExacta(false);
+    }, 140);
   });
 }
 
@@ -1891,6 +2155,7 @@ window.ActaLevapan = {
   recolectarDatos,
   construirNombreArchivo,
   buscarEquipoPorPlaca,
+  buscarEquiposSugeridos,
   autocompletarEquipo,
   inventario: () => inventarioActual,
   servidor: () => ({ activo: servidorActivo, info: infoServidor }),

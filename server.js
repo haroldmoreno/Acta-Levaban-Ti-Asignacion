@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import {
   buscarEquipo,
   buscarEquipos,
+  buscarEquiposPorPrefijo,
   cerrarDB,
   estadisticas,
   historial,
@@ -292,6 +293,18 @@ async function manejarApi(req, res, url) {
 
   if (ruta === "/api/estado" && req.method === "GET") {
     return enviarJson(res, 200, datosServidor());
+  }
+
+  if (ruta === "/api/equipos/buscar" && req.method === "GET") {
+    const consulta = (url.searchParams.get("q") || "").trim();
+    const { equipos, modo } = buscarEquiposPorPrefijo(consulta);
+    return enviarJson(res, 200, {
+      ok: true,
+      q: consulta,
+      modo,
+      total: equipos.length,
+      equipos,
+    });
   }
 
   if (ruta === "/api/equipos" && req.method === "GET") {
