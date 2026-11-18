@@ -24,9 +24,9 @@ services:
       - key: HOST
         value: 0.0.0.0
       - key: ACTA_CARPETA_BASE
-        value: Actas
+        value: ""
       - key: SHAREPOINT_LIST_ID
-        value: Inventario
+        value: 6e37ce52-b4d2-49ce-a628-63c1d811a563
       # Secretos: se completan en el panel de Render (sync: false).
       - key: TENANT_ID
         sync: false
