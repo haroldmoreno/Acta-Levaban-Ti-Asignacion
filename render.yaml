@@ -7,7 +7,7 @@
 # ============================================================
 services:
   - type: web
-    name: acta-levapan
+    name: acta-levapan-ti
     runtime: node
     plan: free
     region: virginia
