@@ -3,12 +3,11 @@
    ------------------------------------------------------------
    Este archivo contiene toda la lógica de la aplicación:
 
-   1) Consulta del inventario SQLite por Placa a través de
+   1) Consulta del inventario de SharePoint por Placa a través de
       server.js (/api/equipos) y autorrelleno del formulario.
       Si el servidor no responde, usa ./data/inventario.json.
-   2) Envío del acta al servidor (/api/actas), que guarda el PDF
-      en Actas_Guardadas, registra el historial y actualiza el
-      responsable del equipo en SQLite.
+   2) Envío del acta al servidor (/api/actas), que genera el PDF y
+      lo publica en SharePoint mediante Power Automate.
    3) Respaldo local con File System Access API + IndexedDB o
       descarga tradicional si el servidor no está disponible.
    4) Generación de un PDF estructurado con pdf-lib.
@@ -30,7 +29,7 @@ const DB_NAME = "ActaLevapanDB";
 const STORE_CONFIG = "config";
 const INVENTARIO_JSON_PATH = "./data/inventario.json";
 
-/* Estado de la conexión con el servidor SQLite. */
+/* Estado de la conexión con el servidor de actas. */
 let servidorActivo = false;
 let infoServidor = null;
 let equipoActual = null;
@@ -53,6 +52,43 @@ function normalizarClave(texto) {
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
+}
+
+/** Compara placas ignorando espacios, guiones y puntos: "ML-217050" = "ML- 217050". */
+function normalizarPlaca(texto) {
+  return String(texto ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[\s.-]+/g, "");
+}
+
+/**
+ * Normaliza lo escrito en Placa/Serial: mayúsculas y sin espacios ni guiones.
+ * "ml-199865" → "ML199865"; "199865" → "199865".
+ */
+function normalizarTextoBusqueda(valor) {
+  return String(valor ?? "")
+    .toUpperCase()
+    .replace(/[\s-]+/g, "");
+}
+
+/**
+ * true si la Placa o el Serial del equipo equivalen a lo escrito, con o sin
+ * prefijo "ML-": "199865" coincide con "ML-199865".
+ */
+function coincidePlacaOSerial(equipo, valor) {
+  const objetivo = normalizarTextoBusqueda(valor);
+  if (!objetivo) return false;
+
+  const sinPrefijo = objetivo.replace(/^ML/, "");
+  return [equipo?.placa, equipo?.serial]
+    .map((campo) => normalizarTextoBusqueda(campo))
+    .filter(Boolean)
+    .some(
+      (actual) =>
+        actual === objetivo || actual.replace(/^ML/, "") === sinPrefijo
+    );
 }
 
 /** Deja un texto apto para nombre de archivo. */
@@ -261,16 +297,60 @@ async function guardarBytesEnCarpeta(handle, bytes, nombreArchivo) {
   return nombreArchivo;
 }
 
-function descargarArchivo(bytes, nombreArchivo, tipoMime) {
-  const blob = new Blob([bytes], { type: tipoMime });
+/** Convierte el base64 del servidor en bytes listos para escribir/descargar. */
+function base64ABytes(base64) {
+  const limpio = String(base64 || "")
+    .split(",")
+    .pop()
+    .replace(/\s+/g, "");
+  const binario = atob(limpio);
+  const bytes = new Uint8Array(binario.length);
+  for (let i = 0; i < binario.length; i += 1) {
+    bytes[i] = binario.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/** Descarga directa del PDF (útil en celular o sin carpeta vinculada). */
+function descargarPdf(bytes, nombreArchivo) {
+  const blob = new Blob([bytes], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   const enlace = document.createElement("a");
   enlace.href = url;
   enlace.download = nombreArchivo;
+  enlace.rel = "noopener";
   document.body.appendChild(enlace);
   enlace.click();
   enlace.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+/**
+ * Deja una copia del PDF en el navegador:
+ *  - con "Configurar Carpeta Destino" vinculada → escribe ahí;
+ *  - sin carpeta (celular) o si falla → descarga directa.
+ */
+async function guardarPdfEnDestino(resultado, nombreRespaldo) {
+  const base64 = resultado?.pdfBase64;
+  if (!base64) return "";
+
+  const nombre = resultado.archivo || nombreRespaldo;
+  const bytes = base64ABytes(base64);
+
+  if (carpetaHandle) {
+    try {
+      await guardarBytesEnCarpeta(carpetaHandle, bytes, nombre);
+      return `Copia en tu carpeta destino: ${nombre}`;
+    } catch (err) {
+      console.warn(
+        "No se pudo escribir en la carpeta vinculada; se descarga el PDF:",
+        err
+      );
+    }
+  }
+
+  descargarPdf(bytes, nombre);
+  return `PDF descargado: ${nombre}`;
 }
 
 /* ---------------- Catálogo de equipos (listas en cascada) ---------------- */
@@ -554,7 +634,7 @@ function inicializarCascada() {
   });
 }
 
-/* ---------------- Inventario (servidor SQLite + respaldo JSON) ---------------- */
+/* ---------------- Inventario (servidor SharePoint + respaldo JSON) ---------------- */
 
 const ALIAS_INVENTARIO = {
   placa: ["placa", "activofijo", "activo", "codigoactivo", "codigo", "fixedasset", "asset"],
@@ -622,7 +702,7 @@ function estadoServidor(mensaje, tipo = "") {
 
 /**
  * Comprueba si server.js está activo. Cuando lo está, el inventario y las
- * actas viven en SQLite; si no, se usa el JSON estático como respaldo.
+ * actas viven en SharePoint; si no, se usa el JSON estático como respaldo.
  */
 async function cargarInfoServidor() {
   try {
@@ -640,7 +720,7 @@ async function cargarInfoServidor() {
       "ok"
     );
     estadoInventario(
-      `Inventario SQLite listo · ${datos.enlaceRed || location.origin}`
+      `Inventario SharePoint listo · ${datos.enlaceRed || location.origin}`
     );
     console.log("Servidor de actas conectado:", datos);
     return true;
@@ -653,7 +733,67 @@ async function cargarInfoServidor() {
   }
 }
 
-/** Carga ./data/inventario.json solo si el servidor SQLite no responde. */
+/* ------------------------------------------------------------
+   Sincronización del contador superior
+   ------------------------------------------------------------
+   El servidor cachea el total solo 60 segundos, así que un equipo
+   agregado en SharePoint aparece en el badge sin reiniciar la app. */
+const INTERVALO_CONTADOR_MS = 60 * 1000;
+let temporizadorContador = null;
+
+/** Reconsulta /api/estado y actualiza únicamente el badge del servidor. */
+async function refrescarContadorEquipos() {
+  if (typeof document !== "undefined" && document.hidden) return;
+
+  try {
+    const respuesta = await fetch(`${API_BASE}/api/estado`, {
+      cache: "no-store",
+    });
+    if (!respuesta.ok) return;
+
+    const datos = await respuesta.json();
+    if (!datos?.ok) return;
+
+    servidorActivo = true;
+    infoServidor = { ...(infoServidor || {}), ...datos };
+    estadoServidor(
+      `Servidor conectado · ${Number(datos.totalEquipos).toLocaleString("es-CO")} equipos`,
+      "ok"
+    );
+  } catch {
+    /* Si falla, se conserva el último contador conocido. */
+  }
+}
+
+/** Refresca el contador cada minuto y al volver a la pestaña. */
+function iniciarSincronizacionContador() {
+  if (temporizadorContador) return;
+
+  temporizadorContador = setInterval(
+    refrescarContadorEquipos,
+    INTERVALO_CONTADOR_MS
+  );
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refrescarContadorEquipos();
+  });
+  window.addEventListener("focus", () => refrescarContadorEquipos());
+}
+
+/** Evita llenar la consola cuando el servidor no está disponible. */
+let avisoServidorEmitido = false;
+
+function avisarServidorNoDisponible(err) {
+  servidorActivo = false;
+  if (avisoServidorEmitido) return;
+  avisoServidorEmitido = true;
+  console.info(
+    "Búsqueda local: el servidor de actas no respondió.",
+    err?.message || err
+  );
+}
+
+/** Carga el inventario JSON solo si el servidor de actas no responde. */
 async function cargarInventarioSilencioso() {
   if (servidorActivo) return;
 
@@ -710,29 +850,32 @@ async function buscarEquipoPorPlaca(placa) {
   const valor = String(placa ?? "").trim();
   if (!valor) return null;
 
-  if (servidorActivo) {
-    try {
-      const respuesta = await fetch(
-        `${API_BASE}/api/equipos?placa=${encodeURIComponent(valor)}`,
-        { cache: "no-store" }
-      );
-      if (respuesta.status === 404) return null;
-      if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
+  // Se consulta la API sin depender de /api/estado: la búsqueda puede estar
+  // disponible aunque la comprobación inicial haya fallado o no haya terminado.
+  try {
+    const respuesta = await fetch(
+      `${API_BASE}/api/equipos?placa=${encodeURIComponent(valor)}`,
+      { cache: "no-store" }
+    );
+    if (respuesta.status === 404) return null;
+    if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
 
-      const datos = await respuesta.json();
-      return normalizarEquipo(datos.equipo);
-    } catch (err) {
-      console.warn("Falló la consulta al servidor, se intenta el respaldo local:", err);
-    }
+    const datos = await respuesta.json();
+    if (!datos?.ok || !datos.equipo) return null;
+
+    servidorActivo = true;
+    return normalizarEquipo(datos.equipo);
+  } catch (err) {
+    avisarServidorNoDisponible(err);
   }
 
-  const objetivo = normalizarTexto(valor);
+  if (!normalizarTextoBusqueda(valor)) return null;
   if (!inventarioActual || !Array.isArray(inventarioActual.datos)) return null;
 
-  const encontrado = inventarioActual.datos.find(
-    (equipo) => normalizarTexto(equipo.placa) === objetivo
+  const encontrado = inventarioActual.datos.find((equipo) =>
+    coincidePlacaOSerial(equipo, valor)
   );
-  return normalizarEquipo(encontrado);
+  return encontrado ? normalizarEquipo(encontrado) : null;
 }
 
 function asignarValor(id, valor, forzar = false) {
@@ -873,10 +1016,11 @@ function autocompletarEquipo(equipo) {
 
   asignarValor("serial", equipo.serial, true);
 
-  // Responsable y cédula registrados en SQLite, sincronizados con Firmas.
+  // Responsable y cédula registrados en SharePoint, sincronizados con Firmas.
   // Si el equipo no tiene responsable se limpian para no arrastrar datos de
   // una búsqueda anterior.
   asignarValor("nombre", equipo.usuario_actual, true);
+  asignarValor("colaborador", equipo.usuario_actual, true);
   asignarValor("documento", equipo.cedula_usuario, true);
 
   sincronizarAccesoriosDesdeInventario(equipo.accesorios);
@@ -901,41 +1045,53 @@ function autocompletarEquipo(equipo) {
 
 /* ---------------- Búsqueda desplegable de Placa ---------------- */
 
-/** Busca equipos por prefijo en SQLite (/api/equipos/buscar) o en el JSON. */
-async function buscarEquiposSugeridos(consulta) {
+/**
+ * Busca equipos en vivo contra SharePoint (/api/equipos/buscar, sin caché).
+ * data/inventario.json solo se usa cuando el servidor no responde.
+ */
+async function buscarEquiposSugeridos(consulta, signal) {
   const texto = String(consulta ?? "").trim();
   if (!texto) return [];
 
-  if (servidorActivo) {
-    try {
-      const respuesta = await fetch(
-        `${API_BASE}/api/equipos/buscar?q=${encodeURIComponent(texto)}`,
-        { cache: "no-store" }
-      );
-      if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
+  try {
+    const respuesta = await fetch(
+      `${API_BASE}/api/equipos/buscar?q=${encodeURIComponent(texto)}`,
+      { cache: "no-store", signal }
+    );
+    if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
 
-      const datos = await respuesta.json();
-      if (!datos?.ok) throw new Error("Respuesta inválida del servidor");
-      return (datos.equipos || []).map(normalizarEquipo);
-    } catch (err) {
-      console.warn(
-        "No se pudo buscar en el servidor, se usa el respaldo local:",
-        err
-      );
-    }
+    const datos = await respuesta.json();
+    if (!datos?.ok) throw new Error("Respuesta inválida del servidor");
+
+    servidorActivo = true;
+    return (datos.equipos || []).map(normalizarEquipo).filter(Boolean);
+  } catch (err) {
+    // Petición cancelada por una búsqueda más reciente: no es un error real.
+    if (err?.name === "AbortError") return null;
+    avisarServidorNoDisponible(err);
   }
 
   if (!inventarioActual || !Array.isArray(inventarioActual.datos)) return [];
 
-  const objetivo = normalizarTexto(texto);
-  const porPrefijo = inventarioActual.datos.filter((equipo) =>
-    normalizarTexto(equipo.placa).startsWith(objetivo)
-  );
+  // Caché en memoria: placa con o sin prefijo "ML-" y también por serial.
+  const normalizado = normalizarTextoBusqueda(texto);
+  const sinPrefijo = normalizado.replace(/^ML/, "");
+  const claves = [normalizado];
+  if (sinPrefijo && sinPrefijo !== normalizado) claves.push(sinPrefijo);
+
+  const porPrefijo = inventarioActual.datos.filter((equipo) => {
+    const placa = normalizarTextoBusqueda(equipo.placa);
+    return claves.some((clave) => placa.startsWith(clave));
+  });
   const lista = porPrefijo.length
     ? porPrefijo
-    : inventarioActual.datos.filter((equipo) =>
-        normalizarTexto(equipo.placa).includes(objetivo)
-      );
+    : inventarioActual.datos.filter((equipo) => {
+        const placa = normalizarTextoBusqueda(equipo.placa);
+        const serial = normalizarTextoBusqueda(equipo.serial);
+        return claves.some(
+          (clave) => placa.includes(clave) || serial.includes(clave)
+        );
+      });
 
   return lista.slice(0, 30).map(normalizarEquipo);
 }
@@ -952,15 +1108,42 @@ function detalleSugerencia(equipo) {
   return `— ${describirEquipo(equipo)}${serial}`;
 }
 
+/** Crea (si hace falta) el desplegable Liquid Glass bajo el campo Placa. */
+function crearContenedorSugerencias(placaInput) {
+  let contenedor = document.getElementById("placaSugerencias");
+  if (contenedor) return contenedor;
+
+  const caja =
+    placaInput.closest(".campo-placa-caja") || placaInput.parentElement;
+  if (!caja) return null;
+
+  contenedor = document.createElement("div");
+  contenedor.id = "placaSugerencias";
+  contenedor.className = "placa-sugerencias";
+  contenedor.setAttribute("role", "listbox");
+  contenedor.setAttribute("aria-label", "Equipos encontrados");
+  contenedor.hidden = true;
+  caja.appendChild(contenedor);
+  return contenedor;
+}
+
 function inicializarAutocompletadoPlaca() {
   const placaInput = document.getElementById("placa");
-  const contenedor = document.getElementById("placaSugerencias");
+  const contenedor = placaInput ? crearContenedorSugerencias(placaInput) : null;
   if (!placaInput || !contenedor) return;
 
   let temporizador = null;
   let indiceActivo = -1;
   let sugerencias = [];
   let turno = 0;
+  let controlador = null;
+
+  /** Cancela la petición en curso: evita respuestas viejas y avisos falsos. */
+  const abortarBusqueda = () => {
+    if (!controlador) return;
+    controlador.abort();
+    controlador = null;
+  };
 
   const cerrar = () => {
     contenedor.hidden = true;
@@ -1053,16 +1236,12 @@ function inicializarAutocompletadoPlaca() {
   /** Consulta exacta por Placa (Enter, blur o sin sugerencias). */
   const consultarExacta = async (mostrarError) => {
     const valor = placaInput.value.trim();
+    abortarBusqueda();
 
     if (!valor) {
       limpiarFichaEquipo();
       placaInput.removeAttribute("aria-invalid");
       placaInput.style.borderColor = "";
-      return;
-    }
-
-    if (!servidorActivo && !inventarioActual) {
-      estadoInventario("Sin conexión al inventario. Inicia el servidor.", "error");
       return;
     }
 
@@ -1078,7 +1257,12 @@ function inicializarAutocompletadoPlaca() {
     } else if (mostrarError) {
       limpiarFichaEquipo();
       marcarInvalida();
-      estadoInventario("Placa no registrada en el inventario", "error");
+      estadoInventario(
+        !servidorActivo && !inventarioActual
+          ? "Sin conexión al inventario. Inicia el servidor."
+          : "Placa no registrada en el inventario",
+        "error"
+      );
     }
   };
 
@@ -1088,6 +1272,7 @@ function inicializarAutocompletadoPlaca() {
     const actual = ++turno;
 
     if (valor.length < 2) {
+      abortarBusqueda();
       cerrar();
       placaInput.removeAttribute("aria-invalid");
       placaInput.style.borderColor = "";
@@ -1095,21 +1280,29 @@ function inicializarAutocompletadoPlaca() {
       return;
     }
 
-    if (!servidorActivo && !inventarioActual) {
+    // Cancela la petición anterior antes de lanzar la nueva.
+    abortarBusqueda();
+    controlador = new AbortController();
+
+    estadoInventario(`Buscando equipos con "${valor}"…`);
+    const equipos = await buscarEquiposSugeridos(valor, controlador.signal);
+    if (equipos === null) return; // petición cancelada por otra búsqueda
+    if (actual !== turno) return;
+
+    // Ni servidor ni inventario local: no hay de dónde obtener sugerencias.
+    if (!equipos.length && !servidorActivo && !inventarioActual) {
       cerrar();
       estadoInventario("Sin conexión al inventario. Inicia el servidor.", "error");
       return;
     }
 
-    estadoInventario(`Buscando equipos con "${valor}"…`);
-    const equipos = await buscarEquiposSugeridos(valor);
-    if (actual !== turno) return;
-
-    const exacto = equipos.find(
-      (equipo) => normalizarTexto(equipo.placa) === normalizarTexto(valor)
+    // Coincidencia exacta por Placa o Serial, escriba "199865" o "ML-199865".
+    // Solo se autorrellena si hay una única coincidencia equivalente.
+    const equivalentes = equipos.filter((equipo) =>
+      coincidePlacaOSerial(equipo, valor)
     );
-    if (exacto) {
-      elegir(exacto);
+    if (equivalentes.length === 1) {
+      elegir(equivalentes[0]);
       return;
     }
 
@@ -1131,7 +1324,8 @@ function inicializarAutocompletadoPlaca() {
 
   const programar = () => {
     clearTimeout(temporizador);
-    temporizador = setTimeout(actualizarSugerencias, 160);
+    // 350 ms: suficiente para no saturar la red móvil mientras se escribe.
+    temporizador = setTimeout(actualizarSugerencias, 350);
   };
 
   placaInput.addEventListener("input", programar);
@@ -1169,12 +1363,14 @@ function inicializarAutocompletadoPlaca() {
     }
 
     if (evento.key === "Escape") {
+      abortarBusqueda();
       cerrar();
     }
   });
 
   placaInput.addEventListener("blur", () => {
     clearTimeout(temporizador);
+    abortarBusqueda();
     // Deja terminar el clic en una sugerencia antes de cerrar la lista.
     setTimeout(() => {
       cerrar();
@@ -1187,9 +1383,13 @@ function inicializarAutocompletadoPlaca() {
 
 const LS_DOCUMENTOS_TI = "actaLevapan.documentosTi";
 
-/* Cédulas confirmadas. Michael Wilson queda pendiente de confirmar. */
+/* Cédulas precargadas de los Agentes TI autorizados.
+   Wilson Perez y Michel Salazar quedan editables: si ya se registró su
+   cédula en este equipo se recupera automáticamente desde localStorage. */
 const DOCUMENTOS_TI_CONOCIDOS = {
-  "Harold Hurtado": "1087778841",
+  "Harold Moreno": "1087778841",
+  "Wilson Perez": "",
+  "Michel Salazar": "",
 };
 
 function leerDocumentosTi() {
@@ -1243,7 +1443,15 @@ function inicializarSincronizacionFirmas() {
   agente?.addEventListener("change", () => {
     const recordado = leerDocumentosTi()[agente.value] || "";
     const conocido = DOCUMENTOS_TI_CONOCIDOS[agente.value] || "";
-    if (documentoTi) documentoTi.value = recordado || conocido;
+    if (documentoTi) {
+      // La cédula siempre queda editable; para Harold se precarga la conocida
+      // y para los demás se recupera la última registrada en este equipo.
+      documentoTi.readOnly = false;
+      documentoTi.value = recordado || conocido || "";
+      documentoTi.placeholder = agente.value
+        ? "CC editable del Agente TI"
+        : "Número de cédula del Agente TI";
+    }
     reflejarAgente();
     if (documentoTi && documentoTi.value) {
       guardarDocumentoTi(agente.value, documentoTi.value.trim());
@@ -1356,6 +1564,49 @@ async function convertirImagenAJpeg(file) {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+/** Comprime una foto y la devuelve como data URL JPEG para enviarla al servidor. */
+async function convertirImagenADataUrl(file) {
+  const dataUrl = await leerArchivoComoDataURL(file);
+  const imagen = await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("No se pudo leer la imagen"));
+    img.src = dataUrl;
+  });
+
+  const maximo = 1400;
+  const escala = Math.min(1, maximo / Math.max(imagen.width, imagen.height));
+  const ancho = Math.max(1, Math.round(imagen.width * escala));
+  const alto = Math.max(1, Math.round(imagen.height * escala));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = ancho;
+  canvas.height = alto;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("No se pudo procesar la imagen");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, ancho, alto);
+  ctx.drawImage(imagen, 0, 0, ancho, alto);
+
+  return canvas.toDataURL("image/jpeg", 0.86);
+}
+
+/** Serializa las fotos seleccionadas para que el servidor arme el PDF. */
+async function serializarFotos(fotos) {
+  const salida = {};
+
+  for (const [clave, archivo] of Object.entries(fotos || {})) {
+    if (!archivo) continue;
+    try {
+      salida[clave] = await convertirImagenADataUrl(archivo);
+    } catch (err) {
+      console.warn(`No se pudo preparar la foto "${clave}":`, err);
+    }
+  }
+
+  return salida;
+}
+
 function envolverTexto(texto, fuente, tamano, anchoMaximo) {
   const palabras = limpiarTextoPdf(texto).split(/\s+/).filter(Boolean);
   const lineas = [];
@@ -1375,499 +1626,277 @@ function envolverTexto(texto, fuente, tamano, anchoMaximo) {
   return lineas;
 }
 
+/* --- Relleno del formato oficial CORP-TEC-FR-002 (template.pdf) --- */
+
+const PLANTILLA_ACTA = "template.pdf";
+
+const ACCESORIOS_PDF = [
+  ["Cargador", "cargadorsi", "cargadorno"],
+  ["Mouse", "mousesi", "mouseno"],
+  ["Teclado", "tecladosi", "tecladono"],
+  ["Morral", "morralsi", "morralno"],
+  ["Forro", "forrosi", "forrono"],
+  ["Base Refrigerante", "basesi", "baseno"],
+  ["Base Soporte", "soportesi", "soporteno"],
+  ["Multipuerto USB", "usbsi", "usbno"],
+];
+
+const SOFTWARE_PDF = [
+  ["Microsoft Office", "officesi", "officeno"],
+  ["Antivirus", "antivirussi", "antivirusno"],
+  ["Impresora", "impresorasi", "impresorano"],
+  ["Softphone", "softphonesi", "softphoneno"],
+  ["Google Chrome", "googlesi", "googleno"],
+  ["WinRAR", "winrarsi", "winrarno"],
+  ["Adobe Reader", "adobesi", "adobeno"],
+  ["Foxit Reader", "foxitreadersi", "foxitreaderno"],
+  ["SAP GUI", "sapguisi", "sapguino"],
+  ["Adobe Creative Cloud", "adobeCloudsi", "adobeCloudno"],
+  ["7zip", "zipsi", "zipno"],
+  ["VPN", "forticlientsi", "forticlientno"],
+  ["Team Viewer", "teamviewersi", "teamviewerno"],
+  ["Sofsin", "sofsinsi", "sofsinno"],
+];
+
+const CAMPOS_OTRO_ACCESORIOS = ["Texto73", "Texto74", "Texto75", "Texto76"];
+const COLOR_CELDA_PDF = [241 / 255, 242 / 255, 241 / 255];
+
+/** Normaliza un texto para comparar etiquetas del formulario. */
+function compararPdf(texto) {
+  return String(texto ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+/** Indica si una etiqueta está marcada dentro de la lista del formulario. */
+function estaMarcadoPdf(lista, etiqueta) {
+  const objetivo = compararPdf(etiqueta);
+  return (lista || []).some((valor) => {
+    const actual = compararPdf(valor);
+    return actual === objetivo || actual.startsWith(`${objetivo}:`);
+  });
+}
+
+/** Devuelve el texto libre escrito en la opción "Otro". */
+function textoOtroPdf(lista) {
+  const valor = (lista || []).find((item) => compararPdf(item).startsWith("otro"));
+  return valor ? String(valor).replace(/^otro\s*:?\s*/i, "").trim() : "";
+}
+
+/** Escribe un campo de texto y ajusta el tamaño para que quepa en el recuadro. */
+function escribirCampoPdf(form, fuente, nombre, valor, opciones = {}) {
+  const { tamano = 9, minimo = 5.5, ajustar = true } = opciones;
+  try {
+    const campo = form.getTextField(nombre);
+    const texto = limpiarTextoPdf(valor ?? "");
+    campo.setText(texto);
+
+    let tamanoFinal = tamano;
+    if (ajustar && texto) {
+      const anchos = campo.acroField
+        .getWidgets()
+        .map((widget) => widget.getRectangle().width);
+      const anchoDisponible = Math.max(1, Math.min(...anchos) - 4);
+      while (
+        tamanoFinal > minimo &&
+        fuente.widthOfTextAtSize(texto, tamanoFinal) > anchoDisponible
+      ) {
+        tamanoFinal -= 0.25;
+      }
+    }
+    campo.setFontSize(tamanoFinal);
+  } catch (err) {
+    console.warn(`No se pudo escribir el campo "${nombre}" del acta:`, err);
+  }
+}
+
+/** Marca o desmarca una casilla del formulario. */
+function marcarCasillaPdf(form, nombre, activo) {
+  try {
+    const casilla = form.getCheckBox(nombre);
+    if (activo) casilla.check();
+    else casilla.uncheck();
+  } catch (err) {
+    console.warn(`No se pudo marcar la casilla "${nombre}" del acta:`, err);
+  }
+}
+
+/** Oculta el texto guía "cuál" del formato cuando se escribe un valor encima. */
+function taparGuiaPdf(pagina, campo, colorBlanco) {
+  try {
+    const [widget] = campo.acroField.getWidgets();
+    const rect = widget.getRectangle();
+    pagina.drawRectangle({
+      x: rect.x + 20,
+      y: rect.y + 2,
+      width: Math.max(0, rect.width - 22),
+      height: Math.max(0, rect.height - 4),
+      color: colorBlanco,
+    });
+  } catch (err) {
+    console.warn("No se pudo limpiar la guía del campo del acta:", err);
+  }
+}
+
 async function generarActaPDF(datos) {
   const { PDFDocument, StandardFonts, rgb } = window.PDFLib || {};
   if (!PDFDocument) {
     throw new Error("La librería pdf-lib no está disponible. Revisa tu conexión a internet.");
   }
 
-  const pdfDoc = await PDFDocument.create();
-  const pagina = pdfDoc.addPage([595.28, 841.89]);
+  const respuesta = await fetch(PLANTILLA_ACTA, { cache: "no-cache" });
+  if (!respuesta.ok) {
+    throw new Error("No se pudo cargar el formato oficial template.pdf.");
+  }
+
+  const pdfDoc = await PDFDocument.load(await respuesta.arrayBuffer(), {
+    ignoreEncryption: true,
+  });
+  const form = pdfDoc.getForm();
   const fuente = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const negrita = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const pagina1 = pdfDoc.getPage(0);
 
-  const azul = rgb(0.043, 0.239, 0.569);
-  const azulOscuro = rgb(0.027, 0.165, 0.4);
-  const azulClaro = rgb(0.909, 0.933, 0.984);
-  const rojo = rgb(0.89, 0.024, 0.075);
-  const gris = rgb(0.39, 0.45, 0.55);
-  const texto = rgb(0.12, 0.16, 0.23);
-  const borde = rgb(0.85, 0.88, 0.93);
-  const blanco = rgb(1, 1, 1);
+  /* --- Página 1: declaración y características del equipo --- */
+  escribirCampoPdf(form, fuente, "name", datos.nombre, { tamano: 10 });
+  escribirCampoPdf(form, fuente, "ID", datos.documento, { tamano: 10 });
+  escribirCampoPdf(form, fuente, "tipoEquipo", datos.tipo);
+  escribirCampoPdf(form, fuente, "marcaEquipo", datos.marca);
+  escribirCampoPdf(form, fuente, "modeloEquipo", datos.modelo);
+  escribirCampoPdf(form, fuente, "serial", datos.serial);
+  escribirCampoPdf(form, fuente, "placa", datos.placa);
 
-  const ancho = pagina.getWidth();
-  const alto = pagina.getHeight();
-  const margen = 46;
-  const anchoUtil = ancho - margen * 2;
-  const gap = 16;
+  marcarCasillaPdf(form, "cc", true);
+  marcarCasillaPdf(form, "ti", false);
 
-  /* --- Cabecera --- */
-  pagina.drawRectangle({
-    x: 0,
-    y: alto - 96,
-    width: ancho,
-    height: 96,
-    color: azul,
-  });
-  pagina.drawRectangle({
-    x: 0,
-    y: alto - 100,
-    width: ancho,
-    height: 4,
-    color: rojo,
-  });
+  const esDevolucion = compararPdf(datos.tipoActa) === "devolucion";
+  marcarCasillaPdf(form, "asignacion", !esDevolucion);
+  marcarCasillaPdf(form, "devolucion", esDevolucion);
 
-  pagina.drawText("LEVAPAN", {
-    x: margen,
-    y: alto - 52,
-    size: 24,
-    font: negrita,
-    color: blanco,
-  });
-  pagina.drawText("Gestión de Activos de TI", {
-    x: margen,
-    y: alto - 68,
-    size: 8.5,
-    font: fuente,
-    color: rgb(0.85, 0.9, 0.98),
-  });
+  /* --- Accesorios: SI / NO y textos de "Otro" --- */
+  const accesorios = datos.accesorios || [];
+  const tieneBase = accesorios.some((valor) => compararPdf(valor) === "base");
+  for (const [etiqueta, si, no] of ACCESORIOS_PDF) {
+    let activo = estaMarcadoPdf(accesorios, etiqueta);
+    if (etiqueta === "Base Soporte" && tieneBase) activo = true;
+    marcarCasillaPdf(form, si, activo);
+    marcarCasillaPdf(form, no, !activo);
+  }
 
-  const titulo = "ACTA DE TECNOLOGÍA";
-  const anchoTitulo = negrita.widthOfTextAtSize(titulo, 14);
-  pagina.drawText(titulo, {
-    x: ancho - margen - anchoTitulo,
-    y: alto - 48,
-    size: 14,
-    font: negrita,
-    color: blanco,
-  });
-  const fechaTexto = `Fecha: ${fechaCorta(datos.fecha)}`;
-  const anchoFecha = fuente.widthOfTextAtSize(fechaTexto, 9);
-  pagina.drawText(fechaTexto, {
-    x: ancho - margen - anchoFecha,
-    y: alto - 66,
-    size: 9,
-    font: fuente,
-    color: rgb(0.85, 0.9, 0.98),
+  /* --- Software instalado: SI / NO y texto de "Otro" --- */
+  const software = datos.software || [];
+  for (const [etiqueta, si, no] of SOFTWARE_PDF) {
+    const activo = estaMarcadoPdf(software, etiqueta);
+    marcarCasillaPdf(form, si, activo);
+    marcarCasillaPdf(form, no, !activo);
+  }
+
+  const extrasAccesorios = accesorios
+    .filter((valor) => {
+      const texto = compararPdf(valor);
+      if (!texto || texto === "base") return false;
+      if (texto.startsWith("otro")) return true;
+      return !ACCESORIOS_PDF.some(([etiqueta]) => compararPdf(etiqueta) === texto);
+    })
+    .map((valor) => String(valor).replace(/^otro\s*:?\s*/i, "").trim())
+    .filter(Boolean);
+
+  CAMPOS_OTRO_ACCESORIOS.forEach((campo, indice) => {
+    const valor = extrasAccesorios[indice];
+    if (!valor) return;
+    escribirCampoPdf(form, fuente, campo, valor, { tamano: 7, minimo: 5 });
+    taparGuiaPdf(pagina1, form.getTextField(campo), rgb(...COLOR_CELDA_PDF));
   });
 
-  const dibujarSeccion = (tituloSeccion, yActual) => {
-    pagina.drawRectangle({
-      x: margen,
-      y: yActual - 21,
-      width: anchoUtil,
-      height: 21,
-      color: azulClaro,
-    });
-    pagina.drawText(tituloSeccion.toUpperCase(), {
-      x: margen + 10,
-      y: yActual - 15,
-      size: 8.5,
-      font: negrita,
-      color: azulOscuro,
-    });
-    return yActual - 34;
-  };
+  const otroSoftware = textoOtroPdf(software);
+  if (otroSoftware) {
+    escribirCampoPdf(form, fuente, "Texto77", otroSoftware, { tamano: 7, minimo: 5 });
+    taparGuiaPdf(pagina1, form.getTextField("Texto77"), rgb(...COLOR_CELDA_PDF));
+  }
 
-  const dibujarCampo = (etiqueta, valor, x, yActual, anchoCampo) => {
-    pagina.drawText(etiqueta, {
-      x,
-      y: yActual,
-      size: 7.5,
-      font: negrita,
-      color: gris,
-    });
-    pagina.drawText(limpiarTextoPdf(valor || "-"), {
-      x,
-      y: yActual - 14,
-      size: 10.5,
-      font: fuente,
-      color: texto,
-      maxWidth: anchoCampo,
-    });
-    pagina.drawLine({
-      start: { x, y: yActual - 19 },
-      end: { x: x + anchoCampo, y: yActual - 19 },
-      thickness: 0.6,
-      color: borde,
-    });
-  };
+  /* --- Observaciones ajustadas al recuadro --- */
+  const campoObservaciones = form.getTextField("observaciones");
+  const [widgetObservaciones] = campoObservaciones.acroField.getWidgets();
+  const rectObservaciones = widgetObservaciones.getRectangle();
+  const tamanoObservaciones = 8.5;
+  const lineasObservaciones = envolverTexto(
+    datos.observaciones,
+    fuente,
+    tamanoObservaciones,
+    rectObservaciones.width - 8
+  );
+  const maximoLineas = Math.max(
+    1,
+    Math.floor((rectObservaciones.height - 8) / (tamanoObservaciones * 1.2))
+  );
+  if (lineasObservaciones.length > maximoLineas) {
+    lineasObservaciones.length = maximoLineas;
+    lineasObservaciones[maximoLineas - 1] = `${lineasObservaciones[maximoLineas - 1]
+      .replace(/\s+\S*$/, "")
+      .trim()}...`;
+  }
+  escribirCampoPdf(form, fuente, "observaciones", lineasObservaciones.join("\n"), {
+    tamano: tamanoObservaciones,
+    ajustar: false,
+  });
 
-  const dibujarCasilla = (x, ySuperior, marcada, etiqueta, tamano = 8.8) => {
-    pagina.drawRectangle({
-      x,
-      y: ySuperior - 9,
-      width: 9,
-      height: 9,
-      borderWidth: 0.8,
-      borderColor: rgb(0.62, 0.68, 0.78),
-      color: blanco,
-    });
-    if (marcada) {
-      pagina.drawLine({
-        start: { x: x + 1.6, y: ySuperior - 4.6 },
-        end: { x: x + 3.9, y: ySuperior - 7.4 },
-        thickness: 1.2,
-        color: azul,
-      });
-      pagina.drawLine({
-        start: { x: x + 3.9, y: ySuperior - 7.4 },
-        end: { x: x + 7.8, y: ySuperior - 1.9 },
-        thickness: 1.2,
-        color: azul,
-      });
+  /* --- Página 2: constancia y datos de las firmas --- */
+  escribirCampoPdf(form, fuente, "ciudad", "Bogotá D.C.", { tamano: 9 });
+  escribirCampoPdf(form, fuente, "fecha", ` ${fechaCorta(datos.fecha || new Date())}`, {
+    tamano: 9,
+  });
+  escribirCampoPdf(form, fuente, "nameTi", datos.agenteTi, { tamano: 9 });
+  escribirCampoPdf(form, fuente, "IDTI", datos.documentoTi, { tamano: 9 });
+
+  /* --- Fotos y firmas dentro de los recuadros del formato --- */
+  const incrustarBoton = async (nombre, bytes, tipo) => {
+    if (!bytes) return;
+    try {
+      const imagen =
+        tipo === "png" ? await pdfDoc.embedPng(bytes) : await pdfDoc.embedJpg(bytes);
+      form.getButton(nombre).setImage(imagen);
+    } catch (err) {
+      console.warn(`No se pudo incrustar la imagen en "${nombre}":`, err);
     }
-    pagina.drawText(limpiarTextoPdf(etiqueta), {
-      x: x + 13,
-      y: ySuperior - 7.4,
-      size: tamano,
-      font: fuente,
-      color: texto,
-    });
   };
 
-  let y = alto - 128;
-
-  // Tipo de acta
-  pagina.drawRectangle({
-    x: margen,
-    y: y - 6,
-    width: 118,
-    height: 20,
-    color: datos.tipoActa === "Devolución" ? rojo : azul,
-  });
-  const tipoTexto = datos.tipoActa.toUpperCase();
-  const anchoTipo = negrita.widthOfTextAtSize(tipoTexto, 9);
-  pagina.drawText(tipoTexto, {
-    x: margen + (118 - anchoTipo) / 2,
-    y: y + 0.5,
-    size: 9,
-    font: negrita,
-    color: blanco,
-  });
-
-  pagina.drawText(`Generado: ${fechaHora(datos.fecha)}`, {
-    x: margen + 132,
-    y: y + 1,
-    size: 8,
-    font: fuente,
-    color: gris,
-  });
-
-  y = alto - 158;
-
-  /* --- Datos personales --- */
-  y = dibujarSeccion("Datos personales", y);
-  const col2 = (anchoUtil - gap) / 2;
-  const col4 = (anchoUtil - gap * 3) / 4;
-  dibujarCampo("NOMBRE COMPLETO", datos.nombre, margen, y, col4);
-  dibujarCampo("CC / TI", datos.documento, margen + col4 + gap, y, col4);
-  dibujarCampo("AGENTE TI", datos.agenteTi, margen + (col4 + gap) * 2, y, col4);
-  dibujarCampo("CÉDULA TI", datos.documentoTi, margen + (col4 + gap) * 3, y, col4);
-  y -= 44;
-
-  /* --- Características del equipo --- */
-  y = dibujarSeccion("Características del equipo", y);
-  const col3 = (anchoUtil - gap * 2) / 3;
-  dibujarCampo("TIPO", datos.tipo, margen, y, col3);
-  dibujarCampo("MARCA", datos.marca, margen + col3 + gap, y, col3);
-  dibujarCampo("MODELO", datos.modelo, margen + (col3 + gap) * 2, y, col3);
-  y -= 42;
-  dibujarCampo("SERIAL", datos.serial, margen, y, col2);
-  dibujarCampo("PLACA", datos.placa, margen + col2 + gap, y, col2);
-  y -= 38;
-
-  /* --- Accesorios --- */
-  y = dibujarSeccion("Accesorios", y);
-  const accesorios = unirValores(valoresCasillas("accesorios"), datos.accesorios);
-
-  const columnasChecks = 4;
-  const anchoCheck = (anchoUtil - gap * (columnasChecks - 1)) / columnasChecks;
-  accesorios.forEach((etiqueta, indice) => {
-    const columna = indice % columnasChecks;
-    const fila = Math.floor(indice / columnasChecks);
-    const marcada = datos.accesorios.includes(etiqueta);
-    dibujarCasilla(
-      margen + columna * (anchoCheck + gap),
-      y - fila * 16,
-      marcada,
-      etiqueta,
-      8.4
-    );
-  });
-  y -= Math.ceil(accesorios.length / columnasChecks) * 16 + 8;
-
-  /* --- Software --- */
-  y = dibujarSeccion("Software instalado", y);
-  const software = unirValores(valoresCasillas("software"), datos.software);
-
-  software.forEach((etiqueta, indice) => {
-    const columna = indice % columnasChecks;
-    const fila = Math.floor(indice / columnasChecks);
-    const marcada = datos.software.includes(etiqueta);
-    dibujarCasilla(
-      margen + columna * (anchoCheck + gap),
-      y - fila * 16,
-      marcada,
-      etiqueta,
-      8.4
-    );
-  });
-  y -= Math.ceil(software.length / columnasChecks) * 16 + 8;
-
-  /* --- Observaciones --- */
-  y = dibujarSeccion("Observaciones", y);
-  const observaciones = datos.observaciones || "Sin observaciones.";
-  const lineas = envolverTexto(observaciones, fuente, 9.5, anchoUtil).slice(0, 3);
-  lineas.forEach((linea, indice) => {
-    pagina.drawText(linea, {
-      x: margen,
-      y: y - indice * 12,
-      size: 9.5,
-      font: fuente,
-      color: texto,
-    });
-  });
-  y -= lineas.length * 12 + 8;
-
-  /* --- Firmas (dos columnas) --- */
-  y = dibujarSeccion("Firmas", y);
-
-  const altoFirma = 104;
-  const yBaseFirma = y - altoFirma;
-  const bloquesFirma = [
-    {
-      titulo: "COLABORADOR",
-      nombre: datos.nombre,
-      documento: datos.documento,
-      dataUrl: datos.firmas?.colaborador,
-    },
-    {
-      titulo: "AGENTE TI",
-      nombre: datos.agenteTi,
-      documento: datos.documentoTi,
-      dataUrl: datos.firmas?.agente,
-    },
+  const fotos = datos.fotos || {};
+  const fotosPorCampo = [
+    ["signature", fotos.encendido],
+    ["signature2", fotos.frontal],
+    ["signature3", fotos.posterior],
   ];
-
-  for (let i = 0; i < bloquesFirma.length; i += 1) {
-    const bloque = bloquesFirma[i];
-    const x = margen + i * (col2 + gap);
-
-    pagina.drawRectangle({
-      x,
-      y: yBaseFirma,
-      width: col2,
-      height: altoFirma,
-      borderWidth: 0.8,
-      borderColor: borde,
-      color: blanco,
-    });
-
-    pagina.drawText(bloque.titulo, {
-      x: x + 10,
-      y: y - 16,
-      size: 8.5,
-      font: negrita,
-      color: azulOscuro,
-    });
-
-    const areaX = x + 12;
-    const areaY = yBaseFirma + 32;
-    const areaAncho = col2 - 24;
-    const areaAlto = 42;
-
-    if (bloque.dataUrl) {
-      try {
-        const imagenFirma = await pdfDoc.embedPng(dataUrlABytes(bloque.dataUrl));
-        const escala = Math.min(
-          areaAncho / imagenFirma.width,
-          areaAlto / imagenFirma.height
-        );
-        const anchoImagen = imagenFirma.width * escala;
-        const altoImagen = imagenFirma.height * escala;
-
-        pagina.drawImage(imagenFirma, {
-          x: areaX + (areaAncho - anchoImagen) / 2,
-          y: areaY + (areaAlto - altoImagen) / 2,
-          width: anchoImagen,
-          height: altoImagen,
-        });
-      } catch (err) {
-        console.warn("No se pudo incrustar la firma:", bloque.titulo, err);
-        pagina.drawText("(Sin firma)", {
-          x: areaX + 6,
-          y: areaY + 18,
-          size: 8,
-          font: fuente,
-          color: gris,
-        });
-      }
-    } else {
-      pagina.drawText("(Sin firma)", {
-        x: areaX + 6,
-        y: areaY + 18,
-        size: 8,
-        font: fuente,
-        color: gris,
-      });
+  for (const [campo, archivo] of fotosPorCampo) {
+    if (!archivo) continue;
+    try {
+      await incrustarBoton(campo, await convertirImagenAJpeg(archivo), "jpg");
+    } catch (err) {
+      console.warn(`No se pudo procesar la foto para "${campo}":`, err);
     }
-
-    pagina.drawLine({
-      start: { x: x + 10, y: yBaseFirma + 28 },
-      end: { x: x + col2 - 10, y: yBaseFirma + 28 },
-      thickness: 0.6,
-      color: borde,
-    });
-    pagina.drawText(limpiarTextoPdf(bloque.nombre || "Sin nombre"), {
-      x: x + 10,
-      y: yBaseFirma + 17,
-      size: 9,
-      font: negrita,
-      color: texto,
-      maxWidth: col2 - 20,
-    });
-    pagina.drawText(limpiarTextoPdf(`N° DOC ID: ${bloque.documento || "-"}`), {
-      x: x + 10,
-      y: yBaseFirma + 7,
-      size: 7.5,
-      font: fuente,
-      color: gris,
-      maxWidth: col2 - 20,
-    });
   }
 
-  /* --- Pie de página (se numera al final) --- */
-  pagina.drawLine({
-    start: { x: margen, y: 54 },
-    end: { x: ancho - margen, y: 54 },
-    thickness: 0.7,
-    color: borde,
-  });
-  pagina.drawText("Levapan · Acta de Tecnología", {
-    x: margen,
-    y: 40,
-    size: 8,
-    font: fuente,
-    color: gris,
-  });
-  pagina.drawText("Documento generado automáticamente", {
-    x: margen,
-    y: 30,
-    size: 7.5,
-    font: fuente,
-    color: gris,
-  });
-
-  /* --- Registro fotográfico (página adicional) --- */
-  const fotos = [
-    { etiqueta: "Equipo Encendido", file: datos.fotos.encendido },
-    { etiqueta: "Frontal", file: datos.fotos.frontal },
-    { etiqueta: "Posterior", file: datos.fotos.posterior },
-  ].filter((item) => item.file);
-
-  if (fotos.length) {
-    const paginaFotos = pdfDoc.addPage([595.28, 841.89]);
-
-    paginaFotos.drawRectangle({
-      x: 0,
-      y: alto - 70,
-      width: ancho,
-      height: 70,
-      color: azul,
-    });
-    paginaFotos.drawRectangle({
-      x: 0,
-      y: alto - 74,
-      width: ancho,
-      height: 4,
-      color: rojo,
-    });
-    paginaFotos.drawText("REGISTRO FOTOGRÁFICO", {
-      x: margen,
-      y: alto - 42,
-      size: 16,
-      font: negrita,
-      color: blanco,
-    });
-    paginaFotos.drawText(
-      limpiarTextoPdf(
-        `${datos.placa || "SIN PLACA"} · ${datos.nombre || "SIN NOMBRE"}`
-      ),
-      {
-        x: margen,
-        y: alto - 58,
-        size: 9,
-        font: fuente,
-        color: rgb(0.85, 0.9, 0.98),
-      }
-    );
-
-    const anchoFoto = (anchoUtil - gap) / 2;
-    const altoFoto = anchoFoto * 0.72;
-
-    for (let i = 0; i < fotos.length; i += 1) {
-      const columna = i % 2;
-      const fila = Math.floor(i / 2);
-      const x = margen + columna * (anchoFoto + gap);
-      const ySuperior = alto - 108 - fila * (altoFoto + 34);
-
-      paginaFotos.drawText(fotos[i].etiqueta.toUpperCase(), {
-        x,
-        y: ySuperior,
-        size: 9,
-        font: negrita,
-        color: azulOscuro,
-      });
-
-      try {
-        const jpegBytes = await convertirImagenAJpeg(fotos[i].file);
-        const imagen = await pdfDoc.embedJpg(jpegBytes);
-        paginaFotos.drawImage(imagen, {
-          x,
-          y: ySuperior - altoFoto - 6,
-          width: anchoFoto,
-          height: altoFoto,
-        });
-      } catch (err) {
-        console.warn("No se pudo incrustar la foto:", fotos[i].etiqueta, err);
-        paginaFotos.drawText("(No se pudo cargar la imagen)", {
-          x,
-          y: ySuperior - 24,
-          size: 8,
-          font: fuente,
-          color: gris,
-        });
-      }
+  const firmas = datos.firmas || {};
+  const firmasPorCampo = [
+    ["firmaUsuario", firmas.colaborador],
+    ["firmaTecnico", firmas.agente],
+  ];
+  for (const [campo, dataUrl] of firmasPorCampo) {
+    if (!dataUrl) continue;
+    try {
+      await incrustarBoton(campo, dataUrlABytes(dataUrl), "png");
+    } catch (err) {
+      console.warn(`No se pudo procesar la firma para "${campo}":`, err);
     }
-
-    paginaFotos.drawLine({
-      start: { x: margen, y: 54 },
-      end: { x: ancho - margen, y: 54 },
-      thickness: 0.7,
-      color: borde,
-    });
-    paginaFotos.drawText("Levapan · Acta de Tecnología", {
-      x: margen,
-      y: 40,
-      size: 8,
-      font: fuente,
-      color: gris,
-    });
   }
 
-  /* --- Numeración de páginas --- */
-  const paginas = pdfDoc.getPages();
-  paginas.forEach((p, indice) => {
-    const etiqueta = `Página ${indice + 1} de ${paginas.length}`;
-    const anchoEtiqueta = fuente.widthOfTextAtSize(etiqueta, 7.5);
-    p.drawText(etiqueta, {
-      x: ancho - margen - anchoEtiqueta,
-      y: 30,
-      size: 7.5,
-      font: fuente,
-      color: gris,
-    });
+  /* Deja el acta como documento final (sin edición de campos). */
+  form.getFields().forEach((campo) => {
+    try {
+      campo.enableReadOnly();
+    } catch (err) {
+      /* Algunos campos no admiten solo lectura; no es crítico. */
+    }
   });
 
   return await pdfDoc.save();
@@ -1897,34 +1926,43 @@ async function enviarWebhook(bytes, nombreArchivo) {
 
 /* ---------------- Envío del formulario ---------------- */
 
-function estadoEnvio(mensaje, tipo = "") {
+function estadoEnvio(mensaje, tipo = "", enlace = "") {
   const el = document.getElementById("envioStatus");
   if (!el) return;
-  el.textContent = mensaje;
+
   el.className = `estado ${tipo}`.trim();
+  el.textContent = mensaje;
+
+  if (/^https?:\/\//i.test(String(enlace || ""))) {
+    const ancla = document.createElement("a");
+    ancla.href = enlace;
+    ancla.target = "_blank";
+    ancla.rel = "noopener noreferrer";
+    ancla.textContent = "Abrir en SharePoint";
+    el.append(document.createTextNode(" · "), ancla);
+  }
 }
 
-/** Datos serializables para la API (sin archivos ni firmas). */
+/** Datos serializables para la API (las fotos se envían aparte comprimidas). */
 function datosParaServidor(datos) {
-  const { fotos, firmas, fecha, ...resto } = datos;
+  const { fotos, fecha, ...resto } = datos;
   return {
     ...resto,
     fecha: fecha instanceof Date ? fecha.toISOString() : new Date().toISOString(),
   };
 }
 
-/** Envía el PDF y los datos al servidor: escribe el archivo y actualiza SQLite. */
-async function enviarActaAlServidor(bytes, datos, nombreArchivo) {
-  const blob = new Blob([bytes], { type: "application/pdf" });
-  const pdfBase64 = await blobToBase64(blob);
+/** Envía los datos y las imágenes al servidor para que genere el PDF oficial. */
+async function enviarActaAlServidor(datos, nombreArchivo) {
+  const fotos = await serializarFotos(datos.fotos);
 
-  const respuesta = await fetch(`${API_BASE}/api/actas`, {
+  const respuesta = await fetch(`${API_BASE}/api/guardar-acta`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       archivo: nombreArchivo,
-      pdfBase64,
       datos: datosParaServidor(datos),
+      fotos,
     }),
   });
 
@@ -1949,76 +1987,77 @@ async function manejarEnvio(event) {
       boton.disabled = true;
       boton.textContent = "Generando y guardando acta...";
     }
-    estadoEnvio("Generando acta...", "");
-
-    // Solicitar permiso dentro del gesto del usuario (antes del trabajo async pesado).
-    if (carpetaHandle) {
-      await asegurarPermiso(carpetaHandle);
-    }
+    estadoEnvio("Preparando los datos y las imágenes...", "");
 
     const datos = recolectarDatos();
-    const bytes = await generarActaPDF(datos);
     const nombreArchivo = construirNombreArchivo(datos);
 
-    // 1) Servidor SQLite: guarda el PDF y actualiza el inventario.
-    if (servidorActivo) {
-      estadoEnvio("Guardando el acta en el servidor…");
-      try {
-        const resultado = await enviarActaAlServidor(bytes, datos, nombreArchivo);
-        await enviarWebhook(bytes, nombreArchivo);
+    estadoEnvio("El servidor está generando el PDF oficial CORP-TEC-FR-002…");
 
-        if (resultado.equipo) {
-          equipoActual = normalizarEquipo(resultado.equipo);
-          mostrarFichaEquipo(equipoActual);
-        }
+    // El servidor genera el PDF y lo sube a SharePoint (Nube Levapan).
+    // En Windows además deja copia en C:\Actas-Levapan\Actas_Guardadas\;
+    // en la nube (Linux) no hay disco persistente.
+    const resultado = await enviarActaAlServidor(datos, nombreArchivo);
 
-        estadoEnvio(`Acta guardada en: ${resultado.ruta}`, "ok");
-        estadoInventario(
-          `Acta registrada · la placa ${datos.placa} quedó como "${
-            resultado.estadoEquipo || "actualizada"
-          }"`,
-          "ok"
-        );
-        return;
-      } catch (err) {
-        console.error("No se pudo guardar en el servidor:", err);
-        estadoEnvio(
-          "El servidor no pudo guardar el acta. Se usará el guardado local…",
-          "error"
-        );
-      }
+    // Copia adicional: carpeta vinculada o descarga directa (celular).
+    const copia = await guardarPdfEnDestino(resultado, nombreArchivo);
+
+    if (resultado.equipo) {
+      equipoActual = normalizarEquipo(resultado.equipo);
+      mostrarFichaEquipo(equipoActual);
     }
 
-    // 2) Respaldo: carpeta vinculada del navegador.
-    let guardado = false;
+    const sp = resultado.sharepoint || {};
+    const guardadoSP = sp.ok === true;
+    const webUrl = guardadoSP ? sp.webUrl || "" : "";
+    const enNube = resultado.modoNube === true;
 
-    if (carpetaHandle && (await asegurarPermiso(carpetaHandle))) {
-      try {
-        await guardarBytesEnCarpeta(carpetaHandle, bytes, nombreArchivo);
-        guardado = true;
-        mostrarEstadoCarpeta(`Guardado: ${nombreArchivo}`, "ok");
-      } catch (err) {
-        console.warn("No se pudo guardar en la carpeta vinculada:", err);
-      }
+    const destinos = [
+      guardadoSP ? "carpeta compartida de SharePoint (Nube Levapan)" : "",
+      resultado.rutaLocal ? "respaldo local" : "",
+      copia,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    if (guardadoSP && enNube) {
+      // Sin copia local: SharePoint es el almacenamiento principal.
+      estadoEnvio(
+        "Acta guardada en: carpeta compartida de SharePoint (Nube Levapan) · PDF descargado",
+        "ok",
+        webUrl
+      );
+    } else if (guardadoSP) {
+      estadoEnvio(`Acta guardada en: ${destinos}`, "ok", webUrl);
+    } else {
+      const motivo = sp.error || "error desconocido";
+      const detallePermisos =
+        sp.status === 403
+          ? `SharePoint rechazó la escritura (HTTP 403: ${motivo}). ` +
+            "La aplicación de Azure AD necesita el permiso " +
+            "Sites.ReadWrite.All con consentimiento de administrador."
+          : `SharePoint no recibió el acta (HTTP ${
+              sp.status || "sin respuesta"
+            }: ${motivo}).`;
+
+      console.warn("Acta guardada solo localmente:", detallePermisos);
+      estadoEnvio(`Acta guardada en: ${destinos}. ${detallePermisos}`, "ok");
     }
-
-    // 3) Último recurso: descarga tradicional.
-    if (!guardado) {
-      descargarArchivo(bytes, nombreArchivo, "application/pdf");
-    }
-
-    await enviarWebhook(bytes, nombreArchivo);
-
-    estadoEnvio(
-      guardado
-        ? `Acta guardada en la carpeta vinculada: ${nombreArchivo}`
-        : `Acta descargada: ${nombreArchivo}`,
+    estadoInventario(
+      `Acta registrada · la placa ${datos.placa} quedó como "${
+        resultado.estadoEquipo || "actualizada"
+      }"`,
       "ok"
     );
   } catch (err) {
-    console.error("Error al generar el acta:", err);
-    estadoEnvio("No se pudo generar el acta: " + (err.message || err), "error");
-    alert("Ocurrió un error al generar el acta:\n" + (err.message || err));
+    console.error("Error al guardar el acta:", err);
+    estadoEnvio("No se pudo guardar el acta: " + (err.message || err), "error");
+    alert(
+      "No se pudo guardar el acta en el servidor:\n" +
+        (err.message || err) +
+        "\n\nVerifica que el servidor esté encendido y que tenga acceso a " +
+        "la carpeta compartida de SharePoint (Nube Levapan)."
+    );
   } finally {
     if (boton) {
       boton.disabled = false;
@@ -2027,11 +2066,117 @@ async function manejarEnvio(event) {
   }
 }
 
+/* ---------------- Limpieza total del formulario ---------------- */
+
+function limpiarFormularioCompleto() {
+  const formulario = document.getElementById("actaForm");
+  if (formulario) formulario.reset();
+
+  // Selects dependientes: se reconstruyen desde el catálogo base.
+  const selectTipo = document.getElementById("tipo");
+  llenarSelect(selectTipo, valoresTipos(), "Seleccione el Tipo");
+  actualizarMarcas("");
+  actualizarModelos("", "");
+
+  // El estado pudo recibir opciones del inventario; se dejan solo las base.
+  const estadosBase = new Set([
+    "",
+    "Disponible",
+    "Disponible Para Asignar",
+    "Asignado",
+    "Prestamo",
+    "En laboratorio de pruebas",
+    "En laboratorio para dar de baja",
+    "Para devolución a proveedor",
+    "Dado de baja",
+  ]);
+  const selectEstado = document.getElementById("estado");
+  if (selectEstado) {
+    [...selectEstado.options].forEach((opcion) => {
+      if (!estadosBase.has(opcion.value)) opcion.remove();
+    });
+    selectEstado.value = "";
+    selectEstado.disabled = true;
+  }
+
+  // Campos de texto, incluidas las cédulas editables.
+  [
+    "nombre",
+    "documento",
+    "documentoTi",
+    "serial",
+    "placa",
+    "observaciones",
+    "firmaNombreColaborador",
+    "firmaDocumentoColaborador",
+    "firmaNombreAgente",
+    "firmaDocumentoAgente",
+  ].forEach((id) => {
+    const campo = document.getElementById(id);
+    if (campo) campo.value = "";
+  });
+
+  // Checks de accesorios y software.
+  document
+    .querySelectorAll('input[name="accesorios"], input[name="software"]')
+    .forEach((casilla) => {
+      casilla.checked = false;
+      casilla.disabled = false;
+    });
+
+  ["otroAccesorio", "otroSoftware"].forEach((id) => {
+    const campo = document.getElementById(id);
+    if (campo) {
+      campo.value = "";
+      campo.disabled = true;
+    }
+  });
+
+  // Fotos y vistas previas.
+  [
+    ["fotoEncendido", "previewEncendido"],
+    ["fotoFrontal", "previewFrontal"],
+    ["fotoPosterior", "previewPosterior"],
+  ].forEach(([inputId, previewId]) => {
+    const input = document.getElementById(inputId);
+    const preview = document.getElementById(previewId);
+    if (input) input.value = "";
+    if (preview) {
+      preview.removeAttribute("src");
+      preview.style.display = "none";
+    }
+  });
+
+  // Firmas: se borran por completo los dos canvas.
+  window.FirmasActa?.limpiarTodas?.();
+
+  // Búsqueda de placa y ficha del equipo.
+  const placa = document.getElementById("placa");
+  if (placa) {
+    placa.removeAttribute("aria-invalid");
+    placa.removeAttribute("aria-activedescendant");
+    placa.setAttribute("aria-expanded", "false");
+    placa.style.borderColor = "";
+    placa.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  const sugerencias = document.getElementById("placaSugerencias");
+  if (sugerencias) {
+    sugerencias.hidden = true;
+    sugerencias.innerHTML = "";
+  }
+  limpiarFichaEquipo();
+
+  estadoEnvio("Formulario limpio. Listo para una nueva acta.", "ok");
+}
+
 /* ---------------- Eventos e inicialización ---------------- */
 
 function inicializarEventos() {
   const formulario = document.getElementById("actaForm");
   if (formulario) formulario.addEventListener("submit", manejarEnvio);
+
+  const btnLimpiar = document.getElementById("btnLimpiar");
+  if (btnLimpiar) btnLimpiar.addEventListener("click", limpiarFormularioCompleto);
 
   const btnConfig = document.getElementById("btnConfigFolder");
   if (btnConfig) btnConfig.addEventListener("click", configurarCarpetaDestino);
@@ -2114,20 +2259,35 @@ async function inicializarApp() {
   await cargarInfoServidor();
   actualizarEstadoCarpeta(carpetaHandle);
   await cargarInventarioSilencioso();
+  iniciarSincronizacionContador();
 
-  // Reproducir el video de fondo (por si el navegador bloquea el autoplay).
+  // El video de fondo solo se reproduce en pantallas grandes (rendimiento móvil).
   const video = document.getElementById("videoFondo");
   if (video) {
-    video.playbackRate = 0.5;
-    video.defaultPlaybackRate = 0.5;
+    const consultaMovil = window.matchMedia("(max-width: 768px)");
+
+    const ajustarVideo = () => {
+      if (consultaMovil.matches) {
+        video.pause();
+        video.removeAttribute("autoplay");
+        return;
+      }
+
+      video.playbackRate = 0.5;
+      video.defaultPlaybackRate = 0.5;
+      const reproducir = video.play();
+      if (reproducir && typeof reproducir.catch === "function") {
+        reproducir.catch(() => {});
+      }
+    };
+
     video.addEventListener("loadedmetadata", () => {
       video.playbackRate = 0.5;
     });
-
-    const reproducir = video.play();
-    if (reproducir && typeof reproducir.catch === "function") {
-      reproducir.catch(() => {});
+    if (typeof consultaMovil.addEventListener === "function") {
+      consultaMovil.addEventListener("change", ajustarVideo);
     }
+    ajustarVideo();
   }
 
   if (location.protocol === "file:") {
@@ -2156,6 +2316,7 @@ window.ActaLevapan = {
   construirNombreArchivo,
   buscarEquipoPorPlaca,
   buscarEquiposSugeridos,
+  refrescarContadorEquipos,
   autocompletarEquipo,
   inventario: () => inventarioActual,
   servidor: () => ({ activo: servidorActivo, info: infoServidor }),

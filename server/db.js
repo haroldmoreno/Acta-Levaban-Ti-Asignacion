@@ -343,13 +343,53 @@ export function registrarImportacion(archivo, total, insertados, actualizados) {
 /* ------------------------------------------------------------
    Consultas y actas
    ------------------------------------------------------------ */
+/* Compara la placa ignorando espacios, guiones y puntos: así "ML-217050",
+   "ml-217050" y "ML- 217050" son equivalentes. */
+const PLACA_COMPACTA = `REPLACE(REPLACE(REPLACE(UPPER(TRIM(placa)), ' ', ''), '-', ''), '.', '')`;
+
+const buscarPlacaExacta = db.prepare(
+  "SELECT * FROM equipos WHERE placa = ? COLLATE NOCASE"
+);
+
+const buscarPlacaCompacta = db.prepare(
+  `SELECT * FROM equipos
+    WHERE ${PLACA_COMPACTA} = ?
+    LIMIT 1`
+);
+
+/* Búsqueda del desplegable de Placa: coincidencias por prefijo y, como
+   respaldo, por cualquier parte de la placa. LIKE de SQLite es insensible a
+   mayúsculas y cada consulta se acota a 30 filas. */
+const buscarPorPrefijo = db.prepare(
+  `SELECT * FROM equipos
+    WHERE UPPER(TRIM(placa)) LIKE UPPER(TRIM(?)) || '%'
+    ORDER BY placa COLLATE NOCASE ASC
+    LIMIT 30`
+);
+
+const buscarPorContiene = db.prepare(
+  `SELECT * FROM equipos
+    WHERE UPPER(TRIM(placa)) LIKE '%' || UPPER(TRIM(?)) || '%'
+    ORDER BY placa COLLATE NOCASE ASC
+    LIMIT 30`
+);
+
+function compactarPlaca(valor) {
+  return String(valor ?? "")
+    .normalize("NFC")
+    .toUpperCase()
+    .replace(/[\s.-]+/g, "");
+}
+
 export function buscarEquipo(placa) {
   const valor = String(placa ?? "").trim();
   if (!valor) return null;
 
-  const fila = db
-    .prepare("SELECT * FROM equipos WHERE placa = ? COLLATE NOCASE")
-    .get(valor);
+  let fila = buscarPlacaExacta.get(valor);
+  if (!fila) {
+    const compacta = compactarPlaca(valor);
+    if (compacta) fila = buscarPlacaCompacta.get(compacta);
+  }
   if (!fila) return null;
 
   return {
@@ -359,23 +399,19 @@ export function buscarEquipo(placa) {
   };
 }
 
-/* Búsqueda para el desplegable de Placa: primero por prefijo y, si no hay
-   coincidencias, por cualquier parte de la placa. */
-const buscarPorPrefijo = db.prepare(
-  `SELECT * FROM equipos
-    WHERE UPPER(TRIM(placa)) LIKE UPPER(TRIM(?))
-    ORDER BY placa ASC
-    LIMIT 30`
-);
-
+/* Búsqueda para el desplegable de Placa (GET /api/equipos/buscar?q=).
+   Primero coincidencias por prefijo (ML-177…) y, si no hay, por cualquier
+   parte de la placa. LIKE es insensible a mayúsculas en SQLite. */
 export function buscarEquiposPorPrefijo(consulta = "") {
   const texto = String(consulta ?? "").trim();
   if (!texto) return { equipos: [], modo: "prefijo" };
 
-  const porPrefijo = buscarPorPrefijo.all(`${texto}%`);
-  if (porPrefijo.length) return { equipos: porPrefijo, modo: "prefijo" };
+  const porPrefijo = buscarPorPrefijo.all(texto);
+  if (porPrefijo.length) {
+    return { equipos: porPrefijo, modo: "prefijo" };
+  }
 
-  return { equipos: buscarPorPrefijo.all(`%${texto}%`), modo: "contiene" };
+  return { equipos: buscarPorContiene.all(texto), modo: "contiene" };
 }
 
 export function buscarEquipos(consulta = "", limite = 20) {

@@ -6,12 +6,12 @@
    red: el inventario y las actas necesitan el servidor local.
    ============================================================ */
 
-const CACHE = "acta-levapan-v4";
+const CACHE = "acta-levapan-v10";
 
 const APP_SHELL = [
   "/",
   "/index.html",
-  "/manifest.webmanifest",
+  "/manifest.json",
   "/css/style.css",
   "/js/inventario-storage.js",
   "/js/firmas.js",

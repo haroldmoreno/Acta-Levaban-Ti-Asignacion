@@ -352,16 +352,11 @@ async function llenarPDFConDatosPersonales() {
   // Guardar el PDF con compresión
   const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
 
-  // Descargar el PDF modificado con nombre personalizado
-  const serialValue = document.getElementById("serial").value.trim().replace(/\s+/g, "_");
-  const nameValue = document.getElementById("name").value.trim().replace(/\s+/g, "_");
-  const estadoValue = document.getElementById("estado").value.trim().replace(/\s+/g, "_").toLowerCase();
-
-  const blob = new Blob([pdfBytes], { type: "application/pdf" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `${serialValue}_${nameValue}_${estadoValue}.pdf`;
-  link.click();
+  // El PDF oficial se genera y guarda en server.js (POST /api/guardar-acta).
+  // Este archivo heredado no descarga nada en la carpeta Downloads.
+  console.info(
+    "PDF preparado en memoria. El guardado oficial lo realiza el servidor local."
+  );
 
   // Bloquear los campos del formulario HTML después de descargar
   bloquearFormulario();

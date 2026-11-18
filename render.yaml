@@ -1,0 +1,40 @@
+# ============================================================
+# Render Blueprint · Acta de Tecnología Levapan
+# ------------------------------------------------------------
+# Crea el servicio web con URL fija https://<nombre>.onrender.com
+# Las credenciales NO van aquí: se definen en el panel de Render
+# (Environment → Environment Variables) y quedan como secretos.
+# ============================================================
+services:
+  - type: web
+    name: acta-levapan
+    runtime: node
+    plan: free
+    region: virginia
+    branch: main
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: CLOUD_MODE
+        value: "true"
+      - key: HOST
+        value: 0.0.0.0
+      - key: ACTA_CARPETA_BASE
+        value: Actas
+      - key: SHAREPOINT_LIST_ID
+        value: Inventario
+      # Secretos: se completan en el panel de Render (sync: false).
+      - key: TENANT_ID
+        sync: false
+      - key: CLIENT_ID
+        sync: false
+      - key: CLIENT_SECRET
+        sync: false
+      - key: SITE_ID
+        sync: false
+      - key: HTTP_WEBHOOK_URL
+        sync: false
