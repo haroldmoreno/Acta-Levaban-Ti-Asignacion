@@ -22,9 +22,11 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 import axios from "axios";
+import { ConfidentialClientApplication } from "@azure/msal-node";
 
 // Debe importarse antes que graph.js: carga el archivo .env.
 import "./server/config.js";
@@ -49,6 +51,60 @@ const PORT = process.env.PORT || 3000;
 const PUERTO = Number(PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 const HTTP_WEBHOOK_URL = () => String(process.env.HTTP_WEBHOOK_URL || "").trim();
+
+/* ------------------------------------------------------------
+   Single Sign-On con Microsoft Entra ID
+   ------------------------------------------------------------
+   Todo el acceso pasa por una cuenta corporativa de Levapan con
+   MFA. La sesión vive en una cookie firmada (HMAC-SHA256), httpOnly
+   y SameSite=Lax; no se guarda nada en el cliente más que ese token. */
+
+const ENTRA_TENANT = String(process.env.TENANT_ID || "").trim();
+const ENTRA_CLIENT = String(process.env.CLIENT_ID || "").trim();
+const ENTRA_SECRET = String(process.env.CLIENT_SECRET || "").trim();
+const SCOPES_SSO = ["openid", "profile", "email", "User.Read"];
+
+/** Cookie de sesión y cookie temporal del parámetro OAuth "state". */
+const COOKIE_SESION = "acta_levapan_sesion";
+const COOKIE_ESTADO = "acta_levapan_estado";
+const DURACION_SESION = 8 * 60 * 60; // 8 horas (segundos)
+
+/**
+ * Clave para firmar la sesión. Si falta en .env se usa una efímera: la
+ * aplicación sigue funcionando, pero las sesiones se invalidan al
+ * reiniciar el servidor.
+ */
+const SESSION_SECRET =
+  String(process.env.SESSION_SECRET || "").trim() ||
+  crypto.randomBytes(48).toString("hex");
+
+/** Dominios personales que nunca deben entrar (solo cuentas Levapan). */
+const DOMINIOS_PERSONALES = new Set([
+  "hotmail.com",
+  "hotmail.es",
+  "outlook.com",
+  "outlook.es",
+  "live.com",
+  "live.com.mx",
+  "msn.com",
+]);
+
+let clienteEntra = null;
+
+/** Cliente confidencial de MSAL (solo el tenant corporativo de Levapan). */
+function obtenerClienteEntra() {
+  if (!ENTRA_TENANT || !ENTRA_CLIENT || !ENTRA_SECRET) return null;
+  if (!clienteEntra) {
+    clienteEntra = new ConfidentialClientApplication({
+      auth: {
+        clientId: ENTRA_CLIENT,
+        authority: `https://login.microsoftonline.com/${ENTRA_TENANT}`,
+        clientSecret: ENTRA_SECRET,
+      },
+    });
+  }
+  return clienteEntra;
+}
 
 /* En Linux (Render / Azure) no existen C:\Actas-Levapan ni disco persistente. */
 const ES_NUBE =
@@ -316,6 +372,363 @@ function ipv4Locales() {
     ip.startsWith("192.168.") ? 0 : ip.startsWith("10.") ? 1 : ip.startsWith("172.") ? 2 : 3;
 
   return resultados.sort((a, b) => prioridad(a.ip) - prioridad(b.ip));
+}
+
+/* ------------------------------------------------------------
+   Sesión SSO: cookies firmadas y rutas /auth/*
+   ------------------------------------------------------------ */
+
+/** true si la petición llegó por HTTPS (directa o tras un proxy). */
+function esHttps(req) {
+  const reenviado = String(req.headers["x-forwarded-proto"] || "")
+    .split(",")[0]
+    .trim()
+    .toLowerCase();
+  if (reenviado) return reenviado === "https";
+  return Boolean(req.socket?.encrypted);
+}
+
+/** Origen real de la petición, respetando balanceadores y túneles HTTPS. */
+function origenPeticion(req) {
+  const proto = esHttps(req) ? "https" : "http";
+  const host =
+    String(req.headers["x-forwarded-host"] || "").split(",")[0].trim() ||
+    req.headers.host ||
+    `localhost:${PUERTO}`;
+  return `${proto}://${host}`;
+}
+
+/**
+ * URI de redirección de Entra ID. REDIRECT_URI tiene prioridad; si no está
+ * definida se calcula con el host real para funcionar igual en localhost,
+ * detrás de un túnel HTTPS o en Render/Azure.
+ */
+function uriRedireccion(req) {
+  const fija = String(process.env.REDIRECT_URI || "").trim();
+  return fija || `${origenPeticion(req)}/auth/callback`;
+}
+
+/** Lee las cookies de la petición sin dependencias externas. */
+function leerCookies(req) {
+  const salida = {};
+  const cabecera = req.headers.cookie;
+  if (!cabecera) return salida;
+
+  for (const parte of cabecera.split(";")) {
+    const separador = parte.indexOf("=");
+    if (separador <= 0) continue;
+    const nombre = parte.slice(0, separador).trim();
+    const valor = parte.slice(separador + 1).trim();
+    if (!nombre) continue;
+    try {
+      salida[nombre] = decodeURIComponent(valor);
+    } catch {
+      salida[nombre] = valor;
+    }
+  }
+  return salida;
+}
+
+/** Arma una cabecera Set-Cookie con las protecciones de la sesión. */
+function crearCookie(nombre, valor, { maxAge, req, ruta = "/" } = {}) {
+  const partes = [
+    `${nombre}=${encodeURIComponent(valor)}`,
+    `Path=${ruta}`,
+    "HttpOnly",
+    "SameSite=Lax",
+  ];
+  if (typeof maxAge === "number") {
+    partes.push(`Max-Age=${Math.trunc(maxAge)}`);
+    if (maxAge <= 0) partes.push("Expires=Thu, 01 Jan 1970 00:00:00 GMT");
+  }
+  if (esHttps(req)) partes.push("Secure");
+  return partes.join("; ");
+}
+
+/** Firma HMAC-SHA256 de la carga útil codificada. */
+function firmarSesion(carga) {
+  return crypto.createHmac("sha256", SESSION_SECRET).update(carga).digest("base64url");
+}
+
+/** Serializa { name, email, oid } en un token firmado. */
+function crearTokenSesion(datos) {
+  const carga = Buffer.from(JSON.stringify(datos), "utf8").toString("base64url");
+  return `${carga}.${firmarSesion(carga)}`;
+}
+
+/** Devuelve la sesión si la firma es válida y no ha expirado. */
+function leerSesion(req) {
+  const token = leerCookies(req)[COOKIE_SESION];
+  if (!token) return null;
+
+  const punto = token.lastIndexOf(".");
+  if (punto <= 0) return null;
+
+  const carga = token.slice(0, punto);
+  const firma = token.slice(punto + 1);
+  const esperada = firmarSesion(carga);
+  const recibida = Buffer.from(firma);
+  const calculada = Buffer.from(esperada);
+
+  if (
+    recibida.length !== calculada.length ||
+    !crypto.timingSafeEqual(recibida, calculada)
+  ) {
+    return null;
+  }
+
+  try {
+    const datos = JSON.parse(Buffer.from(carga, "base64url").toString("utf8"));
+    if (!datos?.email || !Number.isFinite(datos.exp) || datos.exp < Date.now()) {
+      return null;
+    }
+    return datos;
+  } catch {
+    return null;
+  }
+}
+
+/** Página HTML mínima para avisos de autenticación. */
+function responderHtml(res, estado, titulo, mensaje) {
+  const cuerpo = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${titulo} · Acta de Tecnología Levapan</title>
+<style>
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f7eef0;font-family:"Segoe UI",system-ui,sans-serif;color:#3f2930;padding:24px}
+  main{max-width:520px;background:#fff;border:1px solid #e7cdd3;border-radius:18px;padding:28px 30px;box-shadow:0 18px 40px rgba(90,12,25,.14);text-align:center}
+  h1{margin:0 0 10px;font-size:1.25rem;color:#8f1226}
+  p{margin:0 0 18px;line-height:1.55;font-size:.95rem}
+  a{display:inline-block;padding:9px 18px;border-radius:999px;background:#b3122b;color:#fff;text-decoration:none;font-weight:700;font-size:.9rem}
+</style>
+</head>
+<body>
+<main>
+  <h1>${titulo}</h1>
+  <p>${mensaje}</p>
+  <a href="/auth/login">Iniciar sesión de nuevo</a>
+</main>
+</body>
+</html>`;
+  res.writeHead(estado, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Length": Buffer.byteLength(cuerpo),
+    "Cache-Control": "no-store",
+  });
+  res.end(cuerpo);
+}
+
+/** Compara dos textos en tiempo constante (evita filtrar el "state"). */
+function igualesSeguro(a, b) {
+  const ba = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+}
+
+async function manejarAuth(req, res, url) {
+  const ruta = url.pathname;
+  const cliente = obtenerClienteEntra();
+
+  if (!cliente) {
+    return responderHtml(
+      res,
+      503,
+      "SSO no configurado",
+      "Faltan TENANT_ID, CLIENT_ID o CLIENT_SECRET en el servidor. " +
+        "Revisa las variables de entorno de Microsoft Entra ID."
+    );
+  }
+
+  if (ruta === "/auth/login" && req.method === "GET") {
+    const estado = crypto.randomBytes(24).toString("base64url");
+    const destino = await cliente.getAuthCodeUrl({
+      scopes: SCOPES_SSO,
+      redirectUri: uriRedireccion(req),
+      prompt: "select_account",
+      state: estado,
+    });
+
+    res.writeHead(302, {
+      Location: destino,
+      "Set-Cookie": crearCookie(COOKIE_ESTADO, estado, { maxAge: 600, req }),
+      "Cache-Control": "no-store",
+    });
+    return res.end();
+  }
+
+  if (ruta === "/auth/callback" && req.method === "GET") {
+    const cookies = leerCookies(req);
+    const borrarEstado = crearCookie(COOKIE_ESTADO, "", { maxAge: 0, req });
+
+    const errorEntra = url.searchParams.get("error");
+    if (errorEntra) {
+      const detalle =
+        url.searchParams.get("error_description") || errorEntra;
+      res.setHeader("Set-Cookie", borrarEstado);
+      return responderHtml(
+        res,
+        401,
+        "No se pudo iniciar sesión",
+        `Microsoft rechazó el acceso: ${detalle}`
+      );
+    }
+
+    const estadoRecibido = url.searchParams.get("state") || "";
+    const estadoEsperado = cookies[COOKIE_ESTADO] || "";
+    if (!estadoRecibido || !estadoEsperado || !igualesSeguro(estadoRecibido, estadoEsperado)) {
+      res.setHeader("Set-Cookie", borrarEstado);
+      return responderHtml(
+        res,
+        400,
+        "Solicitud expirada",
+        "La solicitud de inicio de sesión ya no es válida. Vuelve a intentarlo."
+      );
+    }
+
+    const codigo = url.searchParams.get("code");
+    if (!codigo) {
+      res.setHeader("Set-Cookie", borrarEstado);
+      return responderHtml(
+        res,
+        400,
+        "Falta el código de autorización",
+        "Microsoft no devolvió el código necesario para completar el acceso."
+      );
+    }
+
+    let resultado;
+    try {
+      resultado = await cliente.acquireTokenByCode({
+        code: codigo,
+        scopes: SCOPES_SSO,
+        redirectUri: uriRedireccion(req),
+      });
+    } catch (err) {
+      console.error("[SSO] No se pudo canjear el código:", err.message);
+      res.setHeader("Set-Cookie", borrarEstado);
+      return responderHtml(
+        res,
+        401,
+        "No se pudo completar el inicio de sesión",
+        "Microsoft Entra ID rechazó la autenticación. " +
+          "Verifica que la cuenta pertenezca a Levapan y vuelve a intentarlo."
+      );
+    }
+
+    const claims = resultado?.idTokenClaims || {};
+    const tenant = String(claims.tid || resultado?.tenantId || "");
+
+    // Solo el tenant corporativo de Levapan: rechaza cuentas personales.
+    if (!tenant || tenant.toLowerCase() !== ENTRA_TENANT.toLowerCase()) {
+      console.warn(`[SSO] Acceso rechazado para el tenant "${tenant || "desconocido"}".`);
+      res.setHeader("Set-Cookie", borrarEstado);
+      return responderHtml(
+        res,
+        403,
+        "Cuenta no autorizada",
+        "Este aplicativo solo admite cuentas corporativas de Levapan. " +
+          "Las cuentas personales de Hotmail, Outlook o Live no tienen acceso."
+      );
+    }
+
+    const email = String(
+      claims.email || claims.preferred_username || claims.upn || ""
+    ).trim();
+    const dominio = email.includes("@")
+      ? email.split("@").pop().toLowerCase()
+      : "";
+
+    if (!email || DOMINIOS_PERSONALES.has(dominio)) {
+      res.setHeader("Set-Cookie", borrarEstado);
+      return responderHtml(
+        res,
+        403,
+        "Cuenta no autorizada",
+        "No se pudo validar un correo corporativo de Levapan en la sesión."
+      );
+    }
+
+    const sesion = {
+      name: String(claims.name || claims.preferred_username || email).trim(),
+      email,
+      oid: String(claims.oid || claims.sub || "").trim(),
+      tid: tenant,
+      exp: Date.now() + DURACION_SESION * 1000,
+    };
+
+    res.writeHead(302, {
+      Location: "/",
+      "Set-Cookie": [
+        crearCookie(COOKIE_SESION, crearTokenSesion(sesion), {
+          maxAge: DURACION_SESION,
+          req,
+        }),
+        borrarEstado,
+      ],
+      "Cache-Control": "no-store",
+    });
+    return res.end();
+  }
+
+  if (ruta === "/auth/logout" && req.method === "GET") {
+    const cierre = new URL(
+      `https://login.microsoftonline.com/${ENTRA_TENANT}/oauth2/v2.0/logout`
+    );
+    cierre.searchParams.set(
+      "post_logout_redirect_uri",
+      `${origenPeticion(req)}/`
+    );
+
+    res.writeHead(302, {
+      Location: cierre.toString(),
+      "Set-Cookie": [
+        crearCookie(COOKIE_SESION, "", { maxAge: 0, req }),
+        crearCookie(COOKIE_ESTADO, "", { maxAge: 0, req }),
+      ],
+      "Cache-Control": "no-store",
+    });
+    return res.end();
+  }
+
+  return responderHtml(
+    res,
+    404,
+    "Ruta no encontrada",
+    "La ruta de autenticación solicitada no existe."
+  );
+}
+
+/** Rutas que exigen sesión: la app, su JavaScript, los datos y toda la API. */
+function requiereSesion(ruta) {
+  return (
+    ruta === "/" ||
+    ruta === "/index.html" ||
+    ruta.startsWith("/js/") ||
+    ruta.startsWith("/data/") ||
+    ruta.startsWith("/api/")
+  );
+}
+
+/**
+ * Sin sesión: 302 al SSO si es navegación HTML; 401 si es fetch/API.
+ * Se evita redirigir /api/* aunque el Accept sea HTML para no romper fetch.
+ */
+function responderSinSesion(req, res, ruta) {
+  const aceptaHtml = String(req.headers.accept || "").includes("text/html");
+  if (aceptaHtml && !ruta.startsWith("/api/")) {
+    res.writeHead(302, {
+      Location: "/auth/login",
+      "Cache-Control": "no-store",
+    });
+    return res.end();
+  }
+  return enviarJson(res, 401, {
+    ok: false,
+    autenticado: false,
+    error: "Debes iniciar sesión con tu cuenta corporativa de Levapan.",
+  });
 }
 
 /* ------------------------------------------------------------
@@ -746,6 +1159,22 @@ async function manejarGuardarActa(req, res) {
 async function manejarApi(req, res, url) {
   const ruta = url.pathname;
 
+  if (ruta === "/api/me" && req.method === "GET") {
+    const sesion = leerSesion(req);
+    if (!sesion) {
+      return enviarJson(res, 401, {
+        ok: false,
+        autenticado: false,
+        error: "No hay una sesión activa.",
+      });
+    }
+    return enviarJson(res, 200, {
+      ok: true,
+      name: sesion.name,
+      email: sesion.email,
+    });
+  }
+
   if (ruta === "/api/estado" && req.method === "GET") {
     return await manejarEstado(res);
   }
@@ -844,6 +1273,28 @@ const servidor = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
 
   try {
+    // Salud mínima, sin datos sensibles: sirve para monitoreo/health checks.
+    if (url.pathname === "/api/health") {
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        return enviarJson(res, 405, { ok: false, error: "Método no permitido." });
+      }
+      return enviarJson(res, 200, {
+        ok: true,
+        servicio: "acta-levapan",
+        fecha: new Date().toISOString(),
+      });
+    }
+
+    // Rutas del SSO: nunca se protegen a sí mismas.
+    if (url.pathname.startsWith("/auth/")) {
+      return await manejarAuth(req, res, url);
+    }
+
+    // Todo el aplicativo y la API exigen una sesión corporativa válida.
+    if (requiereSesion(url.pathname) && !leerSesion(req)) {
+      return responderSinSesion(req, res, url.pathname);
+    }
+
     if (url.pathname.startsWith("/api/")) {
       return await manejarApi(req, res, url);
     }
@@ -899,7 +1350,10 @@ servidor.listen(PORT, HOST, () => {
   console.log(
     `  Power Automate        : ${webhook ? "configurado" : "NO CONFIGURADO"}`
   );
-  console.log("  Acceso                : público (sin contraseña)");
+  console.log("  Acceso                : SSO Microsoft Entra ID (MFA obligatorio)");
+  console.log(
+    `  Tenant Levapan        : ${ENTRA_TENANT || "NO CONFIGURADO"}`
+  );
   console.log(linea);
   console.log("  Abre la aplicación en:");
   console.log(`    http://localhost:${PUERTO}`);
@@ -916,6 +1370,16 @@ servidor.listen(PORT, HOST, () => {
       `  [!] Microsoft Graph sin configurar. Faltan: ${config.faltantes.join(", ")}`
     );
     console.log("      Revisa .env.example y define las credenciales.");
+  }
+  if (!ENTRA_TENANT || !ENTRA_CLIENT || !ENTRA_SECRET) {
+    console.log(linea);
+    console.log("  [!] SSO de Entra ID sin configurar (TENANT_ID/CLIENT_ID/CLIENT_SECRET).");
+    console.log("      Nadie podrá iniciar sesión hasta completar las credenciales.");
+  }
+  if (!String(process.env.SESSION_SECRET || "").trim()) {
+    console.log(linea);
+    console.log("  [!] SESSION_SECRET no está definido: se usa una clave efímera.");
+    console.log("      Las sesiones se cerrarán cada vez que reinicies el servidor.");
   }
   if (!webhook) {
     console.log(linea);

@@ -25,6 +25,8 @@ local ya no usa base de datos ni escribe archivos en disco.
 | `TENANT_ID` | Directorio (tenant) de Entra ID |
 | `CLIENT_ID` | ID de la App registration |
 | `CLIENT_SECRET` | Secreto de la App registration |
+| `SESSION_SECRET` | Clave aleatoria para firmar la cookie de sesión (8 h) |
+| `REDIRECT_URI` | URI de callback registrada en Entra ID (opcional; si falta se deduce del host) |
 | `SITE_ID` | ID del sitio de SharePoint |
 | `SHAREPOINT_LIST_ID` | Nombre o ID de la lista de inventario (`Inventario` por defecto) |
 | `HTTP_WEBHOOK_URL` | URL del desencadenador HTTP de Power Automate |
@@ -35,6 +37,35 @@ Formatos válidos de `SITE_ID`:
 levapan.sharepoint.com,<siteCollectionId>,<webId>
 levapan.sharepoint.com:/sites/NombreDelSitio
 ```
+
+### Inicio de sesión (SSO con Entra ID)
+
+Toda la aplicación (HTML, `/js/*` y `/api/*`) exige una cuenta corporativa de
+Levapan con MFA. La sesión se guarda en una cookie firmada `HttpOnly`,
+`SameSite=Lax`, válida 8 horas. `/api/health` queda abierto para monitoreo.
+
+En **Entra ID → App registrations → tu aplicación → Authentication** agrega
+estas URI de redirección de tipo **Web** (no "Single-page application"):
+
+```
+http://localhost:3000/auth/callback
+http://localhost:3000/
+https://acta-levapan-ti.onrender.com/auth/callback
+https://acta-levapan-ti.onrender.com/
+```
+
+Las dos terminadas en `/` permiten que el cierre de sesión regrese a la app.
+El permiso delegado `User.Read` debe tener consentimiento del administrador.
+
+Genera `SESSION_SECRET` una sola vez y cópiala a Render/Azure:
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+`REDIRECT_URI` puede quedar vacía: el servidor usa
+`X-Forwarded-Proto`/`Host` para construir `https://<host>/auth/callback`, lo que
+funciona igual en localhost, en un túnel HTTPS y detrás de Render o Azure.
 
 ### Lista de inventario
 
@@ -145,11 +176,16 @@ hay coincidencia, compara las placas ignorando espacios, guiones y puntos.
 
 | Método | Ruta | Descripción |
 | --- | --- | --- |
+| `GET` | `/api/health` | Salud mínima del servicio (sin datos, público) |
+| `GET` | `/api/me` | Usuario autenticado (`{ name, email }`) |
 | `GET` | `/api/estado` | Estado del servicio, total de equipos y configuración |
 | `GET` | `/api/equipos/buscar?q=` | Coincidencias por prefijo de placa |
 | `GET` | `/api/equipos?placa=` | Equipo exacto por placa |
 | `POST` | `/api/actas/guardar` | Genera el PDF y lo publica en Power Automate |
 | `GET` | `/api/historial` | `501`: el historial ahora vive en SharePoint |
+
+Todas las rutas de la API (excepto `/api/health`) responden `401` sin sesión
+válida. El navegador envía la cookie `HttpOnly` firmada automáticamente.
 
 ## Publicar en internet
 
@@ -158,9 +194,11 @@ Para usar la app desde fuera de la oficina sin abrir puertos en el router:
 1. Doble clic en `publicar.bat`.
 2. Copia el enlace `https://....trycloudflare.com` que muestra la consola.
 
-El formulario es público: abre directamente sin usuario, contraseña ni PIN. El equipo
-debe quedar encendido y con internet, y la URL gratuita cambia cada vez que se
-reinicia el túnel.
+El acceso exige iniciar sesión con una cuenta corporativa de Levapan (Entra ID
+con MFA); sin sesión, el formulario redirige a Microsoft y la API responde `401`.
+El equipo debe quedar encendido y con internet, y la URL gratuita cambia cada vez
+que se reinicia el túnel (registra la nueva URI de callback en Entra ID o usa la
+URL fija de Render).
 
 ## Estructura
 

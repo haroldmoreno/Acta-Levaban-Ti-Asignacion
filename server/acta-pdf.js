@@ -341,6 +341,8 @@ export async function generarActaPdf({
     .filter((valor) => {
       const texto = comparar(valor);
       if (!texto || texto === "base") return false;
+      // "Adaptador" se refleja en la casilla CARGADOR, no como texto libre.
+      if (texto === "adaptador") return false;
       if (texto.startsWith("otro")) return true;
       return !ACCESORIOS_PDF.some(([etiqueta]) => comparar(etiqueta) === texto);
     })
@@ -433,6 +435,10 @@ export async function generarActaPdf({
   for (const [etiqueta, si, no] of ACCESORIOS_PDF) {
     let activo = estaMarcado(accesorios, etiqueta);
     if (etiqueta === "Base Soporte" && tieneBase) activo = true;
+    // "Adaptador" del formulario también marca CARGADOR en el PDF.
+    if (etiqueta === "Cargador") {
+      activo = activo || estaMarcado(accesorios, "Adaptador");
+    }
     marcar(si, activo);
     marcar(no, !activo);
   }

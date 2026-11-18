@@ -894,6 +894,51 @@ function dividirLista(texto) {
     .filter(Boolean);
 }
 
+/* Predeterminados de un acta nueva: 1 accesorio y 10 programas. Se aplican
+   al cargar la página y al limpiar el formulario; el técnico puede desmarcar
+   cualquiera y el PDF respetará su selección final. */
+const ACCESORIOS_PREDETERMINADOS = ["Cargador"];
+
+const SOFTWARE_PREDETERMINADO = [
+  "Microsoft Office",
+  "Antivirus",
+  "Impresora",
+  "Google Chrome",
+  "WinRAR",
+  "Adobe Reader",
+  "SAP GUI",
+  "Adobe Creative Cloud",
+  "7zip",
+  "Team Viewer",
+];
+
+/** Deja marcados solo los predeterminados y limpia las opciones "Otro". */
+function aplicarPredeterminados() {
+  const marcar = (nombre, valores) => {
+    const objetivo = new Set(valores.map(normalizarTexto));
+    document.querySelectorAll(`input[name="${nombre}"]`).forEach((casilla) => {
+      casilla.checked = objetivo.has(normalizarTexto(casilla.value));
+      casilla.disabled = false;
+    });
+  };
+
+  marcar("accesorios", ACCESORIOS_PREDETERMINADOS);
+  marcar("software", SOFTWARE_PREDETERMINADO);
+
+  [
+    ["otroAccesorioChk", "otroAccesorio"],
+    ["otroSoftwareChk", "otroSoftware"],
+  ].forEach(([chkId, inputId]) => {
+    const chk = document.getElementById(chkId);
+    const input = document.getElementById(inputId);
+    if (chk) chk.checked = false;
+    if (input) {
+      input.value = "";
+      input.disabled = true;
+    }
+  });
+}
+
 /** Marca los accesorios que ya venían registrados para el equipo. */
 function sincronizarAccesoriosDesdeInventario(texto) {
   const valores = dividirLista(texto);
@@ -905,8 +950,12 @@ function sincronizarAccesoriosDesdeInventario(texto) {
   const desconocidos = [];
   const usados = new Set();
 
+  const predeterminados = new Set(
+    ACCESORIOS_PREDETERMINADOS.map(normalizarTexto)
+  );
   conocidos.forEach((input) => {
-    input.checked = false;
+    // Parte de los predeterminados (Cargador) y suma los del inventario.
+    input.checked = predeterminados.has(normalizarTexto(input.value));
     input.disabled = false;
   });
 
@@ -1097,8 +1146,18 @@ async function buscarEquiposSugeridos(consulta, signal) {
 }
 
 function describirEquipo(equipo) {
+  const tipo = String(equipo?.tipo ?? "").trim();
+  const marca = String(equipo?.marca ?? "").trim();
+  const modelo = String(equipo?.modelo ?? "").trim();
+
+  // "HP" + "HP ProBook 4 G1i" → "HP ProBook 4 G1i" (sin repetir la marca).
+  const marcaEnModelo =
+    marca &&
+    modelo &&
+    normalizarTexto(modelo).startsWith(normalizarTexto(marca));
+
   return (
-    [equipo.tipo, equipo.marca, equipo.modelo].filter(Boolean).join(" ") ||
+    [tipo, marcaEnModelo ? "" : marca, modelo].filter(Boolean).join(" ") ||
     "Equipo sin descripción"
   );
 }
@@ -1412,6 +1471,75 @@ function guardarDocumentoTi(agente, documento) {
     localStorage.setItem(LS_DOCUMENTOS_TI, JSON.stringify(datos));
   } catch (err) {
     console.warn("No se pudo recordar la cédula TI:", err);
+  }
+}
+
+/* ---------------- Sesión SSO (Microsoft Entra ID) ---------------- */
+
+const AGENTES_TI = ["Harold Moreno", "Wilson Perez", "Michel Salazar"];
+
+/** "Harold Adrián" → "haroldadrian" (sin tildes ni signos). */
+function normalizarAgente(texto) {
+  return String(texto ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/** Agente TI cuyo nombre o correo coincida con la cuenta autenticada. */
+function agenteSesion(usuario) {
+  const nombre = normalizarAgente(usuario?.name);
+  const correo = normalizarAgente(String(usuario?.email ?? "").split("@")[0]);
+
+  return (
+    AGENTES_TI.find((agente) => {
+      const clave = normalizarAgente(agente);
+      if (!clave) return false;
+      return nombre.includes(clave) || correo.includes(clave);
+    }) || ""
+  );
+}
+
+/** Si la cuenta es de un Agente TI, deja su nombre elegido en el selector. */
+function preseleccionarAgenteSesion(usuario) {
+  const select = document.getElementById("nombreTi");
+  if (!select) return;
+
+  const agente = agenteSesion(usuario);
+  if (!agente) return;
+
+  const opcion = [...select.options].find(
+    (item) => normalizarAgente(item.value) === normalizarAgente(agente)
+  );
+  if (!opcion) return;
+
+  select.value = opcion.value;
+  // Dispara la carga de la cédula y la firma del Agente TI.
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+/** Muestra "Conectado como: …" y preselecciona al Agente TI de la sesión. */
+async function cargarSesionUsuario() {
+  const etiqueta = document.getElementById("sesionNombre");
+
+  try {
+    const respuesta = await fetch("/api/me", {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
+
+    const usuario = await respuesta.json();
+    if (etiqueta) {
+      etiqueta.textContent = `Conectado como: ${usuario.name || usuario.email}`;
+      etiqueta.title = usuario.email || "";
+    }
+    preseleccionarAgenteSesion(usuario);
+  } catch (err) {
+    if (etiqueta) etiqueta.textContent = "Sesión no disponible";
+    console.warn("No se pudo leer la sesión del usuario:", err);
   }
 }
 
@@ -1780,6 +1908,10 @@ async function generarActaPDF(datos) {
   for (const [etiqueta, si, no] of ACCESORIOS_PDF) {
     let activo = estaMarcadoPdf(accesorios, etiqueta);
     if (etiqueta === "Base Soporte" && tieneBase) activo = true;
+    // "Adaptador" del formulario también marca CARGADOR en el PDF.
+    if (etiqueta === "Cargador") {
+      activo = activo || estaMarcadoPdf(accesorios, "Adaptador");
+    }
     marcarCasillaPdf(form, si, activo);
     marcarCasillaPdf(form, no, !activo);
   }
@@ -1796,6 +1928,8 @@ async function generarActaPDF(datos) {
     .filter((valor) => {
       const texto = compararPdf(valor);
       if (!texto || texto === "base") return false;
+      // "Adaptador" se refleja en la casilla CARGADOR, no como texto libre.
+      if (texto === "adaptador") return false;
       if (texto.startsWith("otro")) return true;
       return !ACCESORIOS_PDF.some(([etiqueta]) => compararPdf(etiqueta) === texto);
     })
@@ -2116,13 +2250,8 @@ function limpiarFormularioCompleto() {
     if (campo) campo.value = "";
   });
 
-  // Checks de accesorios y software.
-  document
-    .querySelectorAll('input[name="accesorios"], input[name="software"]')
-    .forEach((casilla) => {
-      casilla.checked = false;
-      casilla.disabled = false;
-    });
+  // Checks de accesorios y software: vuelven a los predeterminados.
+  aplicarPredeterminados();
 
   ["otroAccesorio", "otroSoftware"].forEach((id) => {
     const campo = document.getElementById(id);
@@ -2172,6 +2301,9 @@ function limpiarFormularioCompleto() {
 /* ---------------- Eventos e inicialización ---------------- */
 
 function inicializarEventos() {
+  // Acta nueva: Cargador + los 10 programas base marcados.
+  aplicarPredeterminados();
+
   const formulario = document.getElementById("actaForm");
   if (formulario) formulario.addEventListener("submit", manejarEnvio);
 
@@ -2249,6 +2381,7 @@ function inicializarEventos() {
 
 async function inicializarApp() {
   inicializarEventos();
+  await cargarSesionUsuario();
 
   try {
     carpetaHandle = await leerHandle();

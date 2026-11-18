@@ -82,6 +82,10 @@
         </p>
 
         <div class="acciones-superiores">
+          <div id="sesionUsuario" class="sesion-usuario">
+            <span id="sesionNombre" class="sesion-nombre">Conectado como: …</span>
+            <a class="sesion-salir" href="/auth/logout">Cerrar sesión</a>
+          </div>
           <button type="button" id="btnInstalarApp" class="btn btn-secundario" hidden>
             Instalar App
           </button>
@@ -259,7 +263,7 @@
         <section class="seccion">
           <h2 class="seccion-titulo">Accesorios</h2>
           <div class="grid-checks">
-            <label class="check"><input type="checkbox" name="accesorios" value="Cargador" /><span>Cargador</span></label>
+            <label class="check"><input type="checkbox" name="accesorios" value="Cargador" checked /><span>Cargador</span></label>
             <label class="check"><input type="checkbox" name="accesorios" value="Forro" /><span>Forro</span></label>
             <label class="check"><input type="checkbox" name="accesorios" value="Mouse" /><span>Mouse</span></label>
             <label class="check"><input type="checkbox" name="accesorios" value="Base Refrigerante" /><span>Base Refrigerante</span></label>
@@ -287,20 +291,20 @@
         <section class="seccion">
           <h2 class="seccion-titulo">Software Instalado</h2>
           <div class="grid-checks">
-            <label class="check"><input type="checkbox" name="software" value="Microsoft Office" /><span>Microsoft Office</span></label>
-            <label class="check"><input type="checkbox" name="software" value="WinRAR" /><span>WinRAR</span></label>
-            <label class="check"><input type="checkbox" name="software" value="7zip" /><span>7zip</span></label>
-            <label class="check"><input type="checkbox" name="software" value="Antivirus" /><span>Antivirus</span></label>
-            <label class="check"><input type="checkbox" name="software" value="Adobe Reader" /><span>Adobe Reader</span></label>
+            <label class="check"><input type="checkbox" name="software" value="Microsoft Office" checked /><span>Microsoft Office</span></label>
+            <label class="check"><input type="checkbox" name="software" value="WinRAR" checked /><span>WinRAR</span></label>
+            <label class="check"><input type="checkbox" name="software" value="7zip" checked /><span>7zip</span></label>
+            <label class="check"><input type="checkbox" name="software" value="Antivirus" checked /><span>Antivirus</span></label>
+            <label class="check"><input type="checkbox" name="software" value="Adobe Reader" checked /><span>Adobe Reader</span></label>
             <label class="check"><input type="checkbox" name="software" value="VPN" /><span>VPN</span></label>
-            <label class="check"><input type="checkbox" name="software" value="Impresora" /><span>Impresora</span></label>
+            <label class="check"><input type="checkbox" name="software" value="Impresora" checked /><span>Impresora</span></label>
             <label class="check"><input type="checkbox" name="software" value="Foxit Reader" /><span>Foxit Reader</span></label>
-            <label class="check"><input type="checkbox" name="software" value="Team Viewer" /><span>Team Viewer</span></label>
+            <label class="check"><input type="checkbox" name="software" value="Team Viewer" checked /><span>Team Viewer</span></label>
             <label class="check"><input type="checkbox" name="software" value="Softphone" /><span>Softphone</span></label>
-            <label class="check"><input type="checkbox" name="software" value="SAP GUI" /><span>SAP GUI</span></label>
+            <label class="check"><input type="checkbox" name="software" value="SAP GUI" checked /><span>SAP GUI</span></label>
             <label class="check"><input type="checkbox" name="software" value="Sofsin" /><span>Sofsin</span></label>
-            <label class="check"><input type="checkbox" name="software" value="Google Chrome" /><span>Google Chrome</span></label>
-            <label class="check"><input type="checkbox" name="software" value="Adobe Creative Cloud" /><span>Adobe Creative Cloud</span></label>
+            <label class="check"><input type="checkbox" name="software" value="Google Chrome" checked /><span>Google Chrome</span></label>
+            <label class="check"><input type="checkbox" name="software" value="Adobe Creative Cloud" checked /><span>Adobe Creative Cloud</span></label>
             <label class="check">
               <input type="checkbox" name="software" value="Otro" id="otroSoftwareChk" /><span>Otro</span>
             </label>
