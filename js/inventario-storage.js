@@ -939,6 +939,19 @@ function aplicarPredeterminados() {
   });
 }
 
+/* Equivalencias del inventario: en SharePoint el cargador aparece a veces
+   como "Adaptador". Se unifica en la única casilla Cargador para no crear
+   una opción duplicada ni enviarlo como accesorio "Otro". */
+const ALIAS_ACCESORIOS = new Map([["adaptador", "Cargador"]]);
+
+function unificarAccesorio(valor) {
+  const limpio = String(valor ?? "").trim();
+  const clave = normalizarTexto(limpio);
+  if (ALIAS_ACCESORIOS.has(clave)) return ALIAS_ACCESORIOS.get(clave);
+  if (clave.startsWith("adaptador")) return "Cargador";
+  return limpio;
+}
+
 /** Marca los accesorios que ya venían registrados para el equipo. */
 function sincronizarAccesoriosDesdeInventario(texto) {
   const valores = dividirLista(texto);
@@ -960,12 +973,14 @@ function sincronizarAccesoriosDesdeInventario(texto) {
   });
 
   valores.forEach((valor) => {
-    const input = mapa.get(normalizarTexto(valor));
+    // "Adaptador" y "Cargador" del inventario activan la misma casilla.
+    const unificado = unificarAccesorio(valor);
+    const input = mapa.get(normalizarTexto(unificado));
     if (input && !usados.has(input)) {
       input.checked = true;
       usados.add(input);
     } else if (!input) {
-      desconocidos.push(valor);
+      desconocidos.push(unificado);
     }
   });
 
