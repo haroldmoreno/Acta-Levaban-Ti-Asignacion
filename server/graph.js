@@ -618,6 +618,7 @@ function filtroContiene(termino) {
  */
 async function graphGetItems(opciones = {}) {
   const { avanzado = false } = opciones;
+  await asegurarSiteIdInventario();
   try {
     return await graphGet(rutaItems(opciones), { avanzado });
   } catch (err) {
@@ -865,6 +866,7 @@ export async function contarEquiposGraph() {
     return cacheConteo.valor;
   }
 
+  await asegurarSiteIdInventario();
   const { siteId, listId } = configGraph();
 
   // La API de listas de SharePoint no admite $count=true ("$count is not
@@ -902,6 +904,41 @@ export function invalidarConteo() {
 
 /* Ruta del sitio tal como la acepta Microsoft Graph. */
 const SITIO_ACTAS = "colevapan.sharepoint.com:/sites/NubeLevapan";
+
+/* ------------------------------------------------------------
+   Sitio del inventario (lista de equipos)
+   ------------------------------------------------------------
+   SITE_ID debe llegar completo desde el entorno. Si la variable se
+   copió incompleta (pasa en paneles en la nube), se resuelve sola
+   con la ruta del sitio para que el inventario siga funcionando.
+   ------------------------------------------------------------ */
+const SITIO_INVENTARIO =
+  texto(process.env.SHAREPOINT_SITE_PATH) || "/sites/Informatica_Tecnologia";
+
+const RE_SITE_ID =
+  /^[^,]+,[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12},[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+
+export async function asegurarSiteIdInventario() {
+  const actual = texto(process.env.SITE_ID || process.env.SHAREPOINT_SITE_ID);
+  if (RE_SITE_ID.test(actual)) return actual;
+
+  const host = texto(process.env.SHAREPOINT_HOST) || "colevapan.sharepoint.com";
+  const datos = await graphGet(`/sites/${host}:${SITIO_INVENTARIO}`);
+  const siteId = texto(datos?.id);
+
+  if (!siteId) {
+    throw new Error(
+      "Microsoft Graph no devolvió el siteId del sitio del inventario."
+    );
+  }
+
+  process.env.SITE_ID = siteId;
+  console.warn(
+    `[GRAPH] SITE_ID incompleto (${actual.length} caracteres). ` +
+      `Se resolvió automáticamente como ${siteId}.`
+  );
+  return siteId;
+}
 
 /* Biblioteca de documentos donde se archivan los PDF. */
 const BIBLIOTECA_ACTAS = "DATAFILE";

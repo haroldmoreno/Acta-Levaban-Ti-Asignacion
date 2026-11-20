@@ -27,6 +27,10 @@ services:
         value: ""
       - key: SHAREPOINT_LIST_ID
         value: 6e37ce52-b4d2-49ce-a628-63c1d811a563
+      # Ruta del sitio del inventario: permite reconstruir SITE_ID si la
+      # variable se copia incompleta en el panel de Render.
+      - key: SHAREPOINT_SITE_PATH
+        value: /sites/Informatica_Tecnologia
       # Secretos: se completan en el panel de Render (sync: false).
       - key: TENANT_ID
         sync: false

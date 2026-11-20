@@ -295,6 +295,10 @@ body {
   display: none;
 }
 
+.estado[hidden] {
+  display: none;
+}
+
 .estado.ok {
   color: #1f6a44;
   background: rgba(46, 160, 96, 0.12);

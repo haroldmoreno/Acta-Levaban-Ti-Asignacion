@@ -31,6 +31,7 @@ import { ConfidentialClientApplication } from "@azure/msal-node";
 // Debe importarse antes que graph.js: carga el archivo .env.
 import "./server/config.js";
 import {
+  asegurarSiteIdInventario,
   buscarEquipoGraph,
   buscarEquiposGraph,
   configGraph,
@@ -1329,6 +1330,16 @@ servidor.on("error", (err) => {
   }
   process.exitCode = 1;
 });
+
+/* Repara en caliente un SITE_ID incompleto antes de recibir tráfico. */
+try {
+  await asegurarSiteIdInventario();
+} catch (err) {
+  console.error(
+    "[GRAPH] No se pudo verificar el SITE_ID al iniciar:",
+    err.message
+  );
+}
 
 servidor.listen(PORT, HOST, () => {
   const config = configGraph();

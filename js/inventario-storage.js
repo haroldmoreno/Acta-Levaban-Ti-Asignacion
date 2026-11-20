@@ -34,6 +34,34 @@ let servidorActivo = false;
 let infoServidor = null;
 let equipoActual = null;
 
+/* ------------------------------------------------------------
+   Modo nube (Render / HTTPS)
+   ------------------------------------------------------------
+   En la nube no existe una carpeta local que el navegador pueda
+   vincular: el PDF se genera en el servidor y se publica directo
+   en SharePoint. Por eso se ocultan los controles de carpeta y el
+   estado se muestra como "Modo Nube Activo" en verde.
+   ------------------------------------------------------------ */
+const MODO_NUBE =
+  typeof location !== "undefined" &&
+  (location.protocol === "https:" || location.hostname.endsWith("onrender.com"));
+
+function aplicarInterfazNube() {
+  if (!MODO_NUBE) return;
+
+  const btnConfig = document.getElementById("btnConfigFolder");
+  if (btnConfig) {
+    btnConfig.hidden = true;
+    btnConfig.setAttribute("aria-hidden", "true");
+  }
+
+  const folderStatus = document.getElementById("folderStatus");
+  if (folderStatus) {
+    folderStatus.hidden = true;
+    folderStatus.textContent = "";
+  }
+}
+
 /* ---------------- Utilidades generales ---------------- */
 
 function normalizarTexto(texto) {
@@ -217,6 +245,7 @@ function soporteFileSystemAccess() {
 }
 
 function mostrarEstadoCarpeta(mensaje, tipo = "") {
+  if (MODO_NUBE) return;
   const el = document.getElementById("folderStatus");
   if (!el) return;
   el.textContent = mensaje;
@@ -224,6 +253,8 @@ function mostrarEstadoCarpeta(mensaje, tipo = "") {
 }
 
 function actualizarEstadoCarpeta(handle) {
+  if (MODO_NUBE) return;
+
   if (servidorActivo && infoServidor?.pdfDir) {
     mostrarEstadoCarpeta(
       handle
@@ -243,6 +274,8 @@ function actualizarEstadoCarpeta(handle) {
 }
 
 async function configurarCarpetaDestino() {
+  if (MODO_NUBE) return;
+
   if (location.protocol === "file:") {
     alert(
       "⚠️ Abriste la página como archivo local (file:///).\n\n" +
@@ -716,18 +749,25 @@ async function cargarInfoServidor() {
     infoServidor = datos;
 
     estadoServidor(
-      `Servidor conectado · ${Number(datos.totalEquipos).toLocaleString("es-CO")} equipos`,
+      MODO_NUBE
+        ? "Modo Nube Activo"
+        : `Servidor conectado · ${Number(datos.totalEquipos).toLocaleString("es-CO")} equipos`,
       "ok"
     );
     estadoInventario(
-      `Inventario SharePoint listo · ${datos.enlaceRed || location.origin}`
+      `Inventario SharePoint listo · ${
+        MODO_NUBE ? location.origin : datos.enlaceRed || location.origin
+      }`
     );
     console.log("Servidor de actas conectado:", datos);
     return true;
   } catch (err) {
     servidorActivo = false;
     infoServidor = null;
-    estadoServidor("Servidor no disponible · modo local", "error");
+    estadoServidor(
+      MODO_NUBE ? "Modo Nube Activo" : "Servidor no disponible · modo local",
+      MODO_NUBE ? "ok" : "error"
+    );
     console.info("Servidor no disponible:", err.message);
     return false;
   }
@@ -757,7 +797,9 @@ async function refrescarContadorEquipos() {
     servidorActivo = true;
     infoServidor = { ...(infoServidor || {}), ...datos };
     estadoServidor(
-      `Servidor conectado · ${Number(datos.totalEquipos).toLocaleString("es-CO")} equipos`,
+      MODO_NUBE
+        ? "Modo Nube Activo"
+        : `Servidor conectado · ${Number(datos.totalEquipos).toLocaleString("es-CO")} equipos`,
       "ok"
     );
   } catch {
@@ -2316,6 +2358,8 @@ function limpiarFormularioCompleto() {
 /* ---------------- Eventos e inicialización ---------------- */
 
 function inicializarEventos() {
+  aplicarInterfazNube();
+
   // Acta nueva: Cargador + los 10 programas base marcados.
   aplicarPredeterminados();
 
