@@ -34,6 +34,10 @@ let servidorActivo = false;
 let infoServidor = null;
 let equipoActual = null;
 
+/* Indicador de reconexión en modo nube */
+let reconectandoNube = false;
+let timeoutReconexion = null;
+
 /* ------------------------------------------------------------
    Modo nube (Render / HTTPS)
    ------------------------------------------------------------
@@ -59,6 +63,81 @@ function aplicarInterfazNube() {
   if (folderStatus) {
     folderStatus.hidden = true;
     folderStatus.textContent = "";
+  }
+}
+
+/* ------------------------------------------------------------
+   Estado de conexión en modo nube: inicial y reconexión automática
+   ------------------------------------------------------------ */
+async function inicializarConexionNube() {
+  if (!MODO_NUBE) return;
+
+  const estadoEl = document.getElementById("estadoInventario");
+  if (!estadoEl) return;
+
+  // Mostrar mensaje de reconectando si aún no hay equipo cargado
+  if (!equipoActual) {
+    estadoEl.textContent = "Conectando con el inventario en la nube...";
+    estadoEl.className = "estado ok";
+  }
+
+  // Intentar verificar conexión de inmediato
+  await verificarConexionNube();
+}
+
+async function verificarConexionNube() {
+  if (!MODO_NUBE) return;
+
+  try {
+    const respuesta = await fetch("/api/estado", {
+      method: "GET",
+      cache: "no-cache",
+    });
+
+    if (respuesta.ok) {
+      const datos = await respuesta.json();
+      servidorActivo = true;
+      infoServidor = datos;
+
+      const estadoEl = document.getElementById("estadoInventario");
+      if (estadoEl) {
+        estadoEl.textContent = `Modo Nube Activo — ${datos.totalEquipos} equipos`;
+        estadoEl.className = "estado ok";
+      }
+
+      // Cancelar cualquier reconexión previa
+      if (timeoutReconexion) {
+        clearTimeout(timeoutReconexion);
+        timeoutReconexion = null;
+      }
+
+      // Cargar equipos si aún no hay uno seleccionado
+      if (!equipoActual) {
+        // Se puede triggering una búsqueda vacía o simplemente habilitar la UI
+        // Aquí solo aseguramos que el indicador sea verde
+      }
+    } else {
+      throw new Error("HTTP " + respuesta.status);
+    }
+  } catch (error) {
+    // Fallo en la conexión: programar nuevo intento en 5 segundos
+    servidorActivo = false;
+    infoServidor = null;
+
+    const estadoEl = document.getElementById("estadoInventario");
+    if (estadoEl) {
+      estadoEl.textContent = "Conectando con el inventario en la nube...";
+      estadoEl.className = "estado ok";
+    }
+
+    // Programar nuevo intento en 5 segundos solo si no ya estamos reconectando
+    if (!reconectandoNube) {
+      reconectandoNube = true;
+      timeoutReconexion = setTimeout(async () => {
+        reconectandoNube = false;
+        await verificarConexionNube();
+      }, 5000);
+    }
   }
 }
 
