@@ -157,6 +157,8 @@ async function detalleError(respuesta) {
 async function graphGet(ruta, { intentos = 3, avanzado = false } = {}) {
   const config = configGraph();
   await asegurarSiteIdInventario();
+
+  if (!config.configurado) {
     throw errorHttp(
       `Microsoft Graph no está configurado. Faltan: ${config.faltantes.join(", ")}.`,
       503
