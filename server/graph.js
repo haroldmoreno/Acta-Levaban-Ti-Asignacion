@@ -156,7 +156,7 @@ async function detalleError(respuesta) {
 
 async function graphGet(ruta, { intentos = 3, avanzado = false } = {}) {
   const config = configGraph();
-  if (!config.configurado) {
+  await asegurarSiteIdInventario();
     throw errorHttp(
       `Microsoft Graph no está configurado. Faltan: ${config.faltantes.join(", ")}.`,
       503
@@ -340,6 +340,7 @@ const ALIAS = {
   marca: ["marca", "fabricante"],
   modelo: ["modelo"],
   estado: ["estado", "estadoequipo", "estatus"],
+  sede: ["sede", "sedelebapan", "ubicacion", "planta", "ciudad"],
   usuario_actual: [
     "usuarioactual",
     "usuario",
@@ -1418,3 +1419,4 @@ export async function subirActaCarpetaCompartida({
     };
   }
 }
+

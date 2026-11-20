@@ -326,7 +326,7 @@ export async function generarActaPdf({
   escribirObservaciones(form, paginas, fuente, datos.observaciones);
 
   /* --- Página 2: constancia y firmas --- */
-  escribirCampo(form, paginas, fuente, "ciudad", "Bogotá D.C.", { tamano: 9 });
+  escribirCampo(form, paginas, fuente, "sede", datos.sede ?? "");
   escribirCampo(form, paginas, fuente, "fecha", ` ${formatearFecha(datos.fecha)}`, {
     tamano: 9,
   });
@@ -460,3 +460,5 @@ export async function generarActaPdf({
 
   return pdfDoc.save();
 }
+
+

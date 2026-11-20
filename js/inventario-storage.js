@@ -682,7 +682,8 @@ const ALIAS_INVENTARIO = {
   nombreusuario: ["nombreusuario", "usuario", "colaborador", "asignadoa", "nombre", "nombredelresponsable"],
   cedula: ["cedula", "cedulausuario", "cedulacolaborador", "ceduladelresponsable", "documento"],
   accesorios: ["accesorios", "accesoriosentregados", "perifericos"],
-  estado: ["estado", "estadoequipo"],
+  estado: ["estado", "estadoequipo", "estatus"],
+  sede: ["sede", "sedelebapan", "ubicacion", "planta", "ciudad"],
 };
 
 let inventarioActual = null;
@@ -878,7 +879,7 @@ function normalizarEquipo(equipo) {
     estado: texto(equipo.estado),
     usuario_actual: texto(equipo.usuario_actual ?? equipo.nombreusuario),
     cedula_usuario: texto(equipo.cedula_usuario ?? equipo.cedula),
-    accesorios: texto(equipo.accesorios),
+    sede: texto(equipo.sede),
     software: texto(equipo.software),
     procesador: texto(equipo.procesador),
     ram: texto(equipo.ram),
@@ -2513,3 +2514,7 @@ window.ActaLevapan = {
   inventario: () => inventarioActual,
   servidor: () => ({ activo: servidorActivo, info: infoServidor }),
 };
+
+
+
+
