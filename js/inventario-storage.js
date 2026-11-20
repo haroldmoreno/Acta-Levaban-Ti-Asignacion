@@ -683,7 +683,9 @@ const ALIAS_INVENTARIO = {
   cedula: ["cedula", "cedulausuario", "cedulacolaborador", "ceduladelresponsable", "documento"],
   accesorios: ["accesorios", "accesoriosentregados", "perifericos"],
   estado: ["estado", "estadoequipo", "estatus"],
-  sede: ["sede", "sedelebapan", "ubicacion", "planta", "ciudad"],
+  sede: ["sede", "sedelebapan", "ubicacion", "planta", "ciudad",
+    "Tulua", "Tuluá", "Fontibon", "Fontibón", "Sabaneta - Medellin", "Sabaneta",
+    "Levapan Calle 72", "Levapan Fontibon", "Otra"],
 };
 
 let inventarioActual = null;
@@ -1129,6 +1131,8 @@ function autocompletarEquipo(equipo) {
   asignarValor("nombre", equipo.usuario_actual, true);
   asignarValor("colaborador", equipo.usuario_actual, true);
   asignarValor("documento", equipo.cedula_usuario, true);
+  // Sincronizar sede del inventario al campo del formulario.
+  asignarValor("sede", equipo.sede, true);
 
   sincronizarAccesoriosDesdeInventario(equipo.accesorios);
   mostrarFichaEquipo(equipo);
@@ -1675,6 +1679,14 @@ function recolectarDatos() {
   const otroAccesorio = document.getElementById("otroAccesorio")?.value.trim() || "";
   const otroSoftware = document.getElementById("otroSoftware")?.value.trim() || "";
 
+  const sedeSelect = document.getElementById("sede");
+  const sedeValue = sedeSelect ? sedeSelect.value : "";
+  const sedeOtroInput = document.getElementById("sedeOtro") || null;
+  const sedeOtro = sedeOtroInput ? sedeOtroInput.value.trim() : "";
+
+  // Si el usuario eligió "Otra", usar el texto libre; sino usar el valor del select.
+  const sede = sedeValue === "Otra" ? (sedeOtro || "") : sedeValue;
+
   const accesorios = valoresSeleccionados("accesorios").map((valor) =>
     valor === "Otro" && otroAccesorio ? `Otro: ${otroAccesorio}` : valor
   );
@@ -1699,6 +1711,8 @@ function recolectarDatos() {
     accesorios,
     software,
     observaciones: document.getElementById("observaciones").value.trim(),
+    sede, // <-- Añadido: sede del equipo (puede ser "Otra" + texto)
+    sedeOtro, // <-- Nuevo: texto libre si el usuario eligió "Otra"
     fecha: new Date(),
     firmas: {
       colaborador: window.FirmasActa?.obtenerDataUrl("firmaColaborador") || null,

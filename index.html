@@ -232,7 +232,7 @@
 
             <div class="campo">
               <label for="sede">Sede Levapan</label>
-              <select id="sede" name="sede" required>
+              <select id="sede" name="sede" required onchange="toggleSedeOtro(this)">
                 <option value="">Seleccione la Sede</option>
                 <option value="Levapan Calle 72">Levapan Calle 72</option>
                 <option value="Levapan Fontibon">Levapan Fontibon</option>
@@ -243,6 +243,14 @@
                 <option value="Barranquilla">Barranquilla</option>
                 <option value="Otra">Otra</option>
               </select>
+              <small class="ayuda" id="sedeAyuda">Seleccione la sede del equipo.</small>
+            </div>
+
+            <!-- Campo texto "Otra sede" (oculto por defecto) -->
+            <div class="campo" id="sedeOtroDiv" style="display: none;">
+              <label for="sedeOtro">Sede (personalizada)</label>
+              <input type="text" id="sedeOtro" name="sedeOtro" placeholder="Ej. Otras sedes o ubicación" style="width: 100%; padding: 12px 14px; font-size: 16px; font-family: inherit; color: var(--texto); background: linear-gradient(180deg, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0.54) 100%); border: 1px solid var(--cristal-borde); border-radius: var(--radio-campo); box-shadow: inset 0 1px 2px rgba(20, 12, 16, 0.05), 0 2px 8px rgba(20, 12, 16, 0.04); transition: border-color 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s cubic-bezier(0.22, 1, 0.36, 1); backdrop-filter: var(--blur-suave); -webkit-backdrop-filter: var(--blur-suave); min-height: 48px; margin-top: 6px;">
+              <small class="ayuda" style="font-size: 0.78rem; color: var(--texto-suave); margin-top: 4px;">Escriba la sede si no está en la lista.</small>
             </div>
           </div>
 
@@ -470,5 +478,22 @@
     <script src="js/firmas.js"></script>
     <script src="js/inventario-storage.js"></script>
     <script src="js/pwa.js"></script>
+    <script>
+      // Alternar visibilidad del campo "Sede Otra" en el formulario.
+      function toggleSedeOtro(select) {
+        const div = document.getElementById("sedeOtroDiv");
+        if (select.value === "Otra") {
+          div.style.display = "block";
+          // Mover el foco al input de texto para que el usuario pueda escribir inmediato.
+          const input = document.getElementById("sedeOtro");
+          if (input) input.focus();
+        } else {
+          div.style.display = "none";
+          // Limpiar el campo si se vuelve a una sede fija.
+          const input = document.getElementById("sedeOtro");
+          if (input) input.value = "";
+        }
+      }
+    </script>
   </body>
 </html>
