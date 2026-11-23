@@ -234,8 +234,6 @@ async function graphGet(ruta, { intentos = 3, avanzado = false } = {}) {
   }
 
   throw (
-
-  throw (
     ultimoError ||
     errorHttp("No se pudo consultar Microsoft Graph.", 502, { causa: "red" })
   );
