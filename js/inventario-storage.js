@@ -1037,7 +1037,12 @@ async function buscarEquipoPorPlaca(placa) {
       `${API_BASE}/api/equipos?placa=${encodeURIComponent(valor)}`,
       { cache: "no-store" }
     );
-    if (respuesta.status === 404) return null;
+    if (respuesta.status === 404) {
+      // El servidor respondió: la conexión está activa aunque la placa no exista.
+      servidorActivo = true;
+      marcarConexionNubeActiva();
+      return null;
+    }
     if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
 
     const datos = await respuesta.json();
