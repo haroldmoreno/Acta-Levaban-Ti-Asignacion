@@ -57,9 +57,16 @@
     if (!boton) return;
 
     if (!promptDiferido) {
+      const hostLocal =
+        location.hostname === "localhost" ||
+        location.hostname === "127.0.0.1" ||
+        /^192\.168\./.test(location.hostname);
+      const direccion = hostLocal ? "http://localhost:3000" : location.origin;
+
       alert(
         "Para instalar la aplicación abre esta página en Chrome o Edge desde " +
-          "http://localhost:3000 y usa el botón de instalar del navegador."
+          direccion +
+          " y usa el botón de instalar del navegador."
       );
       return;
     }

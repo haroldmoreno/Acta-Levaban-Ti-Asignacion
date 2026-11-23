@@ -1,12 +1,13 @@
 /* ============================================================
    sw.js | Service Worker · Acta de Tecnología Levapan
    ------------------------------------------------------------
-   Permite instalar la aplicación y abrirla sin conexión con el
-   último código descargado. Las consultas /api/ siempre van a la
-   red: el inventario y las actas necesitan el servidor local.
+   Network-First para el código (.js y .html) y las navegaciones:
+   cada recarga pide la versión más reciente al servidor y solo
+   usa la caché si no hay red. Las imágenes y recursos estáticos
+   usan Cache-First. /api/ y /media/ siempre van directo a la red.
    ============================================================ */
 
-const CACHE = "acta-levapan-v18";
+const CACHE = "acta-levapan-v19";
 
 const APP_SHELL = [
   "/",
@@ -92,10 +93,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Código y navegaciones: Network-First para reflejar los cambios al recargar.
   const esNavegacion = request.mode === "navigate";
   const esCodigo =
-    url.pathname.endsWith(".html") ||
     url.pathname.endsWith(".js") ||
+    url.pathname.endsWith(".html") ||
     url.pathname.endsWith(".css") ||
     url.pathname === "/";
 

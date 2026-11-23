@@ -41,14 +41,37 @@ let timeoutReconexion = null;
 /* ------------------------------------------------------------
    Modo nube (Render / HTTPS)
    ------------------------------------------------------------
-   En la nube no existe una carpeta local que el navegador pueda
-   vincular: el PDF se genera en el servidor y se publica directo
-   en SharePoint. Por eso se ocultan los controles de carpeta y el
-   estado se muestra como "Modo Nube Activo" en verde.
+   Se detecta por el host: cualquier dirección que no sea local
+   (localhost, 127.0.0.1, ::1, file: o una IP de red privada) se
+   considera nube. En la nube no existe una carpeta local que el
+   navegador pueda vincular: el PDF se genera en el servidor y se
+   publica directo en SharePoint. Por eso se ocultan los controles
+   de carpeta y el estado se muestra como "Modo Nube Activo".
    ------------------------------------------------------------ */
-const MODO_NUBE =
-  typeof location !== "undefined" &&
-  (location.protocol === "https:" || location.hostname.endsWith("onrender.com"));
+const MODO_NUBE = (() => {
+  if (typeof location === "undefined") return false;
+  if (location.protocol === "file:") return false;
+
+  const host = String(location.hostname || "").toLowerCase();
+  if (!host) return false;
+
+  // Servidor local.
+  if (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "::1" ||
+    host === "[::1]"
+  ) {
+    return false;
+  }
+
+  // Redes privadas: se comportan como servidor local.
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) return false;
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return false;
+  if (/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(host)) return false;
+
+  return true;
+})();
 
 function aplicarInterfazNube() {
   if (!MODO_NUBE) return;
@@ -69,75 +92,106 @@ function aplicarInterfazNube() {
 /* ------------------------------------------------------------
    Estado de conexión en modo nube: inicial y reconexión automática
    ------------------------------------------------------------ */
-async function inicializarConexionNube() {
+
+/**
+ * Mensaje único para cuando no hay inventario disponible. En la nube nunca
+ * se debe mostrar el aviso de "inicia el servidor local".
+ */
+function mensajeSinConexionInventario() {
+  return MODO_NUBE
+    ? "Conectando con el inventario en la nube..."
+    : "Sin conexión al inventario. Inicia el servidor.";
+}
+
+/**
+ * Marca la conexión con el inventario como activa. Se llama en cuanto
+ * /api/estado o /api/equipos/buscar responden bien (200), aunque la
+ * comprobación inicial haya fallado, y pinta el indicador en verde.
+ */
+function marcarConexionNubeActiva(totalEquipos) {
   if (!MODO_NUBE) return;
 
-  const estadoEl = document.getElementById("estadoInventario");
-  if (!estadoEl) return;
+  servidorActivo = true;
+  estadoServidor("Modo Nube Activo", "ok");
 
-  // Mostrar mensaje de reconectando si aún no hay equipo cargado
-  if (!equipoActual) {
-    estadoEl.textContent = "Conectando con el inventario en la nube...";
-    estadoEl.className = "estado ok";
+  const inv = document.getElementById("inventarioStatus");
+  if (!inv) return;
+
+  const textoActual = String(inv.textContent || "").trim();
+  const esMensajeDeConexion =
+    textoActual === "" ||
+    textoActual.includes("Conectando con el inventario en la nube") ||
+    textoActual.includes("Sin conexión al inventario");
+
+  if (!esMensajeDeConexion) return;
+
+  const total = Number(totalEquipos);
+  inv.textContent =
+    Number.isFinite(total) && total > 0
+      ? `Inventario en la nube conectado · ${total.toLocaleString("es-CO")} equipos`
+      : "Inventario en la nube conectado";
+  inv.className = "estado estado-inventario ok";
+}
+
+/** Reintenta la conexión en la nube mientras el servidor despierte. */
+function programarReconexionNube() {
+  if (!MODO_NUBE || reconectandoNube || timeoutReconexion) return;
+
+  reconectandoNube = true;
+  timeoutReconexion = setTimeout(async () => {
+    reconectandoNube = false;
+    timeoutReconexion = null;
+    await verificarConexionNube();
+  }, 5000);
+}
+
+async function inicializarConexionNube() {
+  if (!MODO_NUBE) return false;
+
+  estadoServidor("Conectando con el inventario en la nube...", "ok");
+
+  const estadoEl = document.getElementById("estadoInventario");
+  if (estadoEl && !equipoActual) {
+    estadoEl.textContent = mensajeSinConexionInventario();
+    estadoEl.className = "estado estado-inventario ok";
   }
 
-  // Intentar verificar conexión de inmediato
-  await verificarConexionNube();
+  return verificarConexionNube();
 }
 
 async function verificarConexionNube() {
-  if (!MODO_NUBE) return;
+  if (!MODO_NUBE) return false;
 
   try {
     const respuesta = await fetch("/api/estado", {
       method: "GET",
-      cache: "no-cache",
+      cache: "no-store",
     });
 
-    if (respuesta.ok) {
-      const datos = await respuesta.json();
-      servidorActivo = true;
-      infoServidor = datos;
+    if (!respuesta.ok) throw new Error("HTTP " + respuesta.status);
 
-      const estadoEl = document.getElementById("estadoInventario");
-      if (estadoEl) {
-        estadoEl.textContent = `Modo Nube Activo — ${datos.totalEquipos} equipos`;
-        estadoEl.className = "estado ok";
-      }
+    const datos = await respuesta.json();
+    if (!datos?.ok) throw new Error("Respuesta inválida del servidor");
 
-      // Cancelar cualquier reconexión previa
-      if (timeoutReconexion) {
-        clearTimeout(timeoutReconexion);
-        timeoutReconexion = null;
-      }
+    infoServidor = datos;
+    marcarConexionNubeActiva(datos.totalEquipos);
 
-      // Cargar equipos si aún no hay uno seleccionado
-      if (!equipoActual) {
-        // Se puede triggering una búsqueda vacía o simplemente habilitar la UI
-        // Aquí solo aseguramos que el indicador sea verde
-      }
-    } else {
-      throw new Error("HTTP " + respuesta.status);
+    // Cancelar cualquier reconexión previa.
+    if (timeoutReconexion) {
+      clearTimeout(timeoutReconexion);
+      timeoutReconexion = null;
     }
+    reconectandoNube = false;
+
+    return true;
   } catch (error) {
-    // Fallo en la conexión: programar nuevo intento en 5 segundos
     servidorActivo = false;
     infoServidor = null;
 
-    const estadoEl = document.getElementById("estadoInventario");
-    if (estadoEl) {
-      estadoEl.textContent = "Conectando con el inventario en la nube...";
-      estadoEl.className = "estado ok";
-    }
+    estadoServidor("Conectando con el inventario en la nube...", "ok");
+    programarReconexionNube();
 
-    // Programar nuevo intento en 5 segundos solo si no ya estamos reconectando
-    if (!reconectandoNube) {
-      reconectandoNube = true;
-      timeoutReconexion = setTimeout(async () => {
-        reconectandoNube = false;
-        await verificarConexionNube();
-      }, 5000);
-    }
+    return false;
   }
 }
 
@@ -820,6 +874,10 @@ function estadoServidor(mensaje, tipo = "") {
  * actas viven en SharePoint; si no, se usa el JSON estático como respaldo.
  */
 async function cargarInfoServidor() {
+  // En la nube el backend vive en el mismo origen (rutas relativas /api/...).
+  // La verificación se hace contra /api/estado con reintentos automáticos.
+  if (MODO_NUBE) return inicializarConexionNube();
+
   try {
     const respuesta = await fetch(`${API_BASE}/api/estado`, { cache: "no-store" });
     if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
@@ -831,25 +889,19 @@ async function cargarInfoServidor() {
     infoServidor = datos;
 
     estadoServidor(
-      MODO_NUBE
-        ? "Modo Nube Activo"
-        : `Servidor conectado · ${Number(datos.totalEquipos).toLocaleString("es-CO")} equipos`,
+      `Servidor conectado · ${Number(datos.totalEquipos).toLocaleString("es-CO")} equipos`,
       "ok"
     );
     estadoInventario(
-      `Inventario SharePoint listo · ${
-        MODO_NUBE ? location.origin : datos.enlaceRed || location.origin
-      }`
+      `Inventario SharePoint listo · ${datos.enlaceRed || location.origin}`,
+      "ok"
     );
     console.log("Servidor de actas conectado:", datos);
     return true;
   } catch (err) {
     servidorActivo = false;
     infoServidor = null;
-    estadoServidor(
-      MODO_NUBE ? "Modo Nube Activo" : "Servidor no disponible · modo local",
-      MODO_NUBE ? "ok" : "error"
-    );
+    estadoServidor("Servidor no disponible · modo local", "error");
     console.info("Servidor no disponible:", err.message);
     return false;
   }
@@ -878,12 +930,15 @@ async function refrescarContadorEquipos() {
 
     servidorActivo = true;
     infoServidor = { ...(infoServidor || {}), ...datos };
-    estadoServidor(
-      MODO_NUBE
-        ? "Modo Nube Activo"
-        : `Servidor conectado · ${Number(datos.totalEquipos).toLocaleString("es-CO")} equipos`,
-      "ok"
-    );
+
+    if (MODO_NUBE) {
+      marcarConexionNubeActiva(datos.totalEquipos);
+    } else {
+      estadoServidor(
+        `Servidor conectado · ${Number(datos.totalEquipos).toLocaleString("es-CO")} equipos`,
+        "ok"
+      );
+    }
   } catch {
     /* Si falla, se conserva el último contador conocido. */
   }
@@ -919,7 +974,8 @@ function avisarServidorNoDisponible(err) {
 
 /** Carga el inventario JSON solo si el servidor de actas no responde. */
 async function cargarInventarioSilencioso() {
-  if (servidorActivo) return;
+  // En la nube no hay respaldo JSON local: el inventario siempre es Graph.
+  if (MODO_NUBE || servidorActivo) return;
 
   try {
     const respuesta = await fetch(INVENTARIO_JSON_PATH, { cache: "no-store" });
@@ -988,6 +1044,7 @@ async function buscarEquipoPorPlaca(placa) {
     if (!datos?.ok || !datos.equipo) return null;
 
     servidorActivo = true;
+    marcarConexionNubeActiva();
     return normalizarEquipo(datos.equipo);
   } catch (err) {
     avisarServidorNoDisponible(err);
@@ -1254,6 +1311,9 @@ async function buscarEquiposSugeridos(consulta, signal) {
     if (!datos?.ok) throw new Error("Respuesta inválida del servidor");
 
     servidorActivo = true;
+    // La búsqueda respondió bien: la nube está conectada aunque /api/estado
+    // haya fallado al cargar la página.
+    marcarConexionNubeActiva(datos.total);
     return (datos.equipos || []).map(normalizarEquipo).filter(Boolean);
   } catch (err) {
     // Petición cancelada por una búsqueda más reciente: no es un error real.
@@ -1457,11 +1517,13 @@ function inicializarAutocompletadoPlaca() {
     } else if (mostrarError) {
       limpiarFichaEquipo();
       marcarInvalida();
+
+      const sinConexion = !servidorActivo && !inventarioActual;
       estadoInventario(
-        !servidorActivo && !inventarioActual
-          ? "Sin conexión al inventario. Inicia el servidor."
+        sinConexion
+          ? mensajeSinConexionInventario()
           : "Placa no registrada en el inventario",
-        "error"
+        sinConexion && MODO_NUBE ? "ok" : "error"
       );
     }
   };
@@ -1490,9 +1552,13 @@ function inicializarAutocompletadoPlaca() {
     if (actual !== turno) return;
 
     // Ni servidor ni inventario local: no hay de dónde obtener sugerencias.
+    // En la nube se muestra un aviso neutro y se reintenta en la próxima tecla.
     if (!equipos.length && !servidorActivo && !inventarioActual) {
       cerrar();
-      estadoInventario("Sin conexión al inventario. Inicia el servidor.", "error");
+      estadoInventario(
+        mensajeSinConexionInventario(),
+        MODO_NUBE ? "ok" : "error"
+      );
       return;
     }
 
