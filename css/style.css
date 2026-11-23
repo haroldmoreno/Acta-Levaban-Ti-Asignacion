@@ -796,6 +796,24 @@ textarea {
   color: var(--texto-suave);
 }
 
+/* Aviso discreto de error del inventario bajo el campo Placa. */
+.placa-aviso {
+  display: block;
+  margin-top: 6px;
+  padding: 6px 9px;
+  border-radius: 9px;
+  border: 1px solid #fecaca;
+  background-color: #fef2f2;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: #b91c1c;
+  overflow-wrap: anywhere;
+}
+
+.placa-aviso[hidden] {
+  display: none;
+}
+
 /* ---------------- Sugerencias de Placa (Liquid Glass) ---------------- */
 
 .campo-placa-caja {

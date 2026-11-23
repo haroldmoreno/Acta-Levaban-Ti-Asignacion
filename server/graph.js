@@ -41,11 +41,13 @@ export function configGraph() {
         process.env.LIST_ID
     ) || "Inventario";
 
+  // SITE_ID no es obligatorio: si llega vacío o incompleto (habitual en el
+  // panel de Render) se resuelve con SHAREPOINT_SITE_PATH. Solo las
+  // credenciales de la app son imprescindibles para autenticarse.
   const faltantes = [
     ["TENANT_ID", tenantId],
     ["CLIENT_ID", clientId],
     ["CLIENT_SECRET", clientSecret],
-    ["SITE_ID", siteId],
   ]
     .filter(([, valor]) => !valor)
     .map(([nombre]) => nombre);
@@ -154,9 +156,13 @@ async function detalleError(respuesta) {
   return respuesta.statusText || `HTTP ${respuesta.status}`;
 }
 
-async function graphGet(ruta, { intentos = 3, avanzado = false } = {}) {
+/**
+ * GET a Microsoft Graph sin resolver el siteId. Se usa también desde
+ * asegurarSiteIdInventario(): si allí se llamara a graphGet() se produciría
+ * una recursión infinita cuando SITE_ID llega incompleto desde Render.
+ */
+async function graphGetRaw(ruta, { intentos = 3, avanzado = false } = {}) {
   const config = configGraph();
-  await asegurarSiteIdInventario();
 
   if (!config.configurado) {
     throw errorHttp(
@@ -237,6 +243,12 @@ async function graphGet(ruta, { intentos = 3, avanzado = false } = {}) {
     ultimoError ||
     errorHttp("No se pudo consultar Microsoft Graph.", 502, { causa: "red" })
   );
+}
+
+/** GET normal: garantiza el siteId del inventario antes de consultar. */
+async function graphGet(ruta, opciones = {}) {
+  await asegurarSiteIdInventario();
+  return graphGetRaw(ruta, opciones);
 }
 
 /* ------------------------------------------------------------
@@ -695,22 +707,35 @@ function itemsPorContiene(termino, top = 200) {
  */
 async function itemsConFiltros(filtros, top = 200) {
   const [combinado, ...porCampo] = filtros;
+  const errores = [];
 
   try {
     return await itemsRecientes({ filtro: combinado, top, avanzado: true });
   } catch (err) {
     if (err?.grafoStatus !== 400) throw err;
+    errores.push(err);
   }
 
   const filas = [];
+  let consultasCorrectas = 0;
+
   for (const filtro of porCampo) {
     try {
       const parcial = await itemsRecientes({ filtro, top, avanzado: true });
+      consultasCorrectas += 1;
       if (parcial.length) filas.push(...parcial);
     } catch (err) {
       if (err?.grafoStatus !== 400) throw err;
+      errores.push(err);
     }
   }
+
+  // Si todas las consultas fallaron con 400 no es "sin resultados": es un
+  // problema real de campos/filtros. Se propaga para no fallar en silencio.
+  if (!consultasCorrectas && errores.length) {
+    throw errores[errores.length - 1];
+  }
+
   return filas;
 }
 
@@ -926,7 +951,8 @@ export async function asegurarSiteIdInventario() {
   if (RE_SITE_ID.test(actual)) return actual;
 
   const host = texto(process.env.SHAREPOINT_HOST) || "colevapan.sharepoint.com";
-  const datos = await graphGet(`/sites/${host}:${SITIO_INVENTARIO}`);
+  // graphGetRaw evita volver a entrar en asegurarSiteIdInventario().
+  const datos = await graphGetRaw(`/sites/${host}:${SITIO_INVENTARIO}`);
   const siteId = texto(datos?.id);
 
   if (!siteId) {

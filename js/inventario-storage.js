@@ -34,6 +34,9 @@ let servidorActivo = false;
 let infoServidor = null;
 let equipoActual = null;
 
+/* Último error real devuelto por el inventario (para diagnóstico visible). */
+let ultimoErrorInventario = "";
+
 /* Indicador de reconexión en modo nube */
 let reconectandoNube = false;
 let timeoutReconexion = null;
@@ -1040,18 +1043,25 @@ async function buscarEquipoPorPlaca(placa) {
     if (respuesta.status === 404) {
       // El servidor respondió: la conexión está activa aunque la placa no exista.
       servidorActivo = true;
+      ultimoErrorInventario = "";
       marcarConexionNubeActiva();
       return null;
     }
-    if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
+    if (!respuesta.ok) {
+      throw new Error(await leerErrorRespuesta(respuesta));
+    }
 
     const datos = await respuesta.json();
     if (!datos?.ok || !datos.equipo) return null;
 
     servidorActivo = true;
+    ultimoErrorInventario = "";
     marcarConexionNubeActiva();
     return normalizarEquipo(datos.equipo);
   } catch (err) {
+    if (err?.name === "AbortError") return null;
+    ultimoErrorInventario =
+      err?.message || "No se pudo consultar el inventario.";
     avisarServidorNoDisponible(err);
   }
 
@@ -1297,35 +1307,56 @@ function autocompletarEquipo(equipo) {
 
 /* ---------------- Búsqueda desplegable de Placa ---------------- */
 
-/**
- * Busca equipos en vivo contra SharePoint (/api/equipos/buscar, sin caché).
- * data/inventario.json solo se usa cuando el servidor no responde.
- */
-async function buscarEquiposSugeridos(consulta, signal) {
-  const texto = String(consulta ?? "").trim();
-  if (!texto) return [];
+/** Extrae el mensaje real de una respuesta de error del servidor. */
+async function leerErrorRespuesta(respuesta) {
+  let mensaje = `HTTP ${respuesta.status}`;
 
   try {
-    const respuesta = await fetch(
-      `${API_BASE}/api/equipos/buscar?q=${encodeURIComponent(texto)}`,
-      { cache: "no-store", signal }
-    );
-    if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
-
-    const datos = await respuesta.json();
-    if (!datos?.ok) throw new Error("Respuesta inválida del servidor");
-
-    servidorActivo = true;
-    // La búsqueda respondió bien: la nube está conectada aunque /api/estado
-    // haya fallado al cargar la página.
-    marcarConexionNubeActiva(datos.total);
-    return (datos.equipos || []).map(normalizarEquipo).filter(Boolean);
-  } catch (err) {
-    // Petición cancelada por una búsqueda más reciente: no es un error real.
-    if (err?.name === "AbortError") return null;
-    avisarServidorNoDisponible(err);
+    const cuerpo = await respuesta.clone().json();
+    const partes = [];
+    if (cuerpo?.error) partes.push(String(cuerpo.error));
+    if (cuerpo?.detalle?.grafoStatus) {
+      partes.push(`Graph HTTP ${cuerpo.detalle.grafoStatus}`);
+    }
+    if (cuerpo?.detalle?.causa) {
+      partes.push(`causa: ${cuerpo.detalle.causa}`);
+    }
+    if (partes.length) {
+      mensaje = `${partes.join(" · ")} (HTTP ${respuesta.status})`;
+    }
+  } catch {
+    try {
+      const cuerpoTexto = await respuesta.clone().text();
+      if (cuerpoTexto) {
+        mensaje = `${cuerpoTexto.slice(0, 300)} (HTTP ${respuesta.status})`;
+      }
+    } catch {
+      /* Sin cuerpo legible. */
+    }
   }
 
+  return mensaje;
+}
+
+/** Respaldo de búsqueda: /api/equipos?q= usa la misma lista de SharePoint. */
+async function buscarEquiposRespaldo(texto, signal) {
+  const respuesta = await fetch(
+    `${API_BASE}/api/equipos?q=${encodeURIComponent(texto)}`,
+    { cache: "no-store", signal }
+  );
+
+  if (!respuesta.ok) throw new Error(await leerErrorRespuesta(respuesta));
+
+  const datos = await respuesta.json();
+  if (!datos?.ok) {
+    throw new Error(datos?.error || "Respuesta inválida del servidor");
+  }
+
+  return (datos.equipos || []).map(normalizarEquipo).filter(Boolean);
+}
+
+/** Búsqueda en el JSON local (solo fuera de la nube). */
+function buscarEnInventarioLocal(texto) {
   if (!inventarioActual || !Array.isArray(inventarioActual.datos)) return [];
 
   // Caché en memoria: placa con o sin prefijo "ML-" y también por serial.
@@ -1351,6 +1382,71 @@ async function buscarEquiposSugeridos(consulta, signal) {
   return lista.slice(0, 30).map(normalizarEquipo);
 }
 
+/**
+ * Busca equipos en vivo contra SharePoint. Devuelve `{ equipos, error }`.
+ * - `null` si la petición se abortó por una búsqueda más reciente.
+ * - `error` conserva el detalle real del servidor para mostrarlo en la UI.
+ */
+async function buscarEquiposSugeridos(consulta, signal) {
+  const texto = String(consulta ?? "").trim();
+  if (!texto) return { equipos: [], error: "" };
+
+  let errorPrincipal = "";
+
+  try {
+    const respuesta = await fetch(
+      `${API_BASE}/api/equipos/buscar?q=${encodeURIComponent(texto)}`,
+      { cache: "no-store", signal }
+    );
+
+    if (!respuesta.ok) {
+      throw new Error(await leerErrorRespuesta(respuesta));
+    }
+
+    const datos = await respuesta.json();
+    if (!datos?.ok) {
+      throw new Error(datos?.error || "Respuesta inválida del servidor");
+    }
+
+    servidorActivo = true;
+    ultimoErrorInventario = "";
+    // La búsqueda respondió bien: la nube está conectada aunque /api/estado
+    // haya fallado al cargar la página.
+    marcarConexionNubeActiva(datos.total);
+    return {
+      equipos: (datos.equipos || []).map(normalizarEquipo).filter(Boolean),
+      error: "",
+    };
+  } catch (err) {
+    // Petición cancelada por una búsqueda más reciente: no es un error real.
+    if (err?.name === "AbortError") return null;
+    errorPrincipal = err?.message || "No se pudo consultar el servidor.";
+    ultimoErrorInventario = errorPrincipal;
+    avisarServidorNoDisponible(err);
+  }
+
+  // Respaldo: la ruta /api/equipos?q= consulta la misma lista.
+  try {
+    const equipos = await buscarEquiposRespaldo(texto, signal);
+    servidorActivo = true;
+    ultimoErrorInventario = "";
+    marcarConexionNubeActiva(equipos.length);
+    return { equipos, error: "" };
+  } catch (err) {
+    if (err?.name === "AbortError") return null;
+    console.info("Respaldo de búsqueda no disponible:", err?.message || err);
+  }
+
+  // Último recurso: inventario local (solo fuera de la nube).
+  const locales = buscarEnInventarioLocal(texto);
+  if (locales.length) {
+    ultimoErrorInventario = "";
+    return { equipos: locales, error: "" };
+  }
+
+  return { equipos: [], error: errorPrincipal };
+}
+
 function describirEquipo(equipo) {
   const tipo = String(equipo?.tipo ?? "").trim();
   const marca = String(equipo?.marca ?? "").trim();
@@ -1371,6 +1467,25 @@ function describirEquipo(equipo) {
 function detalleSugerencia(equipo) {
   const serial = equipo.serial ? ` (Serial: ${equipo.serial})` : "";
   return `— ${describirEquipo(equipo)}${serial}`;
+}
+
+/** Muestra un aviso discreto debajo del campo Placa (error real de Graph). */
+function mostrarAvisoPlaca(mensaje) {
+  const aviso = document.getElementById("placaAviso");
+  if (!aviso) return;
+  const texto = String(mensaje ?? "").trim();
+  if (!texto) {
+    aviso.textContent = "";
+    aviso.hidden = true;
+    return;
+  }
+  aviso.textContent = texto;
+  aviso.hidden = false;
+}
+
+/** Oculta el aviso de Placa. */
+function limpiarAvisoPlaca() {
+  mostrarAvisoPlaca("");
 }
 
 /** Crea (si hace falta) el desplegable Liquid Glass bajo el campo Placa. */
@@ -1505,6 +1620,7 @@ function inicializarAutocompletadoPlaca() {
 
     if (!valor) {
       limpiarFichaEquipo();
+      limpiarAvisoPlaca();
       placaInput.removeAttribute("aria-invalid");
       placaInput.style.borderColor = "";
       return;
@@ -1515,6 +1631,7 @@ function inicializarAutocompletadoPlaca() {
     if (actual !== turno) return;
 
     if (equipo) {
+      limpiarAvisoPlaca();
       placaInput.value = equipo.placa;
       marcarValida();
       autocompletarEquipo(equipo);
@@ -1523,6 +1640,18 @@ function inicializarAutocompletadoPlaca() {
       limpiarFichaEquipo();
       marcarInvalida();
 
+      if (ultimoErrorInventario) {
+        mostrarAvisoPlaca(
+          `No se pudo consultar el inventario: ${ultimoErrorInventario}`
+        );
+        estadoInventario(
+          "No se pudo consultar el inventario en SharePoint",
+          "error"
+        );
+        return;
+      }
+
+      limpiarAvisoPlaca();
       const sinConexion = !servidorActivo && !inventarioActual;
       estadoInventario(
         sinConexion
@@ -1541,6 +1670,7 @@ function inicializarAutocompletadoPlaca() {
     if (valor.length < 2) {
       abortarBusqueda();
       cerrar();
+      limpiarAvisoPlaca();
       placaInput.removeAttribute("aria-invalid");
       placaInput.style.borderColor = "";
       if (!valor) limpiarFichaEquipo();
@@ -1552,9 +1682,26 @@ function inicializarAutocompletadoPlaca() {
     controlador = new AbortController();
 
     estadoInventario(`Buscando equipos con "${valor}"…`);
-    const equipos = await buscarEquiposSugeridos(valor, controlador.signal);
-    if (equipos === null) return; // petición cancelada por otra búsqueda
+    const resultado = await buscarEquiposSugeridos(valor, controlador.signal);
+    if (resultado === null) return; // petición cancelada por otra búsqueda
     if (actual !== turno) return;
+
+    const equipos = resultado.equipos || [];
+    const error = String(resultado.error ?? "").trim();
+
+    // Error real del servidor (Graph/SharePoint) o de red: se muestra el
+    // detalle bajo el campo Placa en lugar de fallar en silencio.
+    if (error) {
+      cerrar();
+      mostrarAvisoPlaca(`No se pudo consultar el inventario: ${error}`);
+      estadoInventario(
+        "No se pudo consultar el inventario en SharePoint",
+        "error"
+      );
+      return;
+    }
+
+    limpiarAvisoPlaca();
 
     // Ni servidor ni inventario local: no hay de dónde obtener sugerencias.
     // En la nube se muestra un aviso neutro y se reintenta en la próxima tecla.

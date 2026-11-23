@@ -7,7 +7,7 @@
    usan Cache-First. /api/ y /media/ siempre van directo a la red.
    ============================================================ */
 
-const CACHE = "acta-levapan-v19";
+const CACHE = "acta-levapan-v20";
 
 const APP_SHELL = [
   "/",

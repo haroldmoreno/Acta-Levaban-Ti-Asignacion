@@ -1186,43 +1186,80 @@ async function manejarApi(req, res, url) {
     const consulta = (url.searchParams.get("q") || "")
       .trim()
       .replace(/\s+/g, " ");
-    const { equipos, modo } = await buscarEquiposGraph(consulta);
-    return enviarJson(res, 200, {
-      ok: true,
-      q: consulta,
-      modo,
-      total: equipos.length,
-      equipos,
-    });
+
+    try {
+      const { equipos, modo } = await buscarEquiposGraph(consulta);
+      return enviarJson(res, 200, {
+        ok: true,
+        q: consulta,
+        modo,
+        total: equipos.length,
+        equipos,
+      });
+    } catch (err) {
+      // Se devuelve el detalle real para que el cliente pueda mostrarlo en
+      // lugar de fallar en silencio (por ejemplo, error de Graph o siteId).
+      console.error(`[BUSCAR] q="${consulta}":`, err);
+      return enviarJson(res, Number(err?.status) || 502, {
+        ok: false,
+        q: consulta,
+        modo: "error",
+        total: 0,
+        equipos: [],
+        error:
+          err?.message ||
+          "No se pudo consultar el inventario en SharePoint.",
+        detalle: {
+          grafoStatus: err?.grafoStatus ?? null,
+          causa: err?.causa ?? null,
+        },
+      });
+    }
   }
 
   if (ruta === "/api/equipos" && req.method === "GET") {
     const placa = url.searchParams.get("placa");
-    if (placa) {
-      const equipo = await buscarEquipoGraph(placa);
-      if (!equipo) {
-        return enviarJson(res, 404, {
-          ok: false,
-          encontrado: false,
-          error: "La placa no está registrada en el inventario.",
-        });
-      }
-      return enviarJson(res, 200, { ok: true, encontrado: true, equipo });
-    }
-
     const consulta = (url.searchParams.get("q") || "")
       .trim()
       .replace(/\s+/g, " ");
     const limite = url.searchParams.get("limite") || 20;
-    const equipos = consulta
-      ? (await buscarEquiposGraph(consulta)).equipos
-      : await listarEquiposGraph(limite);
 
-    return enviarJson(res, 200, {
-      ok: true,
-      total: equipos.length,
-      equipos,
-    });
+    try {
+      if (placa) {
+        const equipo = await buscarEquipoGraph(placa);
+        if (!equipo) {
+          return enviarJson(res, 404, {
+            ok: false,
+            encontrado: false,
+            error: "La placa no está registrada en el inventario.",
+          });
+        }
+        return enviarJson(res, 200, { ok: true, encontrado: true, equipo });
+      }
+
+      const equipos = consulta
+        ? (await buscarEquiposGraph(consulta)).equipos
+        : await listarEquiposGraph(limite);
+
+      return enviarJson(res, 200, {
+        ok: true,
+        total: equipos.length,
+        equipos,
+      });
+    } catch (err) {
+      console.error(`[EQUIPOS] placa="${placa || ""}" q="${consulta}":`, err);
+      return enviarJson(res, Number(err?.status) || 502, {
+        ok: false,
+        equipos: [],
+        error:
+          err?.message ||
+          "No se pudo consultar el inventario en SharePoint.",
+        detalle: {
+          grafoStatus: err?.grafoStatus ?? null,
+          causa: err?.causa ?? null,
+        },
+      });
+    }
   }
 
   if (ruta === "/api/historial" && req.method === "GET") {
