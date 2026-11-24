@@ -1,148 +1,59 @@
 /* ============================================================
-   server.js | Acta de Tecnología - Levapan
+   server.js | Acta de Tecnología - Levapan (Supabase Edition)
    ------------------------------------------------------------
-   Servidor HTTP nativo (sin Express) que:
-
-   1) Sirve la interfaz (index.html, css, js, imágenes, video).
-   2) Consulta el inventario de la Lista de SharePoint por Placa
-      usando Microsoft Graph (Client Credentials + msal-node).
-   3) Genera el PDF oficial CORP-TEC-FR-002 con pdf-lib, lo sube a la
-      carpeta compartida de SharePoint (NubeLevapan) con Microsoft
-      Graph y, en Windows, además deja una copia en
-      C:\Actas-Levapan\Actas_Guardadas\. En la nube (Linux) no hay disco
-      persistente: solo se usa os.tmpdir() mientras dura la subida.
-      Power Automate queda como respaldo opcional.
-   4) Expone el estado del servicio y la búsqueda de equipos.
-
-   Usa Microsoft Graph para el inventario y para archivar las actas.
+   Servidor HTTP nativo (sin Express):
+     · PostgreSQL  → inventario, actas e historial (Supabase)
+     · Auth        → JWT de Supabase validado con SERVICE_ROLE_KEY
+     · Storage     → PDFs privados en el bucket "actas-pdf"
+     · pdf-lib     → plantilla oficial CORP-TEC-FR-002
+   Sin Microsoft Entra ID, Microsoft Graph ni SharePoint.
    ============================================================ */
 
+import "dotenv/config";
 import http from "node:http";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import crypto from "node:crypto";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import multer from "multer";
+import XLSX from "xlsx";
 
-import axios from "axios";
-import { ConfidentialClientApplication } from "@azure/msal-node";
-
-// Debe importarse antes que graph.js: carga el archivo .env.
-import "./server/config.js";
 import {
-  asegurarSiteIdInventario,
-  buscarEquipoGraph,
-  buscarEquiposGraph,
-  configGraph,
-  contarEquiposGraph,
-  listarEquiposGraph,
-  normalizarTipo,
-  normalizarMarca,
-  subirActaCarpetaCompartida,
-  verificarDestinoActas,
-} from "./server/graph.js";
+  supabaseAdmin,
+  configSupabase,
+  contarEquipos,
+  autenticarToken,
+  mensajeConfiguracionIncompleta,
+  BUCKET_ACTAS,
+} from "./server/supabase.js";
 import { generarActaPdf } from "./server/acta-pdf.js";
+import {
+  LOTE_EQUIPOS,
+  mapearFila,
+  renombrarEncabezados,
+} from "./server/normalizar.js";
+import { extraerTextoPdf } from "./server/extraer-texto-pdf.js";
+import {
+  BUCKET_BOVEDA,
+  calcularSha256,
+  configAlmacenamiento,
+  descargarObjeto,
+  estadoAlmacenamiento,
+  firmarObjeto,
+  rutaDocumento,
+  subirObjeto,
+} from "./services/storageVault.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ = __dirname;
 
-/* Render y Azure App Service inyectan el puerto en process.env.PORT. */
 const PORT = process.env.PORT || 3000;
 const PUERTO = Number(PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
-const HTTP_WEBHOOK_URL = () => String(process.env.HTTP_WEBHOOK_URL || "").trim();
-
-/* ------------------------------------------------------------
-   Single Sign-On con Microsoft Entra ID
-   ------------------------------------------------------------
-   Todo el acceso pasa por una cuenta corporativa de Levapan con
-   MFA. La sesión vive en una cookie firmada (HMAC-SHA256), httpOnly
-   y SameSite=Lax; no se guarda nada en el cliente más que ese token. */
-
-const ENTRA_TENANT = String(process.env.TENANT_ID || "").trim();
-const ENTRA_CLIENT = String(process.env.CLIENT_ID || "").trim();
-const ENTRA_SECRET = String(process.env.CLIENT_SECRET || "").trim();
-const SCOPES_SSO = ["openid", "profile", "email", "User.Read"];
-
-/** Cookie de sesión y cookie temporal del parámetro OAuth "state". */
-const COOKIE_SESION = "acta_levapan_sesion";
-const COOKIE_ESTADO = "acta_levapan_estado";
-const DURACION_SESION = 8 * 60 * 60; // 8 horas (segundos)
-
-/**
- * Clave para firmar la sesión. Si falta en .env se usa una efímera: la
- * aplicación sigue funcionando, pero las sesiones se invalidan al
- * reiniciar el servidor.
- */
-const SESSION_SECRET =
-  String(process.env.SESSION_SECRET || "").trim() ||
-  crypto.randomBytes(48).toString("hex");
-
-/** Dominios personales que nunca deben entrar (solo cuentas Levapan). */
-const DOMINIOS_PERSONALES = new Set([
-  "hotmail.com",
-  "hotmail.es",
-  "outlook.com",
-  "outlook.es",
-  "live.com",
-  "live.com.mx",
-  "msn.com",
-]);
-
-let clienteEntra = null;
-
-/** Cliente confidencial de MSAL (solo el tenant corporativo de Levapan). */
-function obtenerClienteEntra() {
-  if (!ENTRA_TENANT || !ENTRA_CLIENT || !ENTRA_SECRET) return null;
-  if (!clienteEntra) {
-    clienteEntra = new ConfidentialClientApplication({
-      auth: {
-        clientId: ENTRA_CLIENT,
-        authority: `https://login.microsoftonline.com/${ENTRA_TENANT}`,
-        clientSecret: ENTRA_SECRET,
-      },
-    });
-  }
-  return clienteEntra;
-}
-
-/* En Linux (Render / Azure) no existen C:\Actas-Levapan ni disco persistente. */
-const ES_NUBE =
-  process.platform !== "win32" || process.env.CLOUD_MODE === "true";
-
-/** Ruta lógica dentro de SharePoint: 2026/11-Noviembre */
-const CARPETA_ACTAS = String(process.env.ACTA_CARPETA_BASE || "").trim();
-
-/**
- * Copia del PDF en disco:
- *  - Windows local: C:\Actas-Levapan\Actas_Guardadas (copia obligatoria).
- *  - Nube (Linux o CLOUD_MODE=true): os.tmpdir(), solo temporal.
- */
-const DIR_ACTAS_LOCAL = ES_NUBE
-  ? path.join(os.tmpdir(), "acta-levapan")
-  : path.resolve(
-      String(process.env.ACTA_DIR_LOCAL || "").trim() ||
-        path.join(RAIZ, "..", "Actas_Guardadas")
-    );
-
-/** Tamaño máximo del cuerpo: el PDF puede incluir fotos del equipo. */
 const LIMITE_CUERPO = 40 * 1024 * 1024;
-
-const MESES = [
-  "Enero",
-  "Febrero",
-  "Marzo",
-  "Abril",
-  "Mayo",
-  "Junio",
-  "Julio",
-  "Agosto",
-  "Septiembre",
-  "Octubre",
-  "Noviembre",
-  "Diciembre",
-];
+const CONFIG = configSupabase();
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -181,6 +92,16 @@ function enviarJson(res, estado, datos) {
   res.end(cuerpo);
 }
 
+function enviarBinario(res, bytes, nombre, tipo) {
+  res.writeHead(200, {
+    "Content-Type": tipo,
+    "Content-Length": bytes.length,
+    "Content-Disposition": `attachment; filename="${nombre}"`,
+    "Cache-Control": "no-store",
+  });
+  res.end(bytes);
+}
+
 function leerCuerpo(req) {
   return new Promise((resolve, reject) => {
     const partes = [];
@@ -202,7 +123,6 @@ function leerCuerpo(req) {
       }
       partes.push(trozo);
     });
-
     req.on("end", () => {
       if (!excedido) resolve(Buffer.concat(partes));
     });
@@ -222,541 +142,131 @@ async function leerJson(req) {
   }
 }
 
-/** Deja un nombre de archivo seguro conservando tildes y espacios simples. */
-function sanitizarNombreArchivo(texto, respaldo = "ACTA.pdf") {
-  const limpio = String(texto ?? "")
-    .normalize("NFC")
-    .replace(/[\\/:*?"<>|\r\n\t]/g, "")
-    .replace(/\s+/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .trim();
-  return limpio || respaldo;
+function fallo(mensaje, status = 400) {
+  return Object.assign(new Error(mensaje), { status });
 }
 
-/** Carpeta lógica del acta dentro de SharePoint: "2026/11-Noviembre". */
-function carpetaFecha(fecha) {
-  const anio = String(fecha.getFullYear());
-  const mes = String(fecha.getMonth() + 1).padStart(2, "0");
-  const relativa = `${anio}/${mes}-${MESES[fecha.getMonth()]}`;
-  return CARPETA_ACTAS ? `${CARPETA_ACTAS}/${relativa}` : relativa;
-}
-
-/** Evita sobrescribir actas del mismo equipo el mismo día. */
-function nombreConSello(nombre, fecha, copia = 0) {
-  const extension = path.extname(nombre);
-  const base = path.basename(nombre, extension);
-  if (copia === 0 && /_\d{8}-\d{6}$/.test(base)) return nombre;
-
-  const sello = [
-    String(fecha.getFullYear()),
-    String(fecha.getMonth() + 1).padStart(2, "0"),
-    String(fecha.getDate()).padStart(2, "0"),
-    "-",
-    String(fecha.getHours()).padStart(2, "0"),
-    String(fecha.getMinutes()).padStart(2, "0"),
-    String(fecha.getSeconds()).padStart(2, "0"),
-  ].join("");
-
-  const sufijo = copia > 0 ? `-${copia}` : "";
-  return `${base}_${sello}${sufijo}${extension || ".pdf"}`;
-}
-
-/** true solo si HTTP_WEBHOOK_URL es una URL http(s) real (no el placeholder). */
-function webhookConfigurado() {
-  const url = HTTP_WEBHOOK_URL();
-  if (!url || !/^https?:\/\//i.test(url)) return false;
-  return !/tu-url-de-webhook|tu-url|cambia-esta-url|example\.com/i.test(url);
-}
-
-/**
- * Guarda el PDF en DIR_ACTAS_LOCAL (sin subcarpetas y sin archivos
- * adicionales). En Windows es la copia definitiva en
- * C:\Actas-Levapan\Actas_Guardadas; en la nube es un temporal en
- * os.tmpdir() que se borra después de subirlo a SharePoint. Si el nombre ya
- * existe añade un sello para no perder actas anteriores.
- */
-function guardarPdfLocal(bytes, nombre, fecha) {
-  fs.mkdirSync(DIR_ACTAS_LOCAL, { recursive: true });
-
-  let destino = path.join(DIR_ACTAS_LOCAL, nombre);
-  if (fs.existsSync(destino)) {
-    destino = path.join(DIR_ACTAS_LOCAL, nombreConSello(nombre, fecha));
-    let copia = 1;
-    while (fs.existsSync(destino)) {
-      destino = path.join(DIR_ACTAS_LOCAL, nombreConSello(nombre, fecha, copia));
-      copia += 1;
-      if (copia > 20) break;
-    }
+function responderError(res, err, contexto = "") {
+  const estado = Number(err?.status) || 500;
+  console.error(`[ERROR]${contexto ? ` ${contexto}:` : ""}`, err?.message || err);
+  if (!res.headersSent) {
+    enviarJson(res, estado, {
+      ok: false,
+      error: err?.message || "Error interno del servidor.",
+      ...(err?.detalle ? { detalle: err.detalle } : {}),
+    });
+  } else {
+    res.end();
   }
-
-  fs.writeFileSync(destino, bytes);
-  return { destino, directorio: DIR_ACTAS_LOCAL };
 }
 
-/**
- * Nombre consistente con la carpeta de SharePoint:
- * "<Serial_o_Placa>_<Nombre_Usuario>_<tipo_acta>.pdf".
- * Se quitan tildes y caracteres no admitidos por SharePoint.
- */
-function nombreActaCompartida(datos = {}) {
-  const limpiar = (valor, respaldo) => {
-    const texto = String(valor ?? "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "");
-    return (
-      sanitizarNombreArchivo(texto, respaldo).replace(/[#%&{}$!'@+`=]/g, "") ||
-      respaldo
-    );
-  };
+/* ------------------------------------------------------------
+   Autenticación: middleware requiereSesion
+   ------------------------------------------------------------ */
 
-  const equipo =
-    limpiar(datos.serial, "") || limpiar(datos.placa, "") || "EQUIPO";
-  const usuario = limpiar(datos.nombre, "") || "SIN_USUARIO";
-  const tipo = limpiar(datos.tipoActa, "") || "Asignacion";
-
-  return `${equipo}_${usuario}_${tipo}.pdf`;
+async function requiereSesion(req) {
+  const cabecera = String(req.headers.authorization || "").trim();
+  const coincidencia = /^Bearer\s+(.+)$/i.exec(cabecera);
+  if (!coincidencia) {
+    throw fallo("Debes iniciar sesión para usar esta API.", 401);
+  }
+  return autenticarToken(coincidencia[1]);
 }
 
-/** "Asignación" → false · "Devolución" → true (sin distinguir tildes). */
-function esDevolucion(tipoActa) {
-  return String(tipoActa ?? "")
+/* ------------------------------------------------------------
+   Normalizaciones de dominio
+   ------------------------------------------------------------ */
+
+function sinAcentos(texto) {
+  return String(texto ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase() === "devolucion";
+    .trim();
 }
 
-/** Equipo actualizado a partir de los datos del acta (sin consultar Graph). */
-function equipoDesdeActa(datos, estado, fecha) {
-  const usuario = esDevolucion(datos.tipoActa)
-    ? ""
-    : String(datos.nombre ?? "").trim();
-  const cedula = esDevolucion(datos.tipoActa)
-    ? ""
-    : String(datos.documento ?? "").trim();
+function normalizarTipoActa(valor) {
+  const texto = sinAcentos(valor).toLowerCase();
+  if (texto.startsWith("devol")) return "Devolucion";
+  if (texto.startsWith("prest")) return "Prestamo";
+  return "Asignacion";
+}
 
-  return {
-    placa: String(datos.placa ?? "").trim(),
-    serial: String(datos.serial ?? "").trim(),
-    tipo: normalizarTipo(datos.tipo),
-    marca: normalizarMarca(datos.marca),
-    modelo: String(datos.modelo ?? "").trim(),
-    estado,
-    usuario_actual: usuario,
-    cedula_usuario: cedula,
-    accesorios: String(datos.accesorios ?? "").trim(),
-    software: String(datos.software ?? "").trim(),
-    procesador: String(datos.procesador ?? "").trim(),
-    ram: String(datos.ram ?? "").trim(),
-    disco: String(datos.disco ?? "").trim(),
-    hostname: String(datos.hostname ?? "").trim(),
-    observaciones: String(datos.observaciones ?? "").trim(),
-    fecha_actualizacion: fecha.toISOString(),
-    nombreusuario: usuario,
-    cedula,
+const ESTADOS_PERMITIDOS = [
+  "Disponible",
+  "Asignado",
+  "En Mantenimiento",
+  "Prestamo",
+  "Dado de Baja",
+];
+
+function normalizarEstadoEquipo(valor) {
+  const texto = sinAcentos(valor).toLowerCase().replace(/\s+/g, " ");
+  const mapa = {
+    disponible: "Disponible",
+    "disponible para asignar": "Disponible",
+    asignado: "Asignado",
+    prestamo: "Prestamo",
+    mantenimiento: "En Mantenimiento",
+    "en mantenimiento": "En Mantenimiento",
+    "dado de baja": "Dado de Baja",
   };
+  return mapa[texto] || (ESTADOS_PERMITIDOS.includes(valor) ? valor : "Disponible");
 }
 
-function ipv4Locales() {
-  const resultados = [];
-  const interfaces = os.networkInterfaces();
-
-  for (const [nombre, direcciones] of Object.entries(interfaces)) {
-    for (const direccion of direcciones || []) {
-      if (direccion.family !== "IPv4" || direccion.internal) continue;
-      resultados.push({ interfaz: nombre, ip: direccion.address });
-    }
-  }
-
-  const prioridad = (ip) =>
-    ip.startsWith("192.168.") ? 0 : ip.startsWith("10.") ? 1 : ip.startsWith("172.") ? 2 : 3;
-
-  return resultados.sort((a, b) => prioridad(a.ip) - prioridad(b.ip));
-}
-
-/* ------------------------------------------------------------
-   Sesión SSO: cookies firmadas y rutas /auth/*
-   ------------------------------------------------------------ */
-
-/** true si la petición llegó por HTTPS (directa o tras un proxy). */
-function esHttps(req) {
-  const reenviado = String(req.headers["x-forwarded-proto"] || "")
-    .split(",")[0]
+function limpiarBusqueda(valor) {
+  return String(valor ?? "")
     .trim()
-    .toLowerCase();
-  if (reenviado) return reenviado === "https";
-  return Boolean(req.socket?.encrypted);
+    .replace(/[%,()\\"']/g, " ")
+    .replace(/\s+/g, " ")
+    .slice(0, 100);
 }
 
-/** Origen real de la petición, respetando balanceadores y túneles HTTPS. */
-function origenPeticion(req) {
-  const proto = esHttps(req) ? "https" : "http";
-  const host =
-    String(req.headers["x-forwarded-host"] || "").split(",")[0].trim() ||
-    req.headers.host ||
-    `localhost:${PUERTO}`;
-  return `${proto}://${host}`;
+function sanitizarPlaca(valor) {
+  return String(valor ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "SIN-PLACA";
 }
 
-/**
- * URI de redirección de Entra ID. REDIRECT_URI tiene prioridad; si no está
- * definida se calcula con el host real para funcionar igual en localhost,
- * detrás de un túnel HTTPS o en Render/Azure.
- */
-function uriRedireccion(req) {
-  const fija = String(process.env.REDIRECT_URI || "").trim();
-  return fija || `${origenPeticion(req)}/auth/callback`;
+async function registrarMovimiento(movimiento) {
+  const { error } = await supabaseAdmin
+    .from("historial_movimientos")
+    .insert([movimiento]);
+  if (error) console.warn("[HISTORIAL] No se pudo registrar:", error.message);
 }
 
-/** Lee las cookies de la petición sin dependencias externas. */
-function leerCookies(req) {
-  const salida = {};
-  const cabecera = req.headers.cookie;
-  if (!cabecera) return salida;
-
-  for (const parte of cabecera.split(";")) {
-    const separador = parte.indexOf("=");
-    if (separador <= 0) continue;
-    const nombre = parte.slice(0, separador).trim();
-    const valor = parte.slice(separador + 1).trim();
-    if (!nombre) continue;
-    try {
-      salida[nombre] = decodeURIComponent(valor);
-    } catch {
-      salida[nombre] = valor;
-    }
-  }
-  return salida;
-}
-
-/** Arma una cabecera Set-Cookie con las protecciones de la sesión. */
-function crearCookie(nombre, valor, { maxAge, req, ruta = "/" } = {}) {
-  const partes = [
-    `${nombre}=${encodeURIComponent(valor)}`,
-    `Path=${ruta}`,
-    "HttpOnly",
-    "SameSite=Lax",
-  ];
-  if (typeof maxAge === "number") {
-    partes.push(`Max-Age=${Math.trunc(maxAge)}`);
-    if (maxAge <= 0) partes.push("Expires=Thu, 01 Jan 1970 00:00:00 GMT");
-  }
-  if (esHttps(req)) partes.push("Secure");
-  return partes.join("; ");
-}
-
-/** Firma HMAC-SHA256 de la carga útil codificada. */
-function firmarSesion(carga) {
-  return crypto.createHmac("sha256", SESSION_SECRET).update(carga).digest("base64url");
-}
-
-/** Serializa { name, email, oid } en un token firmado. */
-function crearTokenSesion(datos) {
-  const carga = Buffer.from(JSON.stringify(datos), "utf8").toString("base64url");
-  return `${carga}.${firmarSesion(carga)}`;
-}
-
-/** Devuelve la sesión si la firma es válida y no ha expirado. */
-function leerSesion(req) {
-  const token = leerCookies(req)[COOKIE_SESION];
-  if (!token) return null;
-
-  const punto = token.lastIndexOf(".");
-  if (punto <= 0) return null;
-
-  const carga = token.slice(0, punto);
-  const firma = token.slice(punto + 1);
-  const esperada = firmarSesion(carga);
-  const recibida = Buffer.from(firma);
-  const calculada = Buffer.from(esperada);
-
-  if (
-    recibida.length !== calculada.length ||
-    !crypto.timingSafeEqual(recibida, calculada)
-  ) {
-    return null;
-  }
-
-  try {
-    const datos = JSON.parse(Buffer.from(carga, "base64url").toString("utf8"));
-    if (!datos?.email || !Number.isFinite(datos.exp) || datos.exp < Date.now()) {
-      return null;
-    }
-    return datos;
-  } catch {
-    return null;
-  }
-}
-
-/** Página HTML mínima para avisos de autenticación. */
-function responderHtml(res, estado, titulo, mensaje) {
-  const cuerpo = `<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${titulo} · Acta de Tecnología Levapan</title>
-<style>
-  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f7eef0;font-family:"Segoe UI",system-ui,sans-serif;color:#3f2930;padding:24px}
-  main{max-width:520px;background:#fff;border:1px solid #e7cdd3;border-radius:18px;padding:28px 30px;box-shadow:0 18px 40px rgba(90,12,25,.14);text-align:center}
-  h1{margin:0 0 10px;font-size:1.25rem;color:#8f1226}
-  p{margin:0 0 18px;line-height:1.55;font-size:.95rem}
-  a{display:inline-block;padding:9px 18px;border-radius:999px;background:#b3122b;color:#fff;text-decoration:none;font-weight:700;font-size:.9rem}
-</style>
-</head>
-<body>
-<main>
-  <h1>${titulo}</h1>
-  <p>${mensaje}</p>
-  <a href="/auth/login">Iniciar sesión de nuevo</a>
-</main>
-</body>
-</html>`;
-  res.writeHead(estado, {
-    "Content-Type": "text/html; charset=utf-8",
-    "Content-Length": Buffer.byteLength(cuerpo),
-    "Cache-Control": "no-store",
-  });
-  res.end(cuerpo);
-}
-
-/** Compara dos textos en tiempo constante (evita filtrar el "state"). */
-function igualesSeguro(a, b) {
-  const ba = Buffer.from(String(a));
-  const bb = Buffer.from(String(b));
-  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
-}
-
-async function manejarAuth(req, res, url) {
-  const ruta = url.pathname;
-  const cliente = obtenerClienteEntra();
-
-  if (!cliente) {
-    return responderHtml(
-      res,
-      503,
-      "SSO no configurado",
-      "Faltan TENANT_ID, CLIENT_ID o CLIENT_SECRET en el servidor. " +
-        "Revisa las variables de entorno de Microsoft Entra ID."
-    );
-  }
-
-  if (ruta === "/auth/login" && req.method === "GET") {
-    const estado = crypto.randomBytes(24).toString("base64url");
-    const destino = await cliente.getAuthCodeUrl({
-      scopes: SCOPES_SSO,
-      redirectUri: uriRedireccion(req),
-      prompt: "select_account",
-      state: estado,
-    });
-
-    res.writeHead(302, {
-      Location: destino,
-      "Set-Cookie": crearCookie(COOKIE_ESTADO, estado, { maxAge: 600, req }),
-      "Cache-Control": "no-store",
-    });
-    return res.end();
-  }
-
-  if (ruta === "/auth/callback" && req.method === "GET") {
-    const cookies = leerCookies(req);
-    const borrarEstado = crearCookie(COOKIE_ESTADO, "", { maxAge: 0, req });
-
-    const errorEntra = url.searchParams.get("error");
-    if (errorEntra) {
-      const detalle =
-        url.searchParams.get("error_description") || errorEntra;
-      res.setHeader("Set-Cookie", borrarEstado);
-      return responderHtml(
-        res,
-        401,
-        "No se pudo iniciar sesión",
-        `Microsoft rechazó el acceso: ${detalle}`
-      );
-    }
-
-    const estadoRecibido = url.searchParams.get("state") || "";
-    const estadoEsperado = cookies[COOKIE_ESTADO] || "";
-    if (!estadoRecibido || !estadoEsperado || !igualesSeguro(estadoRecibido, estadoEsperado)) {
-      res.setHeader("Set-Cookie", borrarEstado);
-      return responderHtml(
-        res,
-        400,
-        "Solicitud expirada",
-        "La solicitud de inicio de sesión ya no es válida. Vuelve a intentarlo."
-      );
-    }
-
-    const codigo = url.searchParams.get("code");
-    if (!codigo) {
-      res.setHeader("Set-Cookie", borrarEstado);
-      return responderHtml(
-        res,
-        400,
-        "Falta el código de autorización",
-        "Microsoft no devolvió el código necesario para completar el acceso."
-      );
-    }
-
-    let resultado;
-    try {
-      resultado = await cliente.acquireTokenByCode({
-        code: codigo,
-        scopes: SCOPES_SSO,
-        redirectUri: uriRedireccion(req),
-      });
-    } catch (err) {
-      console.error("[SSO] No se pudo canjear el código:", err.message);
-      res.setHeader("Set-Cookie", borrarEstado);
-      return responderHtml(
-        res,
-        401,
-        "No se pudo completar el inicio de sesión",
-        "Microsoft Entra ID rechazó la autenticación. " +
-          "Verifica que la cuenta pertenezca a Levapan y vuelve a intentarlo."
-      );
-    }
-
-    const claims = resultado?.idTokenClaims || {};
-    const tenant = String(claims.tid || resultado?.tenantId || "");
-
-    // Solo el tenant corporativo de Levapan: rechaza cuentas personales.
-    if (!tenant || tenant.toLowerCase() !== ENTRA_TENANT.toLowerCase()) {
-      console.warn(`[SSO] Acceso rechazado para el tenant "${tenant || "desconocido"}".`);
-      res.setHeader("Set-Cookie", borrarEstado);
-      return responderHtml(
-        res,
-        403,
-        "Cuenta no autorizada",
-        "Este aplicativo solo admite cuentas corporativas de Levapan. " +
-          "Las cuentas personales de Hotmail, Outlook o Live no tienen acceso."
-      );
-    }
-
-    const email = String(
-      claims.email || claims.preferred_username || claims.upn || ""
-    ).trim();
-    const dominio = email.includes("@")
-      ? email.split("@").pop().toLowerCase()
-      : "";
-
-    if (!email || DOMINIOS_PERSONALES.has(dominio)) {
-      res.setHeader("Set-Cookie", borrarEstado);
-      return responderHtml(
-        res,
-        403,
-        "Cuenta no autorizada",
-        "No se pudo validar un correo corporativo de Levapan en la sesión."
-      );
-    }
-
-    const sesion = {
-      name: String(claims.name || claims.preferred_username || email).trim(),
-      email,
-      oid: String(claims.oid || claims.sub || "").trim(),
-      tid: tenant,
-      exp: Date.now() + DURACION_SESION * 1000,
-    };
-
-    res.writeHead(302, {
-      Location: "/",
-      "Set-Cookie": [
-        crearCookie(COOKIE_SESION, crearTokenSesion(sesion), {
-          maxAge: DURACION_SESION,
-          req,
-        }),
-        borrarEstado,
-      ],
-      "Cache-Control": "no-store",
-    });
-    return res.end();
-  }
-
-  if (ruta === "/auth/logout" && req.method === "GET") {
-    const cierre = new URL(
-      `https://login.microsoftonline.com/${ENTRA_TENANT}/oauth2/v2.0/logout`
-    );
-    cierre.searchParams.set(
-      "post_logout_redirect_uri",
-      `${origenPeticion(req)}/`
-    );
-
-    res.writeHead(302, {
-      Location: cierre.toString(),
-      "Set-Cookie": [
-        crearCookie(COOKIE_SESION, "", { maxAge: 0, req }),
-        crearCookie(COOKIE_ESTADO, "", { maxAge: 0, req }),
-      ],
-      "Cache-Control": "no-store",
-    });
-    return res.end();
-  }
-
-  return responderHtml(
-    res,
-    404,
-    "Ruta no encontrada",
-    "La ruta de autenticación solicitada no existe."
-  );
-}
-
-/** Rutas que exigen sesión: la app, su JavaScript, los datos y toda la API. */
-function requiereSesion(ruta) {
-  return (
-    ruta === "/" ||
-    ruta === "/index.html" ||
-    ruta.startsWith("/js/") ||
-    ruta.startsWith("/data/") ||
-    ruta.startsWith("/api/")
-  );
-}
-
-/**
- * Sin sesión: 302 al SSO si es navegación HTML; 401 si es fetch/API.
- * Se evita redirigir /api/* aunque el Accept sea HTML para no romper fetch.
- */
-function responderSinSesion(req, res, ruta) {
-  const aceptaHtml = String(req.headers.accept || "").includes("text/html");
-  if (aceptaHtml && !ruta.startsWith("/api/")) {
-    res.writeHead(302, {
-      Location: "/auth/login",
-      "Cache-Control": "no-store",
-    });
-    return res.end();
-  }
-  return enviarJson(res, 401, {
-    ok: false,
-    autenticado: false,
-    error: "Debes iniciar sesión con tu cuenta corporativa de Levapan.",
-  });
+async function idEquipoPorPlaca(placa) {
+  const { data } = await supabaseAdmin
+    .from("equipos")
+    .select("id, placa, estado, usuario_asignado, usuario_cedula, sede")
+    .eq("placa", placa)
+    .maybeSingle();
+  return data || null;
 }
 
 /* ------------------------------------------------------------
-   Archivos estáticos
+   Archivos estáticos (interfaz PWA)
    ------------------------------------------------------------ */
 
-/* Solo se publican los archivos de la interfaz. El inventario fuente,
-   el código del servidor y la carpeta .git quedan fuera del alcance web. */
 const ARCHIVOS_PUBLICOS = new Set([
   "/index.html",
   "/manifest.json",
   "/sw.js",
-  "/data/inventario.json",
+  "/favicon.ico",
 ]);
 const CARPETAS_PUBLICAS = ["/css/", "/js/", "/images/", "/icons/", "/media/"];
 
-async function servirEstatico(req, res, rutaUrl) {
+async function servirEstatico(req, res, url) {
   let relativa;
   try {
-    // Se normaliza antes de validar para impedir rutas como /js/../server/db.js
     relativa = path.posix.normalize(
-      decodeURIComponent(rutaUrl.pathname).replace(/\\/g, "/")
+      decodeURIComponent(url.pathname).replace(/\\/g, "/")
     );
   } catch {
     return enviarJson(res, 400, { ok: false, error: "Ruta inválida." });
   }
-
   if (relativa === "/" || relativa === "." || relativa === "") {
     relativa = "/index.html";
   }
@@ -779,7 +289,6 @@ async function servirEstatico(req, res, rutaUrl) {
   } catch {
     return enviarJson(res, 404, { ok: false, error: "Archivo no encontrado." });
   }
-
   if (stats.isDirectory()) {
     return enviarJson(res, 404, { ok: false, error: "Archivo no encontrado." });
   }
@@ -793,7 +302,6 @@ async function servirEstatico(req, res, rutaUrl) {
     "Accept-Ranges": "bytes",
   };
 
-  // Soporte de rangos para el video de fondo.
   const rango = req.headers.range;
   if (rango && extension === ".mp4") {
     const coincidencia = /bytes=(\d*)-(\d*)/.exec(rango);
@@ -819,487 +327,1516 @@ async function servirEstatico(req, res, rutaUrl) {
 }
 
 /* ------------------------------------------------------------
-   API
+   Health / Estado (conexión real a PostgreSQL)
    ------------------------------------------------------------ */
 
-async function manejarEstado(res) {
-  const config = configGraph();
-  const ips = ipv4Locales();
-
-  const base = {
-    ok: true,
-    servidor: "Acta de Tecnología Levapan",
-    puerto: PUERTO,
-    ips: ips.map((item) => item.ip),
-    enlaceRed: ips.length
-      ? `http://${ips[0].ip}:${PUERTO}`
-      : `http://localhost:${PUERTO}`,
-    totalEquipos: 0,
-    ultimaImportacion: null,
-    dbPath: null,
-    pdfDir: ES_NUBE
-      ? "SharePoint (carpeta compartida NubeLevapan) · sin copia local en la nube"
-      : "SharePoint (carpeta compartida NubeLevapan) + respaldo local Actas_Guardadas",
-    modoNube: ES_NUBE,
-    fechaServidor: new Date().toISOString(),
-    graph: {
-      configurado: config.configurado,
-      sitio: config.siteId || null,
-      lista: config.listId || null,
-    },
-  };
-
-  if (!config.configurado) {
-    return enviarJson(res, 503, {
-      ...base,
-      ok: false,
-      error:
-        "Microsoft Graph no está configurado. Faltan las variables: " +
-        `${config.faltantes.join(", ")}.`,
-    });
-  }
-
+async function manejarHealth(res) {
   try {
-    base.totalEquipos = await contarEquiposGraph();
+    const totalEquipos = await contarEquipos();
+    return enviarJson(res, 200, {
+      ok: true,
+      servicio: "acta-levapan",
+      modo: "cloud-supabase",
+      totalEquipos,
+      fecha: new Date().toISOString(),
+    });
   } catch (err) {
-    console.error("[GRAPH] No se pudo leer el inventario:", err.message);
     return enviarJson(res, 503, {
-      ...base,
       ok: false,
-      error: `No se pudo consultar el inventario en SharePoint: ${err.message}`,
+      modo: "cloud-supabase",
+      error: err.message,
+      fecha: new Date().toISOString(),
     });
   }
+}
 
-  return enviarJson(res, 200, base);
+async function manejarEstado(res) {
+  try {
+    const totalEquipos = await contarEquipos();
+    return enviarJson(res, 200, {
+      ok: true,
+      modo: "cloud-supabase",
+      totalEquipos,
+      supabase: {
+        configurado: CONFIG.configurado,
+        url: CONFIG.url || null,
+        bucket: BUCKET_ACTAS,
+      },
+      almacenamiento: estadoAlmacenamiento(),
+      servidor: "Acta de Tecnología Levapan · Supabase",
+      fechaServidor: new Date().toISOString(),
+    });
+  } catch (err) {
+    return enviarJson(res, 503, {
+      ok: false,
+      modo: "cloud-supabase",
+      totalEquipos: 0,
+      error: err.message,
+      ...(CONFIG.configurado ? {} : { detalle: mensajeConfiguracionIncompleta(CONFIG) }),
+    });
+  }
 }
 
 /* ------------------------------------------------------------
-   Entrega del PDF a Power Automate
+   EQUIPOS
    ------------------------------------------------------------ */
 
-const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const httpAutomate = axios.create({
-  timeout: 60000,
-  maxBodyLength: Infinity,
-  maxContentLength: Infinity,
-  headers: { "Content-Type": "application/json" },
-});
-
-function esErrorReintentable(estado) {
-  return !estado || estado === 408 || estado === 429 || estado >= 500;
-}
-
-function describirRespuesta(datos, respaldo) {
-  if (!datos) return respaldo;
-  if (typeof datos === "string") return datos.slice(0, 300);
-  try {
-    return JSON.stringify(datos).slice(0, 300);
-  } catch {
-    return respaldo;
+async function buscarEquiposSugeridos(res, url) {
+  const consulta = limpiarBusqueda(url.searchParams.get("q"));
+  if (consulta.length < 2) {
+    return enviarJson(res, 200, {
+      ok: true,
+      q: consulta,
+      modo: "supabase-ilike",
+      total: 0,
+      equipos: [],
+    });
   }
+
+  const filtro = `placa.ilike.%${consulta}%,serial.ilike.%${consulta}%,usuario_asignado.ilike.%${consulta}%`;
+  const { data, error } = await supabaseAdmin
+    .from("equipos")
+    .select("id, placa, tipo, marca, modelo, serial, estado, sede, usuario_asignado, usuario_cedula")
+    .or(filtro)
+    .order("updated_at", { ascending: false })
+    .limit(15);
+
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+
+  return enviarJson(res, 200, {
+    ok: true,
+    q: consulta,
+    modo: "supabase-ilike",
+    total: data.length,
+    equipos: data,
+  });
 }
 
-/**
- * Envía el PDF en base64 al flujo de Power Automate, que lo guarda en
- * SharePoint. Reintenta ante cortes de red, 429 y errores 5xx.
- */
-async function enviarActaAPowerAutomate({ nombre, carpeta, datos, base64 }) {
-  const url = HTTP_WEBHOOK_URL();
-  if (!url) {
-    throw Object.assign(
-      new Error(
-        "HTTP_WEBHOOK_URL no está configurada. Define la URL del flujo de Power Automate en el archivo .env."
-      ),
-      { status: 503 }
+async function contarCon(base, estado) {
+  let consulta = supabaseAdmin.from("equipos").select("id", { count: "exact", head: true });
+  if (base.q) {
+    consulta = consulta.or(
+      `placa.ilike.%${base.q}%,serial.ilike.%${base.q}%,usuario_asignado.ilike.%${base.q}%`
     );
   }
+  if (base.sede) consulta = consulta.eq("sede", base.sede);
+  if (base.tipo) consulta = consulta.eq("tipo", base.tipo);
+  if (base.sistema) consulta = consulta.eq("sistema_id", base.sistema);
+  if (estado) consulta = consulta.eq("estado", estado);
 
-  const cuerpo = {
-    origen: "acta-levapan",
-    nombreArchivo: nombre,
-    archivoBase64: base64,
-    contentType: "application/pdf",
-    carpeta,
-    placa: String(datos.placa ?? "").trim(),
-    tipoActa: String(datos.tipoActa || "Asignación").trim(),
-    fecha: String(datos.fecha || new Date().toISOString()),
-    colaborador: String(datos.nombre ?? "").trim(),
-    documento: String(datos.documento ?? "").trim(),
-    agenteTi: String(datos.agenteTi ?? "").trim(),
-    documentoTi: String(datos.documentoTi ?? "").trim(),
-    equipo: {
-      tipo: String(datos.tipo ?? "").trim(),
-      marca: String(datos.marca ?? "").trim(),
-      modelo: String(datos.modelo ?? "").trim(),
-      serial: String(datos.serial ?? "").trim(),
-    },
-    observaciones: String(datos.observaciones ?? "").trim(),
+  const { count, error } = await consulta;
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+  return Number(count) || 0;
+}
+
+async function listarEquipos(res, url) {
+  const base = {
+    q: limpiarBusqueda(url.searchParams.get("q")),
+    sede: String(url.searchParams.get("sede") || "").trim(),
+    tipo: String(url.searchParams.get("tipo") || "").trim(),
+    sistema: String(url.searchParams.get("sistema") || "").trim(),
+  };
+  const estado = String(url.searchParams.get("estado") || "").trim();
+  const pagina = Math.max(1, Number(url.searchParams.get("pagina")) || 1);
+  const limite = Math.min(200, Math.max(1, Number(url.searchParams.get("limite")) || 25));
+
+  const [total, disponibles, asignados, mantenimiento] = await Promise.all([
+    contarCon(base, ""),
+    contarCon(base, "Disponible"),
+    contarCon(base, "Asignado"),
+    contarCon(base, "En Mantenimiento"),
+  ]);
+
+  let consulta = supabaseAdmin
+    .from("equipos")
+    .select("*, sistemas(id, codigo, nombre, criticidad)", { count: "exact" });
+  if (base.q) {
+    consulta = consulta.or(
+      `placa.ilike.%${base.q}%,serial.ilike.%${base.q}%,usuario_asignado.ilike.%${base.q}%`
+    );
+  }
+  if (base.sede) consulta = consulta.eq("sede", base.sede);
+  if (base.tipo) consulta = consulta.eq("tipo", base.tipo);
+  if (base.sistema) consulta = consulta.eq("sistema_id", base.sistema);
+  if (estado) consulta = consulta.eq("estado", estado);
+
+  const { data, error, count } = await consulta
+    .order("updated_at", { ascending: false })
+    .range((pagina - 1) * limite, pagina * limite - 1);
+
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+
+  return enviarJson(res, 200, {
+    ok: true,
+    equipos: data || [],
+    pagina,
+    limite,
+    total: Number(count) || total,
+    resumen: { total, disponibles, asignados, mantenimiento },
+  });
+}
+
+async function crearEquipo(req, res, usuario) {
+  const cuerpo = await leerJson(req);
+  const placa = String(cuerpo.placa || "").trim();
+  if (!placa) throw fallo("La placa es obligatoria.");
+
+  const existente = await idEquipoPorPlaca(placa);
+  if (existente) throw fallo("Ya existe un equipo con esa placa.", 409);
+
+  const registro = {
+    placa,
+    tipo: cuerpo.tipo || null,
+    marca: cuerpo.marca || null,
+    modelo: cuerpo.modelo || null,
+    serial: cuerpo.serial || null,
+    estado: normalizarEstadoEquipo(cuerpo.estado || "Disponible"),
+    sede: cuerpo.sede || null,
+    usuario_asignado: cuerpo.usuario_asignado || null,
+    usuario_cedula: cuerpo.usuario_cedula || null,
+    garantia_hasta: cuerpo.garantia_hasta || null,
+    observaciones: cuerpo.observaciones || null,
+    sistema_id: cuerpo.sistema_id || null,
   };
 
-  let ultimoError = null;
+  const { data, error } = await supabaseAdmin
+    .from("equipos")
+    .insert([registro])
+    .select()
+    .single();
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
 
-  for (let intento = 1; intento <= 3; intento += 1) {
-    try {
-      const respuesta = await httpAutomate.post(url, cuerpo);
-      return { estado: respuesta.status, cuerpo: respuesta.data };
-    } catch (err) {
-      ultimoError = err;
-      const estado = err?.response?.status;
-      if (!esErrorReintentable(estado) || intento === 3) break;
-
-      const espera =
-        Number(err?.response?.headers?.["retry-after"]) * 1000 ||
-        500 * 2 ** (intento - 1);
-      await esperar(Math.min(espera, 5000));
-    }
-  }
-
-  const estado = ultimoError?.response?.status;
-  const detalle = describirRespuesta(
-    ultimoError?.response?.data,
-    ultimoError?.message || "sin detalle"
-  );
-
-  throw Object.assign(
-    new Error(
-      `Power Automate no recibió el acta${
-        estado ? ` (HTTP ${estado})` : ""
-      }: ${detalle}`
-    ),
-    { status: 502 }
-  );
-}
-
-/**
- * Guarda un acta: genera el PDF oficial con pdf-lib a partir de template.pdf
- * (o acepta un PDF ya generado por un cliente antiguo), lo escribe SIEMPRE en
- * C:\Actas-Levapan\Actas_Guardadas\<archivo>.pdf y lo sube a la carpeta
- * compartida exacta de SharePoint (NubeLevapan). Si SharePoint rechaza la
- * escritura por permisos (403), Power Automate queda como respaldo opcional.
- */
-async function manejarGuardarActa(req, res) {
-  const cuerpo = await leerJson(req);
-  const datos = cuerpo.datos || {};
-  const placa = String(datos.placa ?? "").trim();
-
-  if (!placa) {
-    return enviarJson(res, 400, {
-      ok: false,
-      error: "La placa del equipo es obligatoria.",
-    });
-  }
-
-  let bytes;
-  let generadoEnServidor = false;
-
-  if (cuerpo.pdfBase64) {
-    /* Compatibilidad con clientes anteriores que enviaban el PDF armado. */
-    const base64 = String(cuerpo.pdfBase64 || "").split(",").pop() || "";
-    bytes = Buffer.from(base64, "base64");
-  } else {
-    generadoEnServidor = true;
-    try {
-      const pdf = await generarActaPdf({
-        datos,
-        fotos: cuerpo.fotos || {},
-        firmas: cuerpo.firmas || datos.firmas || {},
-        plantilla: path.join(RAIZ, "template.pdf"),
-      });
-      bytes = Buffer.from(pdf);
-    } catch (err) {
-      console.error("[ACTA PDF] Error al generar el formato oficial:", err);
-      throw Object.assign(
-        new Error(
-          `No se pudo generar el PDF oficial: ${err?.message || "error desconocido"}`
-        ),
-        { status: 500 }
-      );
-    }
-  }
-
-  if (!bytes || bytes.length < 200) {
-    return enviarJson(res, 400, {
-      ok: false,
-      error: "El PDF generado está vacío o dañado.",
-    });
-  }
-
-  const ahora = new Date();
-  const carpeta = carpetaFecha(ahora);
-
-  /* Nombre uniforme en la copia local y en SharePoint. */
-  const nombre = nombreActaCompartida(datos);
-
-  /* 1) Copia local obligatoria: no depende de la red. */
-  let local = null;
-  let avisoLocal = "";
-  try {
-    local = guardarPdfLocal(bytes, nombre, ahora);
-    console.log(`[ACTA LOCAL] ${local.destino}`);
-  } catch (err) {
-    avisoLocal = `No se pudo guardar la copia local: ${err.message}`;
-    console.error("[ACTA LOCAL]", avisoLocal);
-  }
-
-  /* 2) Carpeta compartida exacta de SharePoint (enlace /:f:/ de NubeLevapan). */
-  const sharepoint = await subirActaCarpetaCompartida({
-    nombreArchivo: nombre,
-    pdfBuffer: bytes,
+  await registrarMovimiento({
+    equipo_id: data.id,
+    placa,
+    accion: "Creacion",
+    detalle: `Equipo creado con estado ${data.estado}${data.sede ? ` · sede ${data.sede}` : ""}`,
+    realizado_por: usuario.nombre_completo,
   });
 
-  if (sharepoint.ok) {
-    console.log(`[ACTA SHAREPOINT] ${sharepoint.webUrl || sharepoint.name}`);
-  } else {
-    console.warn(
-      `[ACTA] SharePoint rechazó el acta (HTTP ${sharepoint.status}): ${sharepoint.error}`
+  return enviarJson(res, 201, { ok: true, equipo: data });
+}
+
+const CAMPOS_EDITABLES = [
+  "tipo",
+  "marca",
+  "modelo",
+  "serial",
+  "estado",
+  "sede",
+  "usuario_asignado",
+  "usuario_cedula",
+  "garantia_hasta",
+  "observaciones",
+  "sistema_id",
+];
+
+async function editarEquipo(req, res, usuario, id) {
+  const cuerpo = await leerJson(req);
+  const { data: anterior, error: errorAnterior } = await supabaseAdmin
+    .from("equipos")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (errorAnterior) throw Object.assign(new Error(errorAnterior.message), { status: 502 });
+  if (!anterior) throw fallo("No se encontró el equipo.", 404);
+
+  const cambios = {};
+  for (const campo of CAMPOS_EDITABLES) {
+    if (!Object.hasOwn(cuerpo, campo)) continue;
+    let valor = cuerpo[campo];
+    if (campo === "estado") valor = normalizarEstadoEquipo(valor);
+    if (typeof valor === "string") valor = valor.trim() || null;
+    cambios[campo] = valor;
+  }
+  if (!Object.keys(cambios).length) throw fallo("No se enviaron cambios.");
+
+  const { data, error } = await supabaseAdmin
+    .from("equipos")
+    .update(cambios)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+
+  const detalle = Object.keys(cambios)
+    .map((campo) => `${campo}: ${anterior[campo] ?? "—"} → ${data[campo] ?? "—"}`)
+    .join(" · ")
+    .slice(0, 900);
+
+  await registrarMovimiento({
+    equipo_id: id,
+    placa: data.placa,
+    accion: "Edicion",
+    detalle,
+    realizado_por: usuario.nombre_completo,
+  });
+
+  return enviarJson(res, 200, { ok: true, equipo: data });
+}
+
+async function historialEquipo(res, id) {
+  const { data: equipo, error: errorEquipo } = await supabaseAdmin
+    .from("equipos")
+    .select("id, placa")
+    .eq("id", id)
+    .maybeSingle();
+  if (errorEquipo) throw Object.assign(new Error(errorEquipo.message), { status: 502 });
+  if (!equipo) throw fallo("No se encontró el equipo.", 404);
+
+  const [movimientos, porEquipo, porPlaca] = await Promise.all([
+    supabaseAdmin
+      .from("historial_movimientos")
+      .select("*")
+      .eq("equipo_id", id)
+      .order("created_at", { ascending: false })
+      .limit(200),
+    supabaseAdmin
+      .from("actas")
+      .select("*")
+      .eq("equipo_id", id)
+      .order("created_at", { ascending: false }),
+    supabaseAdmin
+      .from("actas")
+      .select("*")
+      .eq("placa", equipo.placa)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  if (movimientos.error || porEquipo.error || porPlaca.error) {
+    throw Object.assign(
+      new Error(movimientos.error?.message || porEquipo.error?.message || porPlaca.error.message),
+      { status: 502 }
     );
   }
 
-  /* En la nube el disco es temporal: SharePoint es el almacenamiento real,
-     así que la copia de os.tmpdir() se elimina en cuanto se intenta subir. */
-  if (ES_NUBE && local?.destino) {
-    try {
-      fs.unlinkSync(local.destino);
-      console.log(`[ACTA NUBE] Temporal eliminado: ${local.destino}`);
-    } catch (err) {
-      console.warn(
-        `[ACTA NUBE] No se pudo eliminar el temporal: ${err.message}`
-      );
-    } finally {
-      local = null;
-    }
-  }
-
-  /* 3) Respaldo: Power Automate solo si SharePoint falló por permisos (403). */
-  const enviarFlujo = webhookConfigurado();
-  const respaldoWebhook =
-    sharepoint.ok === false && sharepoint.status === 403 && enviarFlujo;
-
-  let envio = null;
-  let errorWebhook = "";
-
-  if (respaldoWebhook) {
-    try {
-      envio = await enviarActaAPowerAutomate({
-        nombre,
-        carpeta,
-        datos,
-        base64: bytes.toString("base64"),
-      });
-    } catch (err) {
-      errorWebhook = err?.message || "error desconocido";
-      console.warn("[ACTA] Power Automate no recibió el acta:", errorWebhook);
-    }
-  }
-
-  const estadoEquipo = esDevolucion(datos.tipoActa) ? "Disponible" : "Asignado";
-  const equipo = equipoDesdeActa(datos, estadoEquipo, ahora);
-
-  const respuestaFlujo =
-    envio?.cuerpo && typeof envio.cuerpo === "object" ? envio.cuerpo : {};
-
-  const enlaceDirecto =
-    typeof envio?.cuerpo === "string" && /^https?:\/\//i.test(envio.cuerpo.trim())
-      ? envio.cuerpo.trim()
-      : "";
-
-  const rutaRespaldo = String(
-    enlaceDirecto ||
-      respuestaFlujo.webUrl ||
-      respuestaFlujo.ruta ||
-      respuestaFlujo.url ||
-      respuestaFlujo.link ||
-      ""
-  ).trim();
-
-  const ruta =
-    (sharepoint.ok ? sharepoint.webUrl : "") ||
-    rutaRespaldo ||
-    local?.destino ||
-    nombre;
-
-  console.log(
-    `[ACTA] ${ahora.toISOString()} | ${placa} | ${
-      datos.tipoActa || "Asignación"
-    } | ${nombre} | local: ${local?.destino || "ERROR"} | SharePoint: ${
-      sharepoint.ok ? sharepoint.webUrl || "subido" : `falló (HTTP ${sharepoint.status})`
-    } | Power Automate: ${
-      respaldoWebhook ? (envio ? `HTTP ${envio.estado}` : "falló") : "omitido"
-    }`
+  const actasMap = new Map();
+  [...(porEquipo.data || []), ...(porPlaca.data || [])].forEach((acta) =>
+    actasMap.set(acta.id, acta)
   );
+
+  return enviarJson(res, 200, {
+    ok: true,
+    equipo,
+    historial: movimientos.data || [],
+    actas: [...actasMap.values()].sort(
+      (a, b) => new Date(b.created_at) - new Date(a.created_at)
+    ),
+  });
+}
+
+/* ------------------------------------------------------------
+   Importación masiva (multer en memoria)
+   ------------------------------------------------------------ */
+
+const subidaMemoria = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024, files: 1 },
+});
+
+function recibirArchivo(req) {
+  return new Promise((resolve, reject) => {
+    subidaMemoria.single("archivo")(req, {}, (err) => {
+      if (err) {
+        reject(fallo(err.message || "No se pudo leer el archivo.", 400));
+        return;
+      }
+      if (!req.file) {
+        reject(fallo("Selecciona un archivo .xlsx o .csv."));
+        return;
+      }
+      resolve(req.file);
+    });
+  });
+}
+
+/** Igual que recibirArchivo pero devuelve también los campos del formulario. */
+function recibirFormulario(req, campo = "archivo") {
+  return new Promise((resolve, reject) => {
+    subidaMemoria.single(campo)(req, {}, (err) => {
+      if (err) {
+        reject(fallo(err.message || "No se pudo leer el archivo.", 400));
+        return;
+      }
+      resolve({ archivo: req.file || null, campos: req.body || {} });
+    });
+  });
+}
+
+async function importarEquipos(req, res, usuario) {
+  const archivo = await recibirArchivo(req);
+  const extension = path.extname(archivo.originalname || "").toLowerCase();
+  if (![".xlsx", ".xls", ".csv", ".ods"].includes(extension)) {
+    throw fallo("Formato no soportado. Usa .xlsx, .xls, .csv u .ods.");
+  }
+
+  const libro = XLSX.read(archivo.buffer, { type: "buffer", cellDates: true });
+  const hoja = libro.Sheets[libro.SheetNames[0]];
+  const filas = XLSX.utils.sheet_to_json(hoja, { defval: "", raw: false });
+  const registros = renombrarEncabezados(filas)
+    .map(mapearFila)
+    .filter(Boolean);
+
+  const totalLeidos = filas.length;
+  let errores = totalLeidos - registros.length;
+  let procesados = 0;
+
+  for (let inicio = 0; inicio < registros.length; inicio += LOTE_EQUIPOS) {
+    const lote = registros.slice(inicio, inicio + LOTE_EQUIPOS);
+    const { data, error } = await supabaseAdmin
+      .from("equipos")
+      .upsert(lote, { onConflict: "placa" })
+      .select("id, placa");
+    if (error) {
+      errores += lote.length;
+      console.error("[IMPORTAR] Error en lote:", error.message);
+      continue;
+    }
+    procesados += data?.length || 0;
+
+    const eventos = (data || []).map((equipo) => ({
+      equipo_id: equipo.id,
+      placa: equipo.placa,
+      accion: "Importacion Lote",
+      detalle: `Importación masiva desde ${archivo.originalname}`,
+      realizado_por: usuario.nombre_completo,
+    }));
+    if (eventos.length) {
+      const { error: errorHistorial } = await supabaseAdmin
+        .from("historial_movimientos")
+        .insert(eventos);
+      if (errorHistorial) console.warn("[IMPORTAR] Historial:", errorHistorial.message);
+    }
+  }
+
+  return enviarJson(res, 200, {
+    ok: true,
+    totalLeidos,
+    procesados,
+    errores,
+  });
+}
+
+/* ------------------------------------------------------------
+   ACTAS: PDF CORP-TEC-FR-002 + Storage + auditoría
+   ------------------------------------------------------------ */
+
+/** Archiva el PDF del acta en la Bóveda y lo vincula a placa y sistema. */
+async function registrarActaEnBoveda({ acta, bytes, rutaStorage, equipo, usuario }) {
+  try {
+    const hash = calcularSha256(bytes);
+    const { data: existente } = await supabaseAdmin
+      .from("boveda_documentos")
+      .select("id")
+      .eq("sha256_hash", hash)
+      .maybeSingle();
+
+    let documento = existente;
+    if (!documento) {
+      const resumen = [
+        `Acta ${acta.tipo_acta} CORP-TEC-FR-002 N.º ${acta.consecutivo}`,
+        `Placa ${acta.placa}`,
+        `Colaborador ${acta.colaborador_nombre}`,
+        `Cédula ${acta.colaborador_cedula}`,
+        `Sede ${acta.sede}`,
+        acta.agente_ti_nombre ? `Agente TI ${acta.agente_ti_nombre}` : "",
+        Array.isArray(acta.accesorios) && acta.accesorios.length
+          ? `Accesorios ${acta.accesorios.join(", ")}`
+          : "",
+        Array.isArray(acta.software) && acta.software.length
+          ? `Software ${acta.software.join(", ")}`
+          : "",
+        acta.observaciones || "",
+      ]
+        .filter(Boolean)
+        .join(". ");
+
+      const { data, error } = await supabaseAdmin
+        .from("boveda_documentos")
+        .insert([
+          {
+            titulo: `ACTA-${acta.consecutivo} · ${acta.placa} · ${acta.colaborador_nombre}`,
+            categoria: "Acta",
+            proveedor: "Levapan TI",
+            numero_referencia: `ACTA-${acta.consecutivo}`,
+            fecha_documento: new Date().toISOString().slice(0, 10),
+            storage_provider: "supabase",
+            storage_bucket: BUCKET_ACTAS,
+            storage_path: rutaStorage,
+            mime_type: "application/pdf",
+            tamano_bytes: bytes.length,
+            sha256_hash: hash,
+            contenido_texto: resumen,
+            subido_por: usuario?.nombre_completo || "sistema",
+          },
+        ])
+        .select()
+        .single();
+
+      if (error) {
+        console.warn("[BOVEDA] No se pudo archivar el acta:", error.message);
+        return null;
+      }
+      documento = data;
+    }
+
+    await crearVinculos(
+      documento,
+      [acta.placa],
+      equipo?.sistema_id ? [equipo.sistema_id] : []
+    );
+    return documento;
+  } catch (err) {
+    console.warn("[BOVEDA] Archivo del acta:", err.message);
+    return null;
+  }
+}
+
+async function guardarActa(req, res, usuario) {
+  const cuerpo = await leerJson(req);
+  const datos = cuerpo.datos || {};
+  const placa = String(datos.placa || "").trim();
+  const colaborador = String(datos.nombre || "").trim();
+  const documento = String(datos.documento || "").trim();
+  const sede = String(datos.sede || "").trim();
+
+  if (!placa) throw fallo("La placa del equipo es obligatoria.");
+  if (!colaborador) throw fallo("El nombre del colaborador es obligatorio.");
+  if (!documento) throw fallo("La cédula del colaborador es obligatoria.");
+  if (!sede) throw fallo("La Sede Levapan es obligatoria.");
+
+  let bytes;
+  if (cuerpo.pdfBase64) {
+    bytes = Buffer.from(String(cuerpo.pdfBase64).split(",").pop() || "", "base64");
+  } else {
+    const pdf = await generarActaPdf({
+      datos,
+      fotos: cuerpo.fotos || datos.fotos || {},
+      firmas: cuerpo.firmas || datos.firmas || {},
+      plantilla: path.join(RAIZ, "template.pdf"),
+    });
+    bytes = Buffer.from(pdf);
+  }
+  if (!bytes || bytes.length < 200) throw fallo("El PDF generado está vacío o dañado.");
+
+  const tipoActa = normalizarTipoActa(datos.tipoActa);
+  const equipo = await idEquipoPorPlaca(placa);
+
+  const { data: acta, error: errorActa } = await supabaseAdmin
+    .from("actas")
+    .insert([
+      {
+        tipo_acta: tipoActa,
+        equipo_id: equipo?.id || null,
+        placa,
+        colaborador_nombre: colaborador,
+        colaborador_cedula: documento,
+        sede,
+        agente_ti_id: usuario.id,
+        agente_ti_nombre: String(datos.agenteTi || usuario.nombre_completo || ""),
+        agente_ti_cedula: String(datos.documentoTi || usuario.cedula || ""),
+        accesorios: Array.isArray(datos.accesorios) ? datos.accesorios : [],
+        software: Array.isArray(datos.software) ? datos.software : [],
+        observaciones: datos.observaciones || null,
+      },
+    ])
+    .select()
+    .single();
+
+  if (errorActa) throw Object.assign(new Error(errorActa.message), { status: 502 });
+
+  const ahora = new Date();
+  const anio = String(ahora.getFullYear());
+  const mes = String(ahora.getMonth() + 1).padStart(2, "0");
+  const nombre = `ACTA-${acta.consecutivo}-${sanitizarPlaca(placa)}.pdf`;
+  const rutaStorage = `${anio}/${mes}/${nombre}`;
+
+  const { error: errorSubida } = await supabaseAdmin.storage
+    .from(BUCKET_ACTAS)
+    .upload(rutaStorage, bytes, {
+      contentType: "application/pdf",
+      cacheControl: "3600",
+      upsert: false,
+    });
+  if (errorSubida) {
+    throw Object.assign(
+      new Error(`No se pudo subir el PDF a Supabase Storage: ${errorSubida.message}`),
+      { status: 502 }
+    );
+  }
+
+  await supabaseAdmin
+    .from("actas")
+    .update({ pdf_storage_path: rutaStorage })
+    .eq("id", acta.id);
+
+  const documentoBoveda = await registrarActaEnBoveda({
+    acta,
+    bytes,
+    rutaStorage,
+    equipo,
+    usuario,
+  });
+
+  // Actualización automática del inventario según el tipo de acta.
+  let estadoEquipo = "Asignado";
+  const cambiosEquipo = {};
+  if (tipoActa === "Devolucion") {
+    estadoEquipo = "Disponible";
+    cambiosEquipo.estado = "Disponible";
+    cambiosEquipo.usuario_asignado = null;
+    cambiosEquipo.usuario_cedula = null;
+  } else if (tipoActa === "Prestamo") {
+    estadoEquipo = "Prestamo";
+    cambiosEquipo.estado = "Prestamo";
+    cambiosEquipo.usuario_asignado = colaborador;
+    cambiosEquipo.usuario_cedula = documento;
+    cambiosEquipo.sede = sede;
+  } else {
+    cambiosEquipo.estado = "Asignado";
+    cambiosEquipo.usuario_asignado = colaborador;
+    cambiosEquipo.usuario_cedula = documento;
+    cambiosEquipo.sede = sede;
+  }
+  if (equipo?.id) {
+    const { error: errorEquipo } = await supabaseAdmin
+      .from("equipos")
+      .update(cambiosEquipo)
+      .eq("id", equipo.id);
+    if (errorEquipo) console.warn("[ACTA] No se pudo actualizar el equipo:", errorEquipo.message);
+  }
+
+  await registrarMovimiento({
+    equipo_id: equipo?.id || null,
+    acta_id: acta.id,
+    placa,
+    accion: tipoActa,
+    detalle: `Acta CORP-TEC-FR-002 N.º ${acta.consecutivo} · ${colaborador} · ${sede} · ${nombre}`,
+    realizado_por: usuario.nombre_completo,
+  });
+
+  const { data: firmada, error: errorFirma } = await supabaseAdmin.storage
+    .from(BUCKET_ACTAS)
+    .createSignedUrl(rutaStorage, 120);
 
   return enviarJson(res, 201, {
     ok: true,
+    consecutivo: acta.consecutivo,
+    acta: { ...acta, pdf_storage_path: rutaStorage },
     archivo: nombre,
-    ruta,
-    rutaLocal: local?.destino || null,
-    sharepoint,
-    webUrl: sharepoint.ok ? sharepoint.webUrl || null : null,
+    ruta: rutaStorage,
+    url: firmada?.signedUrl || "",
+    urlFirmada: firmada?.signedUrl || "",
     pdfBase64: bytes.toString("base64"),
-    generadoEnServidor,
-    historialId: null,
+    generadoEnServidor: !cuerpo.pdfBase64,
     estadoEquipo,
-    equipo,
-    guardadoLocal: Boolean(local),
-    avisoLocal: avisoLocal || undefined,
-    modoNube: ES_NUBE,
-    almacenamiento: ES_NUBE
-      ? "SharePoint (Nube Levapan)"
-      : "Copia local + SharePoint (Nube Levapan)",
-    powerAutomate: {
-      configurado: enviarFlujo,
-      usadoComoRespaldo: respaldoWebhook,
-      estado: envio?.estado ?? null,
-      recibido: Boolean(envio),
-      error: errorWebhook || undefined,
-    },
+    equipo: equipo ? { ...equipo, ...cambiosEquipo } : null,
+    documentoBovedaId: documentoBoveda?.id || null,
+    modo: "cloud-supabase",
+    ...(errorFirma ? { aviso: `No se pudo crear la URL firmada: ${errorFirma.message}` } : {}),
   });
 }
 
+async function listarActas(res, url) {
+  const consulta = limpiarBusqueda(url.searchParams.get("q"));
+  const limite = Math.min(200, Math.max(1, Number(url.searchParams.get("limite")) || 100));
+
+  let query = supabaseAdmin.from("actas").select("*").order("created_at", { ascending: false });
+  if (consulta) {
+    const filtros = [
+      `placa.ilike.%${consulta}%`,
+      `colaborador_nombre.ilike.%${consulta}%`,
+    ];
+    if (/^\d+$/.test(consulta)) filtros.push(`consecutivo.eq.${Number(consulta)}`);
+    query = query.or(filtros.join(","));
+  }
+  const { data, error } = await query.limit(limite);
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+
+  return enviarJson(res, 200, { ok: true, total: data.length, actas: data });
+}
+
+async function urlPdfActa(res, id) {
+  const { data: acta, error } = await supabaseAdmin
+    .from("actas")
+    .select("id, consecutivo, placa, pdf_storage_path")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+  if (!acta) throw fallo("No se encontró el acta.", 404);
+  if (!acta.pdf_storage_path) throw fallo("Esta acta aún no tiene PDF archivado.", 404);
+
+  const { data, error: errorFirma } = await supabaseAdmin.storage
+    .from(BUCKET_ACTAS)
+    .createSignedUrl(acta.pdf_storage_path, 120);
+  if (errorFirma) {
+    throw Object.assign(new Error(errorFirma.message), { status: 502 });
+  }
+
+  return enviarJson(res, 200, {
+    ok: true,
+    url: data.signedUrl,
+    expiraEn: 120,
+    acta,
+  });
+}
+
+/* ------------------------------------------------------------
+   Exportación gerencial a Excel (3 hojas)
+   ------------------------------------------------------------ */
+
+async function exportarExcel(res) {
+  const [equipos, actas, historial] = await Promise.all([
+    supabaseAdmin.from("equipos").select("*").order("created_at", { ascending: false }).limit(10000),
+    supabaseAdmin.from("actas").select("*").order("created_at", { ascending: false }).limit(10000),
+    supabaseAdmin
+      .from("historial_movimientos")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(10000),
+  ]);
+
+  const error = equipos.error || actas.error || historial.error;
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    libro,
+    XLSX.utils.json_to_sheet(equipos.data || []),
+    "Inventario_Actual"
+  );
+  XLSX.utils.book_append_sheet(
+    libro,
+    XLSX.utils.json_to_sheet(actas.data || []),
+    "Actas_Emitidas"
+  );
+  XLSX.utils.book_append_sheet(
+    libro,
+    XLSX.utils.json_to_sheet(historial.data || []),
+    "Historial_Movimientos"
+  );
+
+  const bytes = XLSX.write(libro, { type: "buffer", bookType: "xlsx" });
+  const nombre = `Respaldo_Levapan_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  return enviarBinario(
+    res,
+    bytes,
+    nombre,
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+}
+
+/* ------------------------------------------------------------
+   RESPALDO TOTAL (solo administradores TI)
+   ------------------------------------------------------------ */
+
+const TABLAS_RESPALDO = [
+  "sistemas",
+  "equipos",
+  "perfiles_ti",
+  "actas",
+  "historial_movimientos",
+  "boveda_documentos",
+];
+
+async function respaldoCompleto(res, url, usuario) {
+  if (usuario?.rol !== "admin") {
+    throw fallo("Esta acción solo está disponible para administradores TI.", 403);
+  }
+
+  const consultas = await Promise.all(
+    TABLAS_RESPALDO.map((tabla) =>
+      supabaseAdmin.from(tabla).select("*").order("created_at", { ascending: false }).limit(100000)
+    )
+  );
+  const error = consultas.find((consulta) => consulta.error)?.error;
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+
+  const datos = {};
+  const resumen = {};
+  TABLAS_RESPALDO.forEach((tabla, indice) => {
+    datos[tabla] = consultas[indice].data || [];
+    resumen[tabla] = datos[tabla].length;
+  });
+
+  const fecha = new Date().toISOString();
+  const nombreBase = `Respaldo_Levapan_${fecha.slice(0, 10)}`;
+  const formato = String(url.searchParams.get("formato") || "json").toLowerCase();
+
+  if (formato === "xlsx") {
+    const libro = XLSX.utils.book_new();
+    TABLAS_RESPALDO.forEach((tabla) => {
+      const filas = datos[tabla];
+      const hoja = XLSX.utils.json_to_sheet(filas.length ? filas : [{ sin_registros: true }]);
+      XLSX.utils.book_append_sheet(libro, hoja, tabla.slice(0, 31));
+    });
+    const bytes = XLSX.write(libro, { type: "buffer", bookType: "xlsx" });
+    return enviarBinario(
+      res,
+      bytes,
+      `${nombreBase}.xlsx`,
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+  }
+
+  const contenido = JSON.stringify(
+    {
+      aplicacion: "Acta Levapan · Arquitectura Inversa de TI",
+      formato: "CORP-TEC-FR-002",
+      generadoEn: fecha,
+      generadoPor: usuario.nombre_completo || "admin",
+      resumen,
+      tablas: datos,
+    },
+    null,
+    2
+  );
+  return enviarBinario(
+    res,
+    Buffer.from(contenido, "utf8"),
+    `${nombreBase}.json`,
+    "application/json; charset=utf-8"
+  );
+}
+
+/* ------------------------------------------------------------
+   SISTEMAS (arquitectura inversa)
+   ------------------------------------------------------------ */
+
+const CATEGORIAS_DOCUMENTO = ["Acta", "Contrato", "Factura", "Garantia", "Manual", "Licencia"];
+const CRITICIDADES = ["Critica", "Alta", "Media", "Baja"];
+const CAMPOS_SISTEMA = ["codigo", "nombre", "categoria", "criticidad", "responsable", "descripcion"];
+
+function normalizarCriticidad(valor) {
+  const texto = sinAcentos(valor).toLowerCase();
+  const mapa = {
+    critica: "Critica",
+    crítica: "Critica",
+    alta: "Alta",
+    media: "Media",
+    baja: "Baja",
+  };
+  return mapa[texto] || "Media";
+}
+
+function normalizarCategoriaDocumento(valor, porDefecto = "Contrato") {
+  const texto = sinAcentos(valor).toLowerCase();
+  const mapa = {
+    acta: "Acta",
+    contrato: "Contrato",
+    factura: "Factura",
+    garantia: "Garantia",
+    manual: "Manual",
+    licencia: "Licencia",
+  };
+  return mapa[texto] || porDefecto;
+}
+
+function codigoSistema(valor) {
+  return String(valor ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
+function listaDesde(valor) {
+  if (Array.isArray(valor)) return valor.map((item) => String(item).trim()).filter(Boolean);
+  return String(valor ?? "")
+    .split(/[,;\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+async function listarSistemas(res) {
+  const [sistemas, equipos, vinculos] = await Promise.all([
+    supabaseAdmin.from("sistemas").select("*").order("nombre", { ascending: true }),
+    supabaseAdmin.from("equipos").select("sistema_id"),
+    supabaseAdmin.from("documento_vinculos").select("sistema_id"),
+  ]);
+
+  const error = sistemas.error || equipos.error || vinculos.error;
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+
+  const contarEquipos = new Map();
+  for (const equipo of equipos.data || []) {
+    if (!equipo.sistema_id) continue;
+    contarEquipos.set(equipo.sistema_id, (contarEquipos.get(equipo.sistema_id) || 0) + 1);
+  }
+
+  const contarDocumentos = new Map();
+  for (const vinculo of vinculos.data || []) {
+    if (!vinculo.sistema_id) continue;
+    contarDocumentos.set(
+      vinculo.sistema_id,
+      (contarDocumentos.get(vinculo.sistema_id) || 0) + 1
+    );
+  }
+
+  return enviarJson(res, 200, {
+    ok: true,
+    total: (sistemas.data || []).length,
+    sistemas: (sistemas.data || []).map((sistema) => ({
+      ...sistema,
+      total_equipos: contarEquipos.get(sistema.id) || 0,
+      total_documentos: contarDocumentos.get(sistema.id) || 0,
+    })),
+  });
+}
+
+async function guardarSistema(req, res, id = null) {
+  const cuerpo = await leerJson(req);
+  const registro = {};
+
+  for (const campo of CAMPOS_SISTEMA) {
+    if (!Object.hasOwn(cuerpo, campo)) continue;
+    let valor = cuerpo[campo];
+    if (typeof valor === "string") valor = valor.trim() || null;
+    registro[campo] = valor;
+  }
+
+  if (Object.hasOwn(registro, "codigo")) registro.codigo = codigoSistema(registro.codigo);
+  if (Object.hasOwn(registro, "criticidad")) {
+    registro.criticidad = normalizarCriticidad(registro.criticidad);
+  }
+
+  if (id) {
+    if (!Object.keys(registro).length) throw fallo("No se enviaron cambios.");
+    const { data, error } = await supabaseAdmin
+      .from("sistemas")
+      .update(registro)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) throw Object.assign(new Error(error.message), { status: 502 });
+    return enviarJson(res, 200, { ok: true, sistema: data });
+  }
+
+  if (!registro.codigo) throw fallo("El código del sistema es obligatorio.");
+  if (!registro.nombre) throw fallo("El nombre del sistema es obligatorio.");
+  registro.criticidad = registro.criticidad || "Media";
+
+  const { data, error } = await supabaseAdmin
+    .from("sistemas")
+    .insert([registro])
+    .select()
+    .single();
+  if (error) {
+    const duplicado = /duplicate|unique/i.test(error.message);
+    throw Object.assign(
+      new Error(
+        duplicado
+          ? `Ya existe un sistema con el código ${registro.codigo}.`
+          : error.message
+      ),
+      { status: duplicado ? 409 : 502 }
+    );
+  }
+  return enviarJson(res, 201, { ok: true, sistema: data });
+}
+
+async function eliminarSistema(res, id) {
+  const { data, error } = await supabaseAdmin
+    .from("sistemas")
+    .delete()
+    .eq("id", id)
+    .select("id")
+    .maybeSingle();
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+  if (!data) throw fallo("No se encontró el sistema.", 404);
+  return enviarJson(res, 200, { ok: true, eliminado: data.id });
+}
+
+/* ------------------------------------------------------------
+   VISTA 360° INVERSA: /api/placas/:placa
+   Sistema → Placa → Equipo → Actas / Contratos
+   ------------------------------------------------------------ */
+
+async function vistaPlaca(res, placa) {
+  const buscada = String(placa || "").trim();
+  if (!buscada) throw fallo("Indica la placa a consultar.");
+
+  const { data: equipo, error } = await supabaseAdmin
+    .from("equipos")
+    .select("*, sistemas(id, codigo, nombre, categoria, criticidad, responsable, descripcion)")
+    .ilike("placa", buscada)
+    .maybeSingle();
+
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+  if (!equipo) throw fallo(`No se encontró la placa ${buscada}.`, 404);
+
+  const [historial, actas, vinculosPlaca] = await Promise.all([
+    supabaseAdmin
+      .from("historial_movimientos")
+      .select("*")
+      .eq("placa", equipo.placa)
+      .order("created_at", { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from("actas")
+      .select("*")
+      .eq("placa", equipo.placa)
+      .order("created_at", { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from("documento_vinculos")
+      .select("*, boveda_documentos(*)")
+      .eq("placa", equipo.placa),
+  ]);
+
+  if (historial.error || actas.error || vinculosPlaca.error) {
+    throw Object.assign(
+      new Error(
+        historial.error?.message || actas.error?.message || vinculosPlaca.error?.message
+      ),
+      { status: 502 }
+    );
+  }
+
+  let vinculosEquipo = [];
+  if (equipo.id) {
+    const { data } = await supabaseAdmin
+      .from("documento_vinculos")
+      .select("*, boveda_documentos(*)")
+      .eq("equipo_id", equipo.id);
+    vinculosEquipo = data || [];
+  }
+
+  // También se muestran los documentos del sistema padre (contratos marco).
+  let documentosSistema = [];
+  if (equipo.sistema_id) {
+    const { data } = await supabaseAdmin
+      .from("documento_vinculos")
+      .select("*, boveda_documentos(*)")
+      .eq("sistema_id", equipo.sistema_id);
+    documentosSistema = data || [];
+  }
+
+  const documentos = new Map();
+  [...(vinculosPlaca.data || []), ...vinculosEquipo, ...documentosSistema].forEach((vinculo) => {
+    const documento = vinculo.boveda_documentos;
+    if (!documento) return;
+    documentos.set(documento.id, {
+      ...documento,
+      vinculo: {
+        placa: vinculo.placa,
+        equipo_id: vinculo.equipo_id,
+        sistema_id: vinculo.sistema_id,
+      },
+    });
+  });
+
+  return enviarJson(res, 200, {
+    ok: true,
+    placa: equipo.placa,
+    equipo,
+    sistema: equipo.sistemas || null,
+    historial: historial.data || [],
+    actas: actas.data || [],
+    documentos: [...documentos.values()],
+  });
+}
+
+/* ------------------------------------------------------------
+   BÓVEDA DOCUMENTAL: subida, Full-Text Search y vínculos
+   ------------------------------------------------------------ */
+
+async function vinculosDeDocumentos(ids) {
+  if (!ids.length) return new Map();
+  const { data, error } = await supabaseAdmin
+    .from("documento_vinculos")
+    .select("documento_id, equipo_id, placa, sistema_id")
+    .in("documento_id", ids);
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+
+  const mapa = new Map();
+  for (const vinculo of data || []) {
+    if (!mapa.has(vinculo.documento_id)) mapa.set(vinculo.documento_id, []);
+    mapa.get(vinculo.documento_id).push(vinculo);
+  }
+  return mapa;
+}
+
+async function listarBoveda(res, url) {
+  const q = limpiarBusqueda(url.searchParams.get("q"));
+  const categoria = String(url.searchParams.get("categoria") || "").trim();
+  const placa = String(url.searchParams.get("placa") || "").trim();
+  const sistema = String(url.searchParams.get("sistema") || "").trim();
+  const limite = Math.min(200, Math.max(1, Number(url.searchParams.get("limite")) || 100));
+
+  let idsFiltrados = null;
+  if (placa || sistema) {
+    let consulta = supabaseAdmin.from("documento_vinculos").select("documento_id");
+    if (placa) consulta = consulta.ilike("placa", placa);
+    if (sistema) consulta = consulta.eq("sistema_id", sistema);
+    const { data, error } = await consulta.limit(2000);
+    if (error) throw Object.assign(new Error(error.message), { status: 502 });
+    idsFiltrados = [...new Set((data || []).map((fila) => fila.documento_id))];
+    if (!idsFiltrados.length) {
+      return enviarJson(res, 200, { ok: true, total: 0, documentos: [] });
+    }
+  }
+
+  const base = () => {
+    let consulta = supabaseAdmin.from("boveda_documentos").select("*", { count: "exact" });
+    if (categoria) consulta = consulta.eq("categoria", categoria);
+    if (idsFiltrados) consulta = consulta.in("id", idsFiltrados);
+    return consulta;
+  };
+
+  let data = [];
+  let count = 0;
+
+  if (q) {
+    const busqueda = await base()
+      .textSearch("texto_indexado", q, { config: "spanish", type: "websearch" })
+      .order("created_at", { ascending: false })
+      .limit(limite);
+    if (!busqueda.error) {
+      data = busqueda.data || [];
+      count = Number(busqueda.count) || data.length;
+    } else {
+      const respaldo = await base()
+        .or(
+          `titulo.ilike.%${q}%,proveedor.ilike.%${q}%,numero_referencia.ilike.%${q}%,contenido_texto.ilike.%${q}%`
+        )
+        .order("created_at", { ascending: false })
+        .limit(limite);
+      if (respaldo.error) throw Object.assign(new Error(respaldo.error.message), { status: 502 });
+      data = respaldo.data || [];
+      count = Number(respaldo.count) || data.length;
+    }
+  } else {
+    const listado = await base().order("created_at", { ascending: false }).limit(limite);
+    if (listado.error) throw Object.assign(new Error(listado.error.message), { status: 502 });
+    data = listado.data || [];
+    count = Number(listado.count) || data.length;
+  }
+
+  const mapaVinculos = await vinculosDeDocumentos(data.map((documento) => documento.id));
+
+  return enviarJson(res, 200, {
+    ok: true,
+    total: count,
+    busqueda: q,
+    categoria: categoria || null,
+    documentos: data.map((documento) => ({
+      ...documento,
+      texto_indexado: undefined,
+      vinculos: mapaVinculos.get(documento.id) || [],
+    })),
+  });
+}
+
+async function crearVinculos(documento, placas, sistemas) {
+  const filas = [];
+  const vistos = new Set();
+
+  const agregar = (fila) => {
+    const llave = [fila.equipo_id || "", fila.placa || "", fila.sistema_id || ""].join("|");
+    if (vistos.has(llave)) return;
+    vistos.add(llave);
+    filas.push({ documento_id: documento.id, ...fila });
+  };
+
+  if (placas.length) {
+    const { data: equipos, error } = await supabaseAdmin
+      .from("equipos")
+      .select("id, placa, sistema_id")
+      .in("placa", placas);
+    if (error) throw Object.assign(new Error(error.message), { status: 502 });
+    for (const equipo of equipos || []) {
+      agregar({
+        equipo_id: equipo.id,
+        placa: equipo.placa,
+        sistema_id: equipo.sistema_id || null,
+      });
+    }
+  }
+
+  for (const sistemaId of sistemas) {
+    agregar({ equipo_id: null, placa: null, sistema_id: sistemaId });
+  }
+
+  if (!filas.length) return [];
+
+  const { data: existentes, error: errorExistentes } = await supabaseAdmin
+    .from("documento_vinculos")
+    .select("equipo_id, placa, sistema_id")
+    .eq("documento_id", documento.id);
+  if (errorExistentes) {
+    throw Object.assign(new Error(errorExistentes.message), { status: 502 });
+  }
+
+  const yaEstan = new Set(
+    (existentes || []).map((fila) =>
+      [fila.equipo_id || "", fila.placa || "", fila.sistema_id || ""].join("|")
+    )
+  );
+
+  const nuevas = filas.filter(
+    (fila) => !yaEstan.has([fila.equipo_id || "", fila.placa || "", fila.sistema_id || ""].join("|"))
+  );
+  if (!nuevas.length) return [];
+
+  const { data, error } = await supabaseAdmin
+    .from("documento_vinculos")
+    .insert(nuevas)
+    .select();
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+  return data || [];
+}
+
+async function subirDocumentoBoveda(req, res, usuario) {
+  const { archivo, campos } = await recibirFormulario(req);
+  if (!archivo || !archivo.buffer?.length) {
+    throw fallo("Selecciona el archivo que deseas archivar en la Bóveda.");
+  }
+
+  const categoria = normalizarCategoriaDocumento(campos.categoria);
+  const titulo =
+    String(campos.titulo || "").trim() ||
+    String(archivo.originalname || "Documento").replace(/\.[^.]+$/, "").slice(0, 160);
+
+  const hash = calcularSha256(archivo.buffer);
+  const cfg = configAlmacenamiento();
+
+  const { data: existente, error: errorBusqueda } = await supabaseAdmin
+    .from("boveda_documentos")
+    .select("*")
+    .eq("sha256_hash", hash)
+    .maybeSingle();
+  if (errorBusqueda) throw Object.assign(new Error(errorBusqueda.message), { status: 502 });
+
+  let documento = existente;
+
+  if (!documento) {
+    const ruta = rutaDocumento({ hash, nombre: archivo.originalname || `${titulo}.pdf` });
+    await subirObjeto({
+      buffer: archivo.buffer,
+      ruta,
+      contentType: archivo.mimetype || "application/octet-stream",
+      bucket: cfg.bucketBoveda,
+    });
+
+    const esPdf =
+      String(archivo.mimetype || "").toLowerCase().includes("pdf") ||
+      /\.pdf$/i.test(archivo.originalname || "");
+
+    let textoExtraido = "";
+    if (esPdf) {
+      try {
+        textoExtraido = extraerTextoPdf(archivo.buffer);
+      } catch (err) {
+        console.warn("[BOVEDA] No se pudo extraer texto del PDF:", err.message);
+      }
+    }
+
+    const contenido = [String(campos.contenido_texto || "").trim(), textoExtraido]
+      .filter(Boolean)
+      .join("\n")
+      .slice(0, 200_000);
+
+    const { data, error } = await supabaseAdmin
+      .from("boveda_documentos")
+      .insert([
+        {
+          titulo,
+          categoria,
+          proveedor: String(campos.proveedor || "").trim() || null,
+          numero_referencia: String(campos.numero_referencia || "").trim() || null,
+          fecha_documento: campos.fecha_documento || null,
+          fecha_vencimiento: campos.fecha_vencimiento || null,
+          storage_provider: "supabase",
+          storage_bucket: cfg.bucketBoveda,
+          storage_path: ruta,
+          mime_type: archivo.mimetype || "application/octet-stream",
+          tamano_bytes: archivo.size || archivo.buffer.length,
+          sha256_hash: hash,
+          contenido_texto: contenido || null,
+          subido_por: usuario?.nombre_completo || "sistema",
+        },
+      ])
+      .select()
+      .single();
+
+    if (error) {
+      if (/duplicate|unique/i.test(error.message)) {
+        const { data: repetido } = await supabaseAdmin
+          .from("boveda_documentos")
+          .select("*")
+          .eq("sha256_hash", hash)
+          .maybeSingle();
+        documento = repetido;
+      } else {
+        throw Object.assign(new Error(error.message), { status: 502 });
+      }
+    } else {
+      documento = data;
+    }
+  }
+
+  if (!documento) throw fallo("No se pudo registrar el documento en la Bóveda.", 502);
+
+  const placas = listaDesde(campos.placas);
+  const sistemas = listaDesde(campos.sistemas);
+  const vinculos = await crearVinculos(documento, placas, sistemas);
+
+  return enviarJson(res, 201, {
+    ok: true,
+    duplicado: Boolean(existente),
+    documento: { ...documento, texto_indexado: undefined },
+    vinculos,
+    mensaje: existente
+      ? "El archivo ya existía: se reutilizó y solo se añadieron los nuevos vínculos."
+      : "Documento archivado en la Bóveda.",
+  });
+}
+
+async function urlDocumentoBoveda(res, id) {
+  const { data: documento, error } = await supabaseAdmin
+    .from("boveda_documentos")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+  if (!documento) throw fallo("No se encontró el documento.", 404);
+
+  const url = await firmarObjeto({
+    bucket: documento.storage_bucket || BUCKET_BOVEDA,
+    ruta: documento.storage_path,
+    segundos: 300,
+    descarga: documento.titulo ? `${documento.titulo}.pdf` : undefined,
+  });
+
+  return enviarJson(res, 200, {
+    ok: true,
+    url,
+    expiraEn: 300,
+    documento: { ...documento, texto_indexado: undefined },
+  });
+}
+
+async function vincularDocumento(req, res, id) {
+  const cuerpo = await leerJson(req);
+  const { data: documento, error } = await supabaseAdmin
+    .from("boveda_documentos")
+    .select("id")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+  if (!documento) throw fallo("No se encontró el documento.", 404);
+
+  const placas = listaDesde(cuerpo.placas);
+  const sistemas = listaDesde(cuerpo.sistemas);
+  if (!placas.length && !sistemas.length) {
+    throw fallo("Indica al menos una placa o un sistema para vincular.");
+  }
+
+  const vinculos = await crearVinculos(documento, placas, sistemas);
+  return enviarJson(res, 200, { ok: true, vinculos });
+}
+
+async function eliminarDocumentoBoveda(res, id) {
+  const { data: documento, error } = await supabaseAdmin
+    .from("boveda_documentos")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+  if (!documento) throw fallo("No se encontró el documento.", 404);
+
+  const { error: errorBorrado } = await supabaseAdmin
+    .from("boveda_documentos")
+    .delete()
+    .eq("id", id);
+  if (errorBorrado) throw Object.assign(new Error(errorBorrado.message), { status: 502 });
+
+  const { count } = await supabaseAdmin
+    .from("boveda_documentos")
+    .select("id", { count: "exact", head: true })
+    .eq("storage_path", documento.storage_path);
+
+  if (!count) {
+    try {
+      await supabaseAdmin.storage
+        .from(documento.storage_bucket || BUCKET_BOVEDA)
+        .remove([documento.storage_path]);
+    } catch (err) {
+      console.warn("[BOVEDA] No se pudo borrar el objeto físico:", err.message);
+    }
+  }
+
+  return enviarJson(res, 200, { ok: true, eliminado: id });
+}
+
+/** Reindexa el texto de un PDF ya archivado (utilidad de administración). */
+async function reindexarDocumento(res, id) {
+  const { data: documento, error } = await supabaseAdmin
+    .from("boveda_documentos")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+  if (!documento) throw fallo("No se encontró el documento.", 404);
+
+  const bytes = await descargarObjeto({
+    bucket: documento.storage_bucket || BUCKET_BOVEDA,
+    ruta: documento.storage_path,
+  });
+  const texto = extraerTextoPdf(bytes);
+
+  const { error: errorActualizar } = await supabaseAdmin
+    .from("boveda_documentos")
+    .update({ contenido_texto: texto || documento.contenido_texto || null })
+    .eq("id", id);
+  if (errorActualizar) {
+    throw Object.assign(new Error(errorActualizar.message), { status: 502 });
+  }
+
+  return enviarJson(res, 200, {
+    ok: true,
+    caracteres: (texto || "").length,
+    indexado: Boolean(texto),
+  });
+}
+
+/* ------------------------------------------------------------
+   Router de API
+   ------------------------------------------------------------ */
+
 async function manejarApi(req, res, url) {
   const ruta = url.pathname;
+  const metodo = req.method;
 
-  if (ruta === "/api/me" && req.method === "GET") {
-    const sesion = leerSesion(req);
-    if (!sesion) {
-      return enviarJson(res, 401, {
-        ok: false,
-        autenticado: false,
-        error: "No hay una sesión activa.",
-      });
-    }
+  if (ruta === "/api/config-publica" && metodo === "GET") {
     return enviarJson(res, 200, {
       ok: true,
-      name: sesion.name,
-      email: sesion.email,
+      supabaseUrl: CONFIG.url,
+      supabaseAnonKey: CONFIG.anonKey,
+      bucket: BUCKET_ACTAS,
     });
   }
 
-  if (ruta === "/api/estado" && req.method === "GET") {
-    return await manejarEstado(res);
-  }
+  // Todas las demás rutas requieren JWT válido y perfil TI activo.
+  const usuario = await requiereSesion(req);
 
-  if (ruta === "/api/equipos/buscar" && req.method === "GET") {
-    // Búsqueda en vivo contra Microsoft Graph: nunca se sirve de caché.
-    // Se normalizan los espacios para que "ML- 217050" encuentre "ML-217050".
-    const consulta = (url.searchParams.get("q") || "")
-      .trim()
-      .replace(/\s+/g, " ");
-
-    try {
-      const { equipos, modo } = await buscarEquiposGraph(consulta);
-      return enviarJson(res, 200, {
-        ok: true,
-        q: consulta,
-        modo,
-        total: equipos.length,
-        equipos,
-      });
-    } catch (err) {
-      // Se devuelve el detalle real para que el cliente pueda mostrarlo en
-      // lugar de fallar en silencio (por ejemplo, error de Graph o siteId).
-      console.error(`[BUSCAR] q="${consulta}":`, err);
-      return enviarJson(res, Number(err?.status) || 502, {
-        ok: false,
-        q: consulta,
-        modo: "error",
-        total: 0,
-        equipos: [],
-        error:
-          err?.message ||
-          "No se pudo consultar el inventario en SharePoint.",
-        detalle: {
-          grafoStatus: err?.grafoStatus ?? null,
-          causa: err?.causa ?? null,
-        },
-      });
-    }
-  }
-
-  if (ruta === "/api/equipos" && req.method === "GET") {
-    const placa = url.searchParams.get("placa");
-    const consulta = (url.searchParams.get("q") || "")
-      .trim()
-      .replace(/\s+/g, " ");
-    const limite = url.searchParams.get("limite") || 20;
-
-    try {
-      if (placa) {
-        const equipo = await buscarEquipoGraph(placa);
-        if (!equipo) {
-          return enviarJson(res, 404, {
-            ok: false,
-            encontrado: false,
-            error: "La placa no está registrada en el inventario.",
-          });
-        }
-        return enviarJson(res, 200, { ok: true, encontrado: true, equipo });
-      }
-
-      const equipos = consulta
-        ? (await buscarEquiposGraph(consulta)).equipos
-        : await listarEquiposGraph(limite);
-
-      return enviarJson(res, 200, {
-        ok: true,
-        total: equipos.length,
-        equipos,
-      });
-    } catch (err) {
-      console.error(`[EQUIPOS] placa="${placa || ""}" q="${consulta}":`, err);
-      return enviarJson(res, Number(err?.status) || 502, {
-        ok: false,
-        equipos: [],
-        error:
-          err?.message ||
-          "No se pudo consultar el inventario en SharePoint.",
-        detalle: {
-          grafoStatus: err?.grafoStatus ?? null,
-          causa: err?.causa ?? null,
-        },
-      });
-    }
-  }
-
-  if (ruta === "/api/historial" && req.method === "GET") {
-    /* El historial ya no vive en el servidor: Power Automate lo registra
-       en SharePoint. Se responde de forma explícita para no simular datos. */
-    return enviarJson(res, 501, {
-      ok: false,
-      actas: [],
-      error:
-        "El historial de actas ahora se consulta en la Lista de SharePoint. " +
-        "Este servidor ya no mantiene una base de datos local.",
+  if ((ruta === "/api/perfil" || ruta === "/api/me") && metodo === "GET") {
+    return enviarJson(res, 200, {
+      ok: true,
+      ...usuario,
+      nombre: usuario.nombre_completo,
+      name: usuario.nombre_completo,
     });
   }
 
-  if (ruta === "/api/actas/destino" && req.method === "GET") {
-    // Diagnóstico: siteId de NubeLevapan, driveId de DATAFILE y carpeta de actas.
-    try {
-      const destino = await verificarDestinoActas();
-      return enviarJson(res, 200, { ok: true, ...destino });
-    } catch (err) {
-      console.error("[SHAREPOINT] No se pudo verificar el destino:", err.message);
-      return enviarJson(res, err.status || 502, {
-        ok: false,
-        error: err.message || "No se pudo verificar el destino de actas.",
-      });
-    }
+  /* ---------------- Sistemas ---------------- */
+  if (ruta === "/api/sistemas" && metodo === "GET") {
+    return listarSistemas(res);
+  }
+  if (ruta === "/api/sistemas" && metodo === "POST") {
+    return guardarSistema(req, res);
+  }
+  const coincideSistema = /^\/api\/sistemas\/([^/]+)$/.exec(ruta);
+  if (coincideSistema && metodo === "PUT") {
+    return guardarSistema(req, res, coincideSistema[1]);
+  }
+  if (coincideSistema && metodo === "DELETE") {
+    return eliminarSistema(res, coincideSistema[1]);
+  }
+
+  /* ---------------- Vista 360° por placa ---------------- */
+  const coincidePlaca = /^\/api\/placas\/([^/]+)$/.exec(ruta);
+  if (coincidePlaca && metodo === "GET") {
+    return vistaPlaca(res, decodeURIComponent(coincidePlaca[1]));
+  }
+
+  /* ---------------- Bóveda documental ---------------- */
+  if (ruta === "/api/boveda" && metodo === "GET") {
+    return listarBoveda(res, url);
+  }
+  if (ruta === "/api/boveda" && metodo === "POST") {
+    return subirDocumentoBoveda(req, res, usuario);
+  }
+
+  const coincideUrlBoveda = /^\/api\/boveda\/([^/]+)\/url$/.exec(ruta);
+  if (coincideUrlBoveda && metodo === "GET") {
+    return urlDocumentoBoveda(res, coincideUrlBoveda[1]);
+  }
+
+  const coincideVinculos = /^\/api\/boveda\/([^/]+)\/vinculos$/.exec(ruta);
+  if (coincideVinculos && metodo === "POST") {
+    return vincularDocumento(req, res, coincideVinculos[1]);
+  }
+
+  const coincideReindexar = /^\/api\/boveda\/([^/]+)\/reindexar$/.exec(ruta);
+  if (coincideReindexar && metodo === "POST") {
+    return reindexarDocumento(res, coincideReindexar[1]);
+  }
+
+  const coincideDocumento = /^\/api\/boveda\/([^/]+)$/.exec(ruta);
+  if (coincideDocumento && metodo === "DELETE") {
+    return eliminarDocumentoBoveda(res, coincideDocumento[1]);
+  }
+
+  if (ruta === "/api/equipos/buscar" && metodo === "GET") {
+    return buscarEquiposSugeridos(res, url);
   }
 
   if (
-    (ruta === "/api/guardar-acta" ||
-      ruta === "/api/actas" ||
-      ruta === "/api/actas/guardar") &&
-    req.method === "POST"
+    (ruta === "/api/equipos/importar" || ruta === "/api/equipos/importar-excel") &&
+    metodo === "POST"
   ) {
-    return manejarGuardarActa(req, res);
+    return importarEquipos(req, res, usuario);
+  }
+
+  if (ruta === "/api/equipos" && metodo === "GET") {
+    return listarEquipos(res, url);
+  }
+  if (ruta === "/api/equipos" && metodo === "POST") {
+    return crearEquipo(req, res, usuario);
+  }
+
+  const coincideHistorial = /^\/api\/equipos\/([^/]+)\/historial$/.exec(ruta);
+  if (coincideHistorial && metodo === "GET") {
+    return historialEquipo(res, coincideHistorial[1]);
+  }
+
+  const coincideEquipo = /^\/api\/equipos\/([^/]+)$/.exec(ruta);
+  if (coincideEquipo && metodo === "PUT") {
+    return editarEquipo(req, res, usuario, coincideEquipo[1]);
+  }
+
+  if (
+    (ruta === "/api/actas" ||
+      ruta === "/api/guardar-acta" ||
+      ruta === "/api/actas/guardar") &&
+    metodo === "POST"
+  ) {
+    return guardarActa(req, res, usuario);
+  }
+  if (ruta === "/api/actas" && metodo === "GET") {
+    return listarActas(res, url);
+  }
+
+  const coincidePdf = /^\/api\/actas\/([^/]+)\/pdf$/.exec(ruta);
+  if (coincidePdf && metodo === "GET") {
+    return urlPdfActa(res, coincidePdf[1]);
+  }
+
+  if (ruta === "/api/exportar/excel" && metodo === "GET") {
+    return exportarExcel(res);
+  }
+
+  if (ruta === "/api/admin/respaldo-completo" && metodo === "GET") {
+    return respaldoCompleto(res, url, usuario);
   }
 
   return enviarJson(res, 404, {
     ok: false,
-    error: `Ruta no encontrada: ${req.method} ${ruta}`,
+    error: `Ruta no encontrada: ${metodo} ${ruta}`,
   });
 }
 
@@ -1309,50 +1846,24 @@ async function manejarApi(req, res, url) {
 
 const servidor = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+  const ruta = url.pathname;
 
   try {
-    // Salud mínima, sin datos sensibles: sirve para monitoreo/health checks.
-    if (url.pathname === "/api/health") {
-      if (req.method !== "GET" && req.method !== "HEAD") {
-        return enviarJson(res, 405, { ok: false, error: "Método no permitido." });
-      }
-      return enviarJson(res, 200, {
-        ok: true,
-        servicio: "acta-levapan",
-        fecha: new Date().toISOString(),
-      });
+    if (ruta === "/api/health" && (req.method === "GET" || req.method === "HEAD")) {
+      return await manejarHealth(res);
     }
-
-    // Rutas del SSO: nunca se protegen a sí mismas.
-    if (url.pathname.startsWith("/auth/")) {
-      return await manejarAuth(req, res, url);
+    if (ruta === "/api/estado" && (req.method === "GET" || req.method === "HEAD")) {
+      return await manejarEstado(res);
     }
-
-    // Todo el aplicativo y la API exigen una sesión corporativa válida.
-    if (requiereSesion(url.pathname) && !leerSesion(req)) {
-      return responderSinSesion(req, res, url.pathname);
-    }
-
-    if (url.pathname.startsWith("/api/")) {
+    if (ruta.startsWith("/api/")) {
       return await manejarApi(req, res, url);
     }
-
     if (req.method !== "GET" && req.method !== "HEAD") {
       return enviarJson(res, 405, { ok: false, error: "Método no permitido." });
     }
-
     return await servirEstatico(req, res, url);
   } catch (err) {
-    const estado = Number(err?.status) || 500;
-    console.error(`[ERROR] ${req.method} ${url.pathname}:`, err);
-    if (!res.headersSent) {
-      enviarJson(res, estado, {
-        ok: false,
-        error: err?.message || "Error interno del servidor.",
-      });
-    } else {
-      res.end();
-    }
+    return responderError(res, err, `${req.method} ${ruta}`);
   }
 });
 
@@ -1360,7 +1871,7 @@ servidor.on("error", (err) => {
   if (err.code === "EADDRINUSE") {
     console.error(
       `\nNo se pudo iniciar: el puerto ${PUERTO} ya está en uso.\n` +
-        "Cierra la otra ventana del servidor o define otro puerto con: set PORT=3001\n"
+        "Cierra la otra ventana o define otro puerto con: set PORT=3001\n"
     );
   } else {
     console.error("Error del servidor:", err);
@@ -1368,77 +1879,58 @@ servidor.on("error", (err) => {
   process.exitCode = 1;
 });
 
-/* Repara en caliente un SITE_ID incompleto antes de recibir tráfico. */
-try {
-  await asegurarSiteIdInventario();
-} catch (err) {
-  console.error(
-    "[GRAPH] No se pudo verificar el SITE_ID al iniciar:",
-    err.message
-  );
-}
-
 servidor.listen(PORT, HOST, () => {
-  const config = configGraph();
-  const webhook = Boolean(HTTP_WEBHOOK_URL());
-  const ips = ipv4Locales();
-  const linea = "=".repeat(58);
-
+  const linea = "=".repeat(62);
   console.log(`\n${linea}`);
-  console.log("  ACTA DE TECNOLOGÍA · LEVAPAN");
+  console.log("  ACTA DE TECNOLOGÍA · LEVAPAN · SUPABASE EDITION");
   console.log(linea);
-  console.log("  Arquitectura          : Microsoft 365 (Graph + Power Automate)");
-  console.log(
-    `  Inventario SharePoint : ${
-      config.configurado
-        ? `lista "${config.listId}"`
-        : "NO CONFIGURADO"
-    }`
-  );
-  console.log(
-    `  Power Automate        : ${webhook ? "configurado" : "NO CONFIGURADO"}`
-  );
-  console.log("  Acceso                : SSO Microsoft Entra ID (MFA obligatorio)");
-  console.log(
-    `  Tenant Levapan        : ${ENTRA_TENANT || "NO CONFIGURADO"}`
-  );
+  console.log(`  Motor           : PostgreSQL + Auth + Storage (Supabase)`);
+  console.log(`  URL Supabase    : ${CONFIG.url || "NO CONFIGURADA"}`);
+  console.log(`  Bucket actas    : ${BUCKET_ACTAS} (privado)`);
+  console.log(`  PDF oficial     : CORP-TEC-FR-002`);
+  console.log(`  Acceso          : Supabase Auth + perfiles_ti`);
+  console.log(`  Escucha         : http://localhost:${PUERTO}`);
   console.log(linea);
-  console.log("  Abre la aplicación en:");
-  console.log(`    http://localhost:${PUERTO}`);
-  if (ips.length) {
-    console.log("\n  Comparte este enlace con la oficina:");
-    ips.forEach((item) => console.log(`    http://${item.ip}:${PUERTO}`));
-  } else {
-    console.log("\n  No se detectó una red local activa.");
+
+  if (!CONFIG.configurado) {
+    console.error("  [!] " + mensajeConfiguracionIncompleta(CONFIG));
+    console.error(linea);
   }
 
-  if (!config.configurado) {
-    console.log(linea);
-    console.log(
-      `  [!] Microsoft Graph sin configurar. Faltan: ${config.faltantes.join(", ")}`
-    );
-    console.log("      Revisa .env.example y define las credenciales.");
-  }
-  if (!ENTRA_TENANT || !ENTRA_CLIENT || !ENTRA_SECRET) {
-    console.log(linea);
-    console.log("  [!] SSO de Entra ID sin configurar (TENANT_ID/CLIENT_ID/CLIENT_SECRET).");
-    console.log("      Nadie podrá iniciar sesión hasta completar las credenciales.");
-  }
-  if (!String(process.env.SESSION_SECRET || "").trim()) {
-    console.log(linea);
-    console.log("  [!] SESSION_SECRET no está definido: se usa una clave efímera.");
-    console.log("      Las sesiones se cerrarán cada vez que reinicies el servidor.");
-  }
-  if (!webhook) {
-    console.log(linea);
-    console.log("  [!] HTTP_WEBHOOK_URL no está configurada.");
-    console.log("      Las actas no podrán guardarse hasta definirla.");
-  }
-
-  console.log(linea);
-  console.log("  Deja esta ventana abierta. Ctrl+C para detener.");
-  console.log(`${linea}\n`);
+  contarEquipos()
+    .then((total) => {
+      console.log(`  Inventario      : ${total} equipos sincronizados\n`);
+      if (total === 0) migrarInventarioSiVacio();
+    })
+    .catch((err) => console.warn(`  Inventario      : sin conexión (${err.message})\n`));
 });
+
+/**
+ * Si la tabla equipos está vacía, lanza la migración del inventario en un
+ * proceso hijo. Es idempotente (upsert por placa), así que se puede repetir.
+ * Se puede desactivar con AUTO_MIGRAR_INVENTARIO=false en .env.
+ */
+function migrarInventarioSiVacio() {
+  if (String(process.env.AUTO_MIGRAR_INVENTARIO || "true").toLowerCase() === "false") return;
+
+  const script = path.join(RAIZ, "scripts", "migrar-inventario.js");
+  if (!fs.existsSync(script)) return;
+
+  try {
+    const hijo = spawn(process.execPath, [script], {
+      cwd: RAIZ,
+      stdio: "inherit",
+      detached: true,
+    });
+    hijo.on("error", (err) =>
+      console.warn(`  Migración      : no se pudo iniciar (${err.message})`)
+    );
+    hijo.unref?.();
+    console.log("  Migración      : inventario vacío, cargando en segundo plano...");
+  } catch (err) {
+    console.warn(`  Migración      : ${err.message}`);
+  }
+}
 
 function detener(senal) {
   console.log(`\nCerrando servidor (${senal})...`);

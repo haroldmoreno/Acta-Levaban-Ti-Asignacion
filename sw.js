@@ -7,14 +7,17 @@
    usan Cache-First. /api/ y /media/ siempre van directo a la red.
    ============================================================ */
 
-const CACHE = "acta-levapan-v20";
+const CACHE = "acta-levapan-v22";
 
 const APP_SHELL = [
   "/",
   "/index.html",
   "/manifest.json",
   "/css/style.css",
+  "/css/workspace.css",
+  "/js/auth.js",
   "/js/inventario-storage.js",
+  "/js/workspace.js",
   "/js/firmas.js",
   "/js/pdf-lib.min.js",
   "/js/pwa.js",
@@ -88,7 +91,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // La API y el video siempre van directo a la red (el video usa Range).
+  // NUNCA se cachea la API: sesión, inventario y actas deben ser en vivo.
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/media/")) {
     return;
   }

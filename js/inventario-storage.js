@@ -115,7 +115,7 @@ function marcarConexionNubeActiva(totalEquipos) {
   if (!MODO_NUBE) return;
 
   servidorActivo = true;
-  estadoServidor("Modo Nube Activo", "ok");
+  estadoServidor("Modo Nube Activo (Supabase)", "ok");
 
   const inv = document.getElementById("inventarioStatus");
   if (!inv) return;
@@ -1860,39 +1860,68 @@ function agenteSesion(usuario) {
   );
 }
 
-/** Si la cuenta es de un Agente TI, deja su nombre elegido en el selector. */
+/**
+ * Autocompleta Agente TI y cédula desde /api/perfil (perfiles_ti de Supabase).
+ * Si el nombre no está en el catálogo, se añade como opción dinámica.
+ */
 function preseleccionarAgenteSesion(usuario) {
   const select = document.getElementById("nombreTi");
+  const cedulaTi = document.getElementById("documentoTi");
   if (!select) return;
 
-  const agente = agenteSesion(usuario);
-  if (!agente) return;
+  const nombre =
+    usuario?.nombre_completo ||
+    usuario?.name ||
+    agenteSesion({
+      name: usuario?.name,
+      email: usuario?.email,
+    });
+  if (!nombre) return;
 
-  const opcion = [...select.options].find(
-    (item) => normalizarAgente(item.value) === normalizarAgente(agente)
+  let opcion = [...select.options].find(
+    (item) => normalizarAgente(item.value) === normalizarAgente(nombre)
   );
-  if (!opcion) return;
+  if (!opcion) {
+    opcion = document.createElement("option");
+    opcion.value = nombre;
+    opcion.textContent = nombre;
+    select.appendChild(opcion);
+  }
 
   select.value = opcion.value;
+
+  if (cedulaTi && usuario?.cedula) {
+    cedulaTi.value = String(usuario.cedula);
+    cedulaTi.readOnly = false;
+    guardarDocumentoTi(opcion.value, cedulaTi.value.trim());
+  }
+
   // Dispara la carga de la cédula y la firma del Agente TI.
   select.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-/** Muestra "Conectado como: …" y preselecciona al Agente TI de la sesión. */
+/** Espera al perfil TI de Supabase y completa los datos del agente. */
 async function cargarSesionUsuario() {
   const etiqueta = document.getElementById("sesionNombre");
 
   try {
-    const respuesta = await fetch("/api/me", {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-      credentials: "same-origin",
-    });
-    if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
+    let usuario = null;
+    if (window.AuthLevapan) {
+      await window.AuthLevapan.listo;
+      usuario = window.AuthLevapan.perfil;
+    }
+    if (!usuario) {
+      const respuesta = await fetch("/api/me", {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
+      usuario = await respuesta.json();
+    }
 
-    const usuario = await respuesta.json();
     if (etiqueta) {
-      etiqueta.textContent = `Conectado como: ${usuario.name || usuario.email}`;
+      etiqueta.textContent = `Conectado como: ${usuario.nombre_completo || usuario.name || usuario.email}`;
       etiqueta.title = usuario.email || "";
     }
     preseleccionarAgenteSesion(usuario);
@@ -2441,7 +2470,7 @@ function estadoEnvio(mensaje, tipo = "", enlace = "") {
     ancla.href = enlace;
     ancla.target = "_blank";
     ancla.rel = "noopener noreferrer";
-    ancla.textContent = "Abrir en SharePoint";
+    ancla.textContent = "Ver / Descargar PDF";
     el.append(document.createTextNode(" · "), ancla);
   }
 }
@@ -2459,7 +2488,7 @@ function datosParaServidor(datos) {
 async function enviarActaAlServidor(datos, nombreArchivo) {
   const fotos = await serializarFotos(datos.fotos);
 
-  const respuesta = await fetch(`${API_BASE}/api/guardar-acta`, {
+  const respuesta = await fetch(`${API_BASE}/api/actas`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2510,42 +2539,14 @@ async function manejarEnvio(event) {
       mostrarFichaEquipo(equipoActual);
     }
 
-    const sp = resultado.sharepoint || {};
-    const guardadoSP = sp.ok === true;
-    const webUrl = guardadoSP ? sp.webUrl || "" : "";
-    const enNube = resultado.modoNube === true;
+    const urlPDF = resultado.url || resultado.urlFirmada || "";
+    const consecutivo = resultado.consecutivo ? ` N.º ${resultado.consecutivo}` : "";
 
-    const destinos = [
-      guardadoSP ? "carpeta compartida de SharePoint (Nube Levapan)" : "",
-      resultado.rutaLocal ? "respaldo local" : "",
-      copia,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-
-    if (guardadoSP && enNube) {
-      // Sin copia local: SharePoint es el almacenamiento principal.
-      estadoEnvio(
-        "Acta guardada en: carpeta compartida de SharePoint (Nube Levapan) · PDF descargado",
-        "ok",
-        webUrl
-      );
-    } else if (guardadoSP) {
-      estadoEnvio(`Acta guardada en: ${destinos}`, "ok", webUrl);
-    } else {
-      const motivo = sp.error || "error desconocido";
-      const detallePermisos =
-        sp.status === 403
-          ? `SharePoint rechazó la escritura (HTTP 403: ${motivo}). ` +
-            "La aplicación de Azure AD necesita el permiso " +
-            "Sites.ReadWrite.All con consentimiento de administrador."
-          : `SharePoint no recibió el acta (HTTP ${
-              sp.status || "sin respuesta"
-            }: ${motivo}).`;
-
-      console.warn("Acta guardada solo localmente:", detallePermisos);
-      estadoEnvio(`Acta guardada en: ${destinos}. ${detallePermisos}`, "ok");
-    }
+    estadoEnvio(
+      `Acta CORP-TEC-FR-002${consecutivo} guardada en Supabase Storage · ${copia || "PDF listo"}`,
+      "ok",
+      urlPDF
+    );
     estadoInventario(
       `Acta registrada · la placa ${datos.placa} quedó como "${
         resultado.estadoEquipo || "actualizada"
@@ -2556,10 +2557,9 @@ async function manejarEnvio(event) {
     console.error("Error al guardar el acta:", err);
     estadoEnvio("No se pudo guardar el acta: " + (err.message || err), "error");
     alert(
-      "No se pudo guardar el acta en el servidor:\n" +
+      "No se pudo guardar el acta en Supabase:\n" +
         (err.message || err) +
-        "\n\nVerifica que el servidor esté encendido y que tenga acceso a " +
-        "la carpeta compartida de SharePoint (Nube Levapan)."
+        "\n\nVerifica tu sesión y que el servidor esté encendido y configurado."
     );
   } finally {
     if (boton) {

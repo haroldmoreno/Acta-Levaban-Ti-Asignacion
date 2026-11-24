@@ -44,6 +44,7 @@
     <meta name="twitter:image:alt" content="Logo de Actas Levapan" />
 
     <link rel="stylesheet" href="css/style.css" />
+    <link rel="stylesheet" href="css/workspace.css" />
   </head>
   <body>
     <!-- Fondo animado (video) -->
@@ -53,420 +54,882 @@
       muted
       loop
       playsinline
-      preload="none"
+      autoplay
+      preload="metadata"
       poster="images/fondo-poster.jpg"
       aria-hidden="true"
     >
-      <source src="media/fondo.mp4" type="video/mp4" />
+      <!-- Archivo local: no depende de enlaces externos ní se pierde al apagar el PC. -->
+      <source src="/media/fondo.mp4" type="video/mp4" />
+      <!-- Respaldo remoto (mismo Pin de Pinterest, MP4 directo 720p). -->
+      <source src="https://v1.pinimg.com/videos/iht/expMp4/2a/c3/c6/2ac3c68e6a36a98a9c82352aae8e0e66_720w.mp4" type="video/mp4" />
+      <source src="https://assets.mixkit.co/videos/34498/34498-1080.mp4" type="video/mp4" />
     </video>
     <div class="velo-fondo" aria-hidden="true"></div>
 
-    <main class="contenedor">
-      <header class="cabecera">
-        <div class="cabecera-superior">
-          <img
-            class="logo-app"
-            src="images/logo-levadesk.png"
-            alt="Levadesk"
-            width="177"
-            height="144"
-          />
-          <div class="cabecera-texto">
-            <span class="marca">LEVAPAN</span>
-            <span class="marca-sub">Gestión de Activos de TI</span>
+    <!-- Pantalla de inicio de sesión corporativo (Supabase Auth) -->
+    <div id="pantallaLogin" class="pantalla-login">
+      <form id="loginForm" class="login-tarjeta" autocomplete="on">
+        <img class="login-logo" src="images/logo-levadesk.png" alt="Levadesk" />
+        <span class="login-marca">LEVAPAN</span>
+        <h2>Ingreso corporativo</h2>
+        <p class="login-sub">Gestión de Activos de TI · CORP-TEC-FR-002</p>
+
+        <label for="loginCorreo">Correo corporativo</label>
+        <input
+          type="email"
+          id="loginCorreo"
+          name="email"
+          placeholder="nombre.apellido@levapan.com"
+          autocomplete="username"
+          required
+        />
+
+        <label for="loginClave">Contraseña</label>
+        <input
+          type="password"
+          id="loginClave"
+          name="password"
+          placeholder="Tu contraseña corporativa"
+          autocomplete="current-password"
+          required
+        />
+
+        <p id="loginError" class="login-error" role="alert" hidden></p>
+        <button type="submit" id="loginBoton" class="btn btn-primario login-boton">
+          Ingresar
+        </button>
+        <small class="login-nota">Solo personal autorizado de Tecnología e Infraestructura.</small>
+      </form>
+    </div>
+
+    <!-- ============================================================
+         WORKSPACE MODULAR POST-LOGIN · Arquitectura Inversa de TI
+         ============================================================ -->
+    <main id="appContent" class="ws-app" hidden>
+      <aside id="wsSidebar" class="ws-sidebar">
+        <div class="ws-marca">
+          <img class="ws-logo" src="images/logo-levadesk.png" alt="Levadesk" />
+          <div class="ws-marca-texto">
+            <span class="ws-marca-nombre">LEVAPAN</span>
+            <span class="ws-marca-sub">Arquitectura Inversa de TI</span>
           </div>
         </div>
-        <h1 class="titulo">Acta de Tecnología</h1>
-        <p class="subtitulo">
-          Registro oficial de entrega, devolución y préstamo de equipos de tecnología.
-        </p>
 
-        <div class="acciones-superiores">
-          <div id="sesionUsuario" class="sesion-usuario">
-            <span id="sesionNombre" class="sesion-nombre">Conectado como: …</span>
-            <a class="sesion-salir" href="/auth/logout">Cerrar sesión</a>
-          </div>
-          <button type="button" id="btnInstalarApp" class="btn btn-secundario" hidden>
-            Instalar App
+        <nav class="ws-nav-vertical" aria-label="Módulos principales">
+          <span class="ws-nav-grupo">Workspace</span>
+          <button type="button" class="ws-tab activa" data-vista="sistemas">
+            <span class="ws-tab-icono" aria-hidden="true">◈</span>
+            <span class="ws-tab-texto">Sistemas</span>
           </button>
-          <button type="button" id="btnConfigFolder" class="btn btn-secundario">
-            Configurar Carpeta Destino
+          <button type="button" class="ws-tab" data-vista="placas">
+            <span class="ws-tab-icono" aria-hidden="true">⬡</span>
+            <span class="ws-tab-texto">Placas</span>
           </button>
-          <span id="folderStatus" class="estado" role="status">Ninguna carpeta vinculada</span>
-          <span id="serverStatus" class="estado" role="status">Conectando con el servidor…</span>
+          <button type="button" class="ws-tab" data-vista="equipos">
+            <span class="ws-tab-icono" aria-hidden="true">▤</span>
+            <span class="ws-tab-texto">Equipos</span>
+          </button>
+          <button type="button" class="ws-tab" data-vista="boveda">
+            <span class="ws-tab-icono" aria-hidden="true">◫</span>
+            <span class="ws-tab-texto">Bóveda PDF</span>
+          </button>
+          <button type="button" class="ws-tab" data-vista="administracion" data-solo-admin hidden>
+            <span class="ws-tab-icono" aria-hidden="true">⚙</span>
+            <span class="ws-tab-texto">Administración TI</span>
+          </button>
+          <span class="ws-nav-indicador" aria-hidden="true"></span>
+        </nav>
+
+        <div class="ws-sidebar-pie">
+          <span class="ws-sidebar-titulo">Gestión corporativa</span>
+          <span class="ws-sidebar-nota">Formato CORP-TEC-FR-002</span>
         </div>
-        <span id="inventarioStatus" class="estado estado-inventario" role="status"></span>
-      </header>
+      </aside>
 
-      <form id="actaForm" class="formulario" autocomplete="off">
-        <!-- a) Datos personales -->
-        <section class="seccion">
-          <h2 class="seccion-titulo">Datos Personales</h2>
-          <div class="grid-campos">
-            <div class="campo">
-              <label for="nombre">Nombre completo</label>
-              <input
-                type="text"
-                id="nombre"
-                name="nombre"
-                placeholder="Nombre y apellidos"
-                required
-              />
-            </div>
-            <div class="campo">
-              <label for="documento">CC / TI</label>
-              <input
-                type="text"
-                id="documento"
-                name="documento"
-                inputmode="numeric"
-                placeholder="Número de documento"
-                required
-              />
-            </div>
+      <div class="ws-principal">
+        <header class="ws-top">
+          <button type="button" id="btnMenuMovil" class="ws-menu-movil" aria-label="Abrir menú">☰</button>
+          <div class="ws-top-encabezado">
+            <span class="ws-eyebrow">Workspace corporativo</span>
+            <h2 id="wsTituloSeccion">Ecosistemas de TI</h2>
           </div>
 
-          <div class="subbloque-ti">
-            <h3 class="subbloque-ti-titulo">Agente TI</h3>
-            <div class="grid-campos">
-              <div class="campo">
-                <label for="nombreTi">Nombre del Agente TI</label>
-                <select id="nombreTi" name="nombreTi" required>
-                  <option value="">Seleccione el Agente TI</option>
-                  <option value="Harold Moreno">Harold Moreno</option>
-                  <option value="Wilson Perez">Wilson Perez</option>
-                  <option value="Michel Salazar">Michel Salazar</option>
+          <div class="ws-sesion">
+            <span id="serverStatus" class="ws-chip" role="status">Conectando…</span>
+            <span id="inventarioStatus" class="ws-chip ws-chip-oro" role="status"></span>
+            <button type="button" id="btnConfigFolder" class="ws-chip ws-chip-accion">
+              Carpeta
+            </button>
+            <span id="folderStatus" class="ws-chip" role="status" hidden></span>
+            <div class="ws-usuario">
+              <span id="sesionNombre" class="ws-usuario-nombre">Sin sesión</span>
+              <span id="sesionRol" class="ws-usuario-rol"></span>
+            </div>
+            <button type="button" id="btnCerrarSesion" class="ws-salir">Cerrar sesión</button>
+          </div>
+        </header>
+
+      <div class="ws-cuerpo">
+        <!-- ================= SISTEMAS ================= -->
+        <section id="vistaSistemas" class="ws-panel activo" aria-labelledby="tituloSistemas">
+          <header class="ws-panel-cab">
+            <div>
+              <span class="ws-eyebrow">Mapa macro</span>
+              <h1 id="tituloSistemas">Ecosistemas de TI</h1>
+              <p class="ws-panel-sub">
+                Cada placa pertenece a un sistema. Entra por el sistema y baja hasta el equipo,
+                sus actas y sus contratos.
+              </p>
+            </div>
+            <button type="button" class="ws-boton ws-boton-rojo" data-accion="nuevo-sistema">
+              + Nuevo sistema
+            </button>
+          </header>
+          <p id="mensajeSistemas" class="ws-mensaje" role="status"></p>
+          <div id="gridSistemas" class="ws-grid-sistemas"></div>
+        </section>
+
+        <!-- ================= PLACAS ================= -->
+        <section id="vistaPlacas" class="ws-panel" hidden aria-labelledby="tituloPlacas">
+          <header class="ws-panel-cab">
+            <div>
+              <span class="ws-eyebrow">Núcleo inverso</span>
+              <h1 id="tituloPlacas">Placas · Vista 360°</h1>
+              <p class="ws-panel-sub">
+                Sistema → Placa → Equipo → Actas y Contratos, en un solo recorrido.
+              </p>
+            </div>
+            <button type="button" class="ws-boton ws-boton-rojo" data-accion="nueva-acta">
+              Emitir acta
+            </button>
+          </header>
+
+          <div class="ws-placas">
+            <div class="ws-placas-lista">
+              <label class="ws-buscador">
+                <span aria-hidden="true">⌕</span>
+                <input
+                  type="search"
+                  id="placaBuscar"
+                  placeholder="Placa, serial o responsable…"
+                  autocomplete="off"
+                  aria-label="Buscar placas"
+                />
+              </label>
+              <div id="listaPlacas" class="ws-resultados">
+                <p class="ws-vacio">Escribe una placa para desplegar su árbol.</p>
+              </div>
+            </div>
+            <div id="vista360" class="ws-360">
+              <div class="ws-vacio ws-360-vacio">
+                <strong>Vista 360°</strong>
+                <span>Selecciona una placa para ver sistema, equipos, actas y contratos.</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= EQUIPOS ================= -->
+        <section id="vistaEquipos" class="ws-panel" hidden aria-labelledby="tituloEquipos">
+          <header class="ws-panel-cab">
+            <div>
+              <span class="ws-eyebrow">Inventario vivo</span>
+              <h1 id="tituloEquipos">Equipos</h1>
+              <p class="ws-panel-sub">
+                Inventario sincronizado con Supabase. Garantías próximas se resaltan en dorado.
+              </p>
+            </div>
+            <div class="ws-acciones">
+              <button type="button" class="ws-boton" data-accion="nuevo-equipo">+ Nuevo equipo</button>
+              <button type="button" class="ws-boton" data-accion="importar">Importar Excel</button>
+              <button type="button" class="ws-boton" data-accion="exportar">Exportar</button>
+              <input type="file" id="archivoImportar" accept=".xlsx,.xls,.csv,.ods" hidden />
+            </div>
+          </header>
+
+          <div class="ws-metricas">
+            <article class="ws-metrica" data-glow>
+              <span class="ws-metrica-valor" id="metricaTotal">—</span>
+              <span class="ws-metrica-label">Total equipos</span>
+            </article>
+            <article class="ws-metrica ws-metrica-verde" data-glow>
+              <span class="ws-metrica-valor" id="metricaDisponibles">—</span>
+              <span class="ws-metrica-label">Disponibles</span>
+            </article>
+            <article class="ws-metrica ws-metrica-rojo" data-glow>
+              <span class="ws-metrica-valor" id="metricaAsignados">—</span>
+              <span class="ws-metrica-label">Asignados</span>
+            </article>
+            <article class="ws-metrica ws-metrica-oro" data-glow>
+              <span class="ws-metrica-valor" id="metricaMantenimiento">—</span>
+              <span class="ws-metrica-label">En mantenimiento</span>
+            </article>
+          </div>
+
+          <div class="ws-filtros">
+            <input
+              type="search"
+              id="invBuscar"
+              class="ws-input"
+              placeholder="Buscar por placa, serial o usuario…"
+              aria-label="Buscar en el inventario"
+            />
+            <select id="invSede" class="ws-select" aria-label="Filtrar por sede">
+              <option value="">Todas las sedes</option>
+            </select>
+            <select id="invEstado" class="ws-select" aria-label="Filtrar por estado">
+              <option value="">Todos los estados</option>
+              <option value="Disponible">Disponible</option>
+              <option value="Asignado">Asignado</option>
+              <option value="En Mantenimiento">En Mantenimiento</option>
+              <option value="Prestamo">Préstamo</option>
+              <option value="Dado de Baja">Dado de Baja</option>
+            </select>
+            <select id="invSistema" class="ws-select" aria-label="Filtrar por sistema">
+              <option value="">Todos los sistemas</option>
+            </select>
+          </div>
+
+          <p id="inventarioMensaje" class="ws-mensaje" role="status"></p>
+          <div id="tablaInventario" class="ws-tabla-caja"></div>
+          <div class="ws-paginacion">
+            <button type="button" class="ws-boton" data-accion="mas-equipos" id="btnMasEquipos" hidden>
+              Cargar más equipos
+            </button>
+          </div>
+        </section>
+
+        <!-- ================= BÓVEDA PDF ================= -->
+        <section id="vistaBoveda" class="ws-panel" hidden aria-labelledby="tituloBoveda">
+          <header class="ws-panel-cab">
+            <div>
+              <span class="ws-eyebrow">Gestor documental</span>
+              <h1 id="tituloBoveda">Bóveda PDF</h1>
+              <p class="ws-panel-sub">
+                Contratos, facturas, garantías y actas con búsqueda dentro del texto.
+              </p>
+            </div>
+            <button type="button" class="ws-boton ws-boton-rojo" data-accion="subir-documento">
+              + Subir documento
+            </button>
+          </header>
+
+          <div class="ws-boveda">
+            <div class="ws-boveda-lista">
+              <div class="ws-filtros ws-filtros-boveda">
+                <input
+                  type="search"
+                  id="bovedaBuscar"
+                  class="ws-input"
+                  placeholder="Buscar dentro del texto de los documentos…"
+                  aria-label="Buscar documentos"
+                />
+                <select id="bovedaCategoria" class="ws-select" aria-label="Filtrar por categoría">
+                  <option value="">Todas las categorías</option>
+                  <option value="Acta">Actas</option>
+                  <option value="Contrato">Contratos</option>
+                  <option value="Factura">Facturas</option>
+                  <option value="Garantia">Garantías</option>
+                  <option value="Manual">Manuales</option>
+                  <option value="Licencia">Licencias</option>
                 </select>
               </div>
-              <div class="campo">
-                <label for="documentoTi">Cédula TI</label>
-                <input
-                  type="text"
-                  id="documentoTi"
-                  name="documentoTi"
-                  inputmode="numeric"
-                  placeholder="Número de cédula del Agente TI"
-                  required
-                />
-                <small class="ayuda">Se recuerda para la próxima acta de este Agente TI.</small>
+              <p id="bovedaMensaje" class="ws-mensaje" role="status"></p>
+              <div id="listaDocumentos" class="ws-docs"></div>
+            </div>
+            <aside id="visorBoveda" class="ws-visor">
+              <div class="ws-vacio ws-360-vacio">
+                <strong>Visor PDF</strong>
+                <span>Selecciona un documento para previsualizarlo aquí.</span>
               </div>
-            </div>
+            </aside>
           </div>
         </section>
 
-        <!-- b) Características del equipo -->
-        <section class="seccion">
-          <h2 class="seccion-titulo">Características del Equipo</h2>
-          <div class="grid-campos">
-            <div class="campo">
-              <label for="tipo">Tipo</label>
-              <select id="tipo" name="tipo" required>
-                <option value="">Seleccione el Tipo</option>
-                <option value="CPU">CPU</option>
-                <option value="Handheld">Handheld</option>
-                <option value="Impresora">Impresora</option>
-                <option value="Impresora portátil">Impresora portátil</option>
-                <option value="Jabra">Jabra</option>
-                <option value="Monitor">Monitor</option>
-                <option value="Portátil">Portátil</option>
-                <option value="Proyector">Proyector</option>
-                <option value="Tablet">Tablet</option>
-              </select>
+        <!-- ================= ADMINISTRACIÓN TI ================= -->
+        <section id="vistaAdministracion" class="ws-panel" hidden aria-labelledby="tituloAdministracion">
+          <header class="ws-panel-cab">
+            <div>
+              <span class="ws-eyebrow">Consola de control</span>
+              <h1 id="tituloAdministracion">Administración TI</h1>
+              <p class="ws-panel-sub">Estado del entorno, inventario y accesos corporativos.</p>
             </div>
-            <div class="campo">
-              <label for="marca">Marca</label>
-              <select id="marca" name="marca" required>
-                <option value="">Seleccione la Marca</option>
-              </select>
-            </div>
-            <div class="campo">
-              <label for="modelo">Modelo</label>
-              <select id="modelo" name="modelo" required>
-                <option value="">Seleccione el Modelo</option>
-              </select>
-            </div>
-            <div class="campo">
-              <label for="serial">Serial</label>
-              <input type="text" id="serial" name="serial" placeholder="Número de serie" required />
-            </div>
-            <div class="campo campo-placa">
-              <label for="placa">Placa</label>
-              <div class="campo-placa-caja">
-                <input
-                  type="text"
-                  id="placa"
-                  name="placa"
-                  placeholder="Ej. 199865 o ML-199865"
-                  autocomplete="off"
-                  spellcheck="false"
-                  role="combobox"
-                  aria-autocomplete="list"
-                  aria-expanded="false"
-                  aria-controls="placaSugerencias"
-                  aria-haspopup="listbox"
-                  aria-describedby="placaAyuda"
-                  aria-required="false"
-                />
-                <!-- El desplegable #placaSugerencias se crea dinámicamente
-                     desde js/inventario-storage.js con estilo Liquid Glass. -->
+            <button type="button" class="ws-boton ws-boton-rojo" data-accion="importar">
+              Sincronizar inventario
+            </button>
+          </header>
+
+          <div class="ws-admin-grid">
+            <article class="ws-admin-tarjeta" data-glow>
+              <span class="ws-admin-etiqueta">Perfil activo</span>
+              <strong id="adminPerfil">—</strong>
+              <span id="adminPerfilDetalle" class="ws-admin-nota">—</span>
+            </article>
+            <article class="ws-admin-tarjeta" data-glow>
+              <span class="ws-admin-etiqueta">Inventario</span>
+              <strong id="adminInventario">—</strong>
+              <span class="ws-admin-nota">Equipos sincronizados en Supabase</span>
+            </article>
+            <article class="ws-admin-tarjeta" data-glow>
+              <span class="ws-admin-etiqueta">Almacenamiento</span>
+              <strong id="adminStorage">—</strong>
+              <span class="ws-admin-nota">Bóveda documental y actas PDF</span>
+            </article>
+            <article class="ws-admin-tarjeta" data-glow>
+              <span class="ws-admin-etiqueta">Sistemas</span>
+              <strong id="adminSistemas">—</strong>
+              <span class="ws-admin-nota">Ecosistemas mapeados</span>
+            </article>
+          </div>
+
+          <p id="adminMensaje" class="ws-mensaje" role="status"></p>
+
+          <div class="ws-admin-acciones">
+            <button type="button" class="ws-boton ws-boton-rojo" data-accion="respaldo-json">
+              Descargar Respaldo Total · JSON
+            </button>
+            <button type="button" class="ws-boton" data-accion="respaldo-excel">
+              Descargar Respaldo Total · Excel
+            </button>
+            <button type="button" class="ws-boton" data-accion="nuevo-sistema">+ Nuevo sistema</button>
+            <button type="button" class="ws-boton" data-accion="nuevo-equipo">+ Nuevo equipo</button>
+            <button type="button" class="ws-boton" data-accion="subir-documento">Subir a la Bóveda</button>
+          </div>
+        </section>
+
+        <footer class="ws-pie">
+          <span>Levapan · Arquitectura Inversa de TI</span>
+          <span>Acta oficial CORP-TEC-FR-002 · Supabase PostgreSQL + Storage</span>
+        </footer>
+      </div>
+    </div>
+  </main>
+
+    <!-- ============================================================
+         CAJÓN DEL ACTA OFICIAL (formulario intacto)
+         ============================================================ -->
+    <div id="drawerActa" class="ws-drawer" hidden>
+      <div class="ws-drawer-fondo" data-cerrar-drawer aria-hidden="true"></div>
+      <div class="ws-drawer-caja" role="dialog" aria-modal="true" aria-labelledby="drawerActaTitulo">
+        <header class="ws-drawer-cab">
+          <div>
+            <span class="ws-eyebrow">Documento oficial</span>
+            <h2 id="drawerActaTitulo">Acta CORP-TEC-FR-002</h2>
+          </div>
+          <button type="button" class="ws-cerrar" data-cerrar-drawer aria-label="Cerrar">×</button>
+        </header>
+        <div class="ws-drawer-cuerpo">
+          <form id="actaForm" class="formulario" autocomplete="off">
+            <!-- a) Datos personales -->
+            <section class="seccion">
+              <h2 class="seccion-titulo">Datos Personales</h2>
+              <div class="grid-campos">
+                <div class="campo">
+                  <label for="nombre">Nombre completo</label>
+                  <input
+                    type="text"
+                    id="nombre"
+                    name="nombre"
+                    placeholder="Nombre y apellidos"
+                    required
+                  />
+                </div>
+                <div class="campo">
+                  <label for="documento">CC / TI</label>
+                  <input
+                    type="text"
+                    id="documento"
+                    name="documento"
+                    inputmode="numeric"
+                    placeholder="Número de documento"
+                    required
+                  />
+                </div>
               </div>
-              <small class="ayuda" id="placaAyuda">
-                Escribe al menos 2 caracteres (ej. 199865 o ML-199865) para buscar en el inventario.
-              </small>
-              <small class="placa-aviso" id="placaAviso" role="status" hidden></small>
-            </div>
-            <div class="campo">
-              <label for="estado">Estado</label>
-              <select id="estado" name="estado" disabled>
-                <option value="">Sin estado</option>
-                <option value="Disponible">Disponible</option>
-                <option value="Disponible Para Asignar">Disponible Para Asignar</option>
-                <option value="Asignado">Asignado</option>
-                <option value="Prestamo">Préstamo</option>
-                <option value="En laboratorio de pruebas">En laboratorio de pruebas</option>
-                <option value="En laboratorio para dar de baja">En laboratorio para dar de baja</option>
-                <option value="Para devolución a proveedor">Para devolución a proveedor</option>
-                <option value="Dado de baja">Dado de baja</option>
-              </select>
-              <small class="ayuda">Estado actual en el inventario.</small>
-            </div>
 
-            <div class="campo">
-              <label for="sede">Sede Levapan</label>
-              <select id="sede" name="sede" required onchange="toggleSedeOtro(this)">
-                <option value="">Seleccione la Sede</option>
-                <option value="Levapan Calle 72">Levapan Calle 72</option>
-                <option value="Levapan Fontibon">Levapan Fontibon</option>
-                <option value="Cali">Cali</option>
-                <option value="Bucaramanga">Bucaramanga</option>
-                <option value="Sabaneta - Medellin">Sabaneta - Medellin</option>
-                <option value="Tulua">Tulua</option>
-                <option value="Barranquilla">Barranquilla</option>
-                <option value="Otra">Otra</option>
-              </select>
-              <small class="ayuda" id="sedeAyuda">Seleccione la sede del equipo.</small>
-            </div>
-
-            <!-- Campo texto "Otra sede" (oculto por defecto) -->
-            <div class="campo" id="sedeOtroDiv" style="display: none;">
-              <label for="sedeOtro">Sede (personalizada)</label>
-              <input type="text" id="sedeOtro" name="sedeOtro" placeholder="Ej. Otras sedes o ubicación" style="width: 100%; padding: 12px 14px; font-size: 16px; font-family: inherit; color: var(--texto); background: linear-gradient(180deg, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0.54) 100%); border: 1px solid var(--cristal-borde); border-radius: var(--radio-campo); box-shadow: inset 0 1px 2px rgba(20, 12, 16, 0.05), 0 2px 8px rgba(20, 12, 16, 0.04); transition: border-color 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s cubic-bezier(0.22, 1, 0.36, 1); backdrop-filter: var(--blur-suave); -webkit-backdrop-filter: var(--blur-suave); min-height: 48px; margin-top: 6px;">
-              <small class="ayuda" style="font-size: 0.78rem; color: var(--texto-suave); margin-top: 4px;">Escriba la sede si no está en la lista.</small>
-            </div>
-          </div>
-
-          <div id="equipoInfo" class="equipo-info" role="status" hidden>
-            <div class="equipo-info-item">
-              <span class="equipo-info-etiqueta">Estado en inventario</span>
-              <span id="equipoInfoEstado" class="equipo-info-valor">—</span>
-            </div>
-            <div class="equipo-info-item">
-              <span class="equipo-info-etiqueta">Responsable actual</span>
-              <span id="equipoInfoResponsable" class="equipo-info-valor">—</span>
-            </div>
-            <div class="equipo-info-item">
-              <span class="equipo-info-etiqueta">Accesorios registrados</span>
-              <span id="equipoInfoAccesorios" class="equipo-info-valor">—</span>
-            </div>
-          </div>
-
-          <div class="grupo-radio">
-            <span class="grupo-etiqueta">Tipo de acta</span>
-            <label class="radio">
-              <input type="radio" name="tipoActa" value="Asignación" checked required />
-              <span>Asignación</span>
-            </label>
-            <label class="radio">
-              <input type="radio" name="tipoActa" value="Devolución" />
-              <span>Devolución</span>
-            </label>
-          </div>
-        </section>
-
-        <!-- c) Accesorios -->
-        <section class="seccion">
-          <h2 class="seccion-titulo">Accesorios</h2>
-          <div class="grid-checks">
-            <label class="check"><input type="checkbox" name="accesorios" value="Cargador" checked /><span>Cargador</span></label>
-            <label class="check"><input type="checkbox" name="accesorios" value="Forro" /><span>Forro</span></label>
-            <label class="check"><input type="checkbox" name="accesorios" value="Mouse" /><span>Mouse</span></label>
-            <label class="check"><input type="checkbox" name="accesorios" value="Base Refrigerante" /><span>Base Refrigerante</span></label>
-            <label class="check"><input type="checkbox" name="accesorios" value="Teclado" /><span>Teclado</span></label>
-            <label class="check"><input type="checkbox" name="accesorios" value="Base Soporte" /><span>Base Soporte</span></label>
-            <label class="check"><input type="checkbox" name="accesorios" value="Morral" /><span>Morral</span></label>
-            <label class="check"><input type="checkbox" name="accesorios" value="Multipuerto USB" /><span>Multipuerto USB</span></label>
-            <label class="check"><input type="checkbox" name="accesorios" value="Base" /><span>Base</span></label>
-            <label class="check"><input type="checkbox" name="accesorios" value="Guaya" /><span>Guaya</span></label>
-            <label class="check">
-              <input type="checkbox" name="accesorios" value="Otro" id="otroAccesorioChk" /><span>Otro</span>
-            </label>
-          </div>
-          <input
-            type="text"
-            id="otroAccesorio"
-            class="otro-input"
-            placeholder="¿Cuál otro accesorio?"
-            disabled
-          />
-        </section>
-
-        <!-- d) Software instalado -->
-        <section class="seccion">
-          <h2 class="seccion-titulo">Software Instalado</h2>
-          <div class="grid-checks">
-            <label class="check"><input type="checkbox" name="software" value="Microsoft Office" checked /><span>Microsoft Office</span></label>
-            <label class="check"><input type="checkbox" name="software" value="WinRAR" checked /><span>WinRAR</span></label>
-            <label class="check"><input type="checkbox" name="software" value="7zip" checked /><span>7zip</span></label>
-            <label class="check"><input type="checkbox" name="software" value="Antivirus" checked /><span>Antivirus</span></label>
-            <label class="check"><input type="checkbox" name="software" value="Adobe Reader" checked /><span>Adobe Reader</span></label>
-            <label class="check"><input type="checkbox" name="software" value="VPN" /><span>VPN</span></label>
-            <label class="check"><input type="checkbox" name="software" value="Impresora" checked /><span>Impresora</span></label>
-            <label class="check"><input type="checkbox" name="software" value="Foxit Reader" /><span>Foxit Reader</span></label>
-            <label class="check"><input type="checkbox" name="software" value="Team Viewer" checked /><span>Team Viewer</span></label>
-            <label class="check"><input type="checkbox" name="software" value="Softphone" /><span>Softphone</span></label>
-            <label class="check"><input type="checkbox" name="software" value="SAP GUI" checked /><span>SAP GUI</span></label>
-            <label class="check"><input type="checkbox" name="software" value="Sofsin" /><span>Sofsin</span></label>
-            <label class="check"><input type="checkbox" name="software" value="Google Chrome" checked /><span>Google Chrome</span></label>
-            <label class="check"><input type="checkbox" name="software" value="Adobe Creative Cloud" checked /><span>Adobe Creative Cloud</span></label>
-            <label class="check">
-              <input type="checkbox" name="software" value="Otro" id="otroSoftwareChk" /><span>Otro</span>
-            </label>
-          </div>
-          <input
-            type="text"
-            id="otroSoftware"
-            class="otro-input"
-            placeholder="¿Cuál otro programa?"
-            disabled
-          />
-        </section>
-
-        <!-- e) Registro fotográfico -->
-        <section class="seccion">
-          <h2 class="seccion-titulo">Registro Fotográfico</h2>
-          <div class="grid-fotos">
-            <div class="campo-foto">
-              <label for="fotoEncendido">Equipo Encendido</label>
-              <input type="file" id="fotoEncendido" accept="image/png,image/jpeg,image/jpg,image/webp" />
-              <img id="previewEncendido" class="preview" alt="Vista previa del equipo encendido" />
-            </div>
-            <div class="campo-foto">
-              <label for="fotoFrontal">Frontal</label>
-              <input type="file" id="fotoFrontal" accept="image/png,image/jpeg,image/jpg,image/webp" />
-              <img id="previewFrontal" class="preview" alt="Vista previa frontal del equipo" />
-            </div>
-            <div class="campo-foto">
-              <label for="fotoPosterior">Posterior</label>
-              <input type="file" id="fotoPosterior" accept="image/png,image/jpeg,image/jpg,image/webp" />
-              <img id="previewPosterior" class="preview" alt="Vista previa posterior del equipo" />
-            </div>
-          </div>
-        </section>
-
-        <!-- f) Observaciones -->
-        <section class="seccion">
-          <h2 class="seccion-titulo">Observaciones</h2>
-          <textarea
-            id="observaciones"
-            name="observaciones"
-            rows="4"
-            placeholder="Comentarios finales sobre el equipo, el estado o la entrega..."
-          ></textarea>
-        </section>
-
-        <!-- g) Firmas digitales -->
-        <section class="seccion seccion-firmas">
-          <h2 class="seccion-titulo">Firmas</h2>
-          <div class="grid-firmas">
-            <div class="bloque-firma">
-              <h3 class="firma-titulo">Colaborador</h3>
-              <div class="campo">
-                <label for="firmaNombreColaborador">Nombre</label>
-                <input
-                  type="text"
-                  id="firmaNombreColaborador"
-                  readonly
-                  placeholder="Se sincroniza con el nombre"
-                />
+              <div class="subbloque-ti">
+                <h3 class="subbloque-ti-titulo">Agente TI</h3>
+                <div class="grid-campos">
+                  <div class="campo">
+                    <label for="nombreTi">Nombre del Agente TI</label>
+                    <select id="nombreTi" name="nombreTi" required>
+                      <option value="">Seleccione el Agente TI</option>
+                      <option value="Harold Moreno">Harold Moreno</option>
+                      <option value="Wilson Perez">Wilson Perez</option>
+                      <option value="Michel Salazar">Michel Salazar</option>
+                    </select>
+                  </div>
+                  <div class="campo">
+                    <label for="documentoTi">Cédula TI</label>
+                    <input
+                      type="text"
+                      id="documentoTi"
+                      name="documentoTi"
+                      inputmode="numeric"
+                      placeholder="Número de cédula del Agente TI"
+                      required
+                    />
+                    <small class="ayuda">Se recuerda para la próxima acta de este Agente TI.</small>
+                  </div>
+                </div>
               </div>
-              <div class="campo">
-                <label for="firmaDocumentoColaborador">N° DOC ID</label>
-                <input
-                  type="text"
-                  id="firmaDocumentoColaborador"
-                  readonly
-                  placeholder="Se sincroniza con la cédula"
-                />
+            </section>
+
+            <!-- b) Características del equipo -->
+            <section class="seccion">
+              <h2 class="seccion-titulo">Características del Equipo</h2>
+              <div class="grid-campos">
+                <div class="campo">
+                  <label for="tipo">Tipo</label>
+                  <select id="tipo" name="tipo" required>
+                    <option value="">Seleccione el Tipo</option>
+                    <option value="CPU">CPU</option>
+                    <option value="Handheld">Handheld</option>
+                    <option value="Impresora">Impresora</option>
+                    <option value="Impresora portátil">Impresora portátil</option>
+                    <option value="Jabra">Jabra</option>
+                    <option value="Monitor">Monitor</option>
+                    <option value="Portátil">Portátil</option>
+                    <option value="Proyector">Proyector</option>
+                    <option value="Tablet">Tablet</option>
+                  </select>
+                </div>
+                <div class="campo">
+                  <label for="marca">Marca</label>
+                  <select id="marca" name="marca" required>
+                    <option value="">Seleccione la Marca</option>
+                  </select>
+                </div>
+                <div class="campo">
+                  <label for="modelo">Modelo</label>
+                  <select id="modelo" name="modelo" required>
+                    <option value="">Seleccione el Modelo</option>
+                  </select>
+                </div>
+                <div class="campo">
+                  <label for="serial">Serial</label>
+                  <input type="text" id="serial" name="serial" placeholder="Número de serie" required />
+                </div>
+                <div class="campo campo-placa">
+                  <label for="placa">Placa</label>
+                  <div class="campo-placa-caja">
+                    <input
+                      type="text"
+                      id="placa"
+                      name="placa"
+                      placeholder="Ej. 199865 o ML-199865"
+                      autocomplete="off"
+                      spellcheck="false"
+                      role="combobox"
+                      aria-autocomplete="list"
+                      aria-expanded="false"
+                      aria-controls="placaSugerencias"
+                      aria-haspopup="listbox"
+                      aria-describedby="placaAyuda"
+                      aria-required="false"
+                    />
+                    <!-- El desplegable #placaSugerencias se crea dinámicamente
+                         desde js/inventario-storage.js con estilo Liquid Glass. -->
+                  </div>
+                  <small class="ayuda" id="placaAyuda">
+                    Escribe al menos 2 caracteres (ej. 199865 o ML-199865) para buscar en el inventario.
+                  </small>
+                  <small class="placa-aviso" id="placaAviso" role="status" hidden></small>
+                </div>
+                <div class="campo">
+                  <label for="estado">Estado</label>
+                  <select id="estado" name="estado" disabled>
+                    <option value="">Sin estado</option>
+                    <option value="Disponible">Disponible</option>
+                    <option value="Disponible Para Asignar">Disponible Para Asignar</option>
+                    <option value="Asignado">Asignado</option>
+                    <option value="Prestamo">Préstamo</option>
+                    <option value="En laboratorio de pruebas">En laboratorio de pruebas</option>
+                    <option value="En laboratorio para dar de baja">En laboratorio para dar de baja</option>
+                    <option value="Para devolución a proveedor">Para devolución a proveedor</option>
+                    <option value="Dado de baja">Dado de baja</option>
+                  </select>
+                  <small class="ayuda">Estado actual en el inventario.</small>
+                </div>
+
+                <div class="campo">
+                  <label for="sede">Sede Levapan</label>
+                  <select id="sede" name="sede" required onchange="toggleSedeOtro(this)">
+                    <option value="">Seleccione la Sede</option>
+                    <option value="Levapan Calle 72">Levapan Calle 72</option>
+                    <option value="Levapan Fontibon">Levapan Fontibon</option>
+                    <option value="Cali">Cali</option>
+                    <option value="Bucaramanga">Bucaramanga</option>
+                    <option value="Sabaneta - Medellin">Sabaneta - Medellin</option>
+                    <option value="Tulua">Tulua</option>
+                    <option value="Barranquilla">Barranquilla</option>
+                    <option value="Otra">Otra</option>
+                  </select>
+                  <small class="ayuda" id="sedeAyuda">Seleccione la sede del equipo.</small>
+                </div>
+
+                <!-- Campo texto "Otra sede" (oculto por defecto) -->
+                <div class="campo" id="sedeOtroDiv" style="display: none;">
+                  <label for="sedeOtro">Sede (personalizada)</label>
+                  <input type="text" id="sedeOtro" name="sedeOtro" placeholder="Ej. Otras sedes o ubicación" style="width: 100%; padding: 12px 14px; font-size: 16px; font-family: inherit; color: var(--texto); background: linear-gradient(180deg, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0.54) 100%); border: 1px solid var(--cristal-borde); border-radius: var(--radio-campo); box-shadow: inset 0 1px 2px rgba(20, 12, 16, 0.05), 0 2px 8px rgba(20, 12, 16, 0.04); transition: border-color 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s cubic-bezier(0.22, 1, 0.36, 1); backdrop-filter: var(--blur-suave); -webkit-backdrop-filter: var(--blur-suave); min-height: 48px; margin-top: 6px;">
+                  <small class="ayuda" style="font-size: 0.78rem; color: var(--texto-suave); margin-top: 4px;">Escriba la sede si no está en la lista.</small>
+                </div>
               </div>
-              <div class="lienzo-firma" id="lienzoFirmaColaborador">
-                <canvas
-                  id="firmaColaborador"
-                  class="canvas-firma"
-                  width="1000"
-                  height="340"
-                  aria-label="Firma del colaborador"
-                ></canvas>
-                <span class="firma-guia" aria-hidden="true">Firme aquí</span>
+
+              <div id="equipoInfo" class="equipo-info" role="status" hidden>
+                <div class="equipo-info-item">
+                  <span class="equipo-info-etiqueta">Estado en inventario</span>
+                  <span id="equipoInfoEstado" class="equipo-info-valor">—</span>
+                </div>
+                <div class="equipo-info-item">
+                  <span class="equipo-info-etiqueta">Responsable actual</span>
+                  <span id="equipoInfoResponsable" class="equipo-info-valor">—</span>
+                </div>
+                <div class="equipo-info-item">
+                  <span class="equipo-info-etiqueta">Accesorios registrados</span>
+                  <span id="equipoInfoAccesorios" class="equipo-info-valor">—</span>
+                </div>
               </div>
-              <button type="button" class="btn btn-firma" data-limpiar="firmaColaborador">
+
+              <div class="grupo-radio">
+                <span class="grupo-etiqueta">Tipo de acta</span>
+                <label class="radio">
+                  <input type="radio" name="tipoActa" value="Asignación" checked required />
+                  <span>Asignación</span>
+                </label>
+                <label class="radio">
+                  <input type="radio" name="tipoActa" value="Devolución" />
+                  <span>Devolución</span>
+                </label>
+              </div>
+            </section>
+
+            <!-- c) Accesorios -->
+            <section class="seccion">
+              <h2 class="seccion-titulo">Accesorios</h2>
+              <div class="grid-checks">
+                <label class="check"><input type="checkbox" name="accesorios" value="Cargador" checked /><span>Cargador</span></label>
+                <label class="check"><input type="checkbox" name="accesorios" value="Forro" /><span>Forro</span></label>
+                <label class="check"><input type="checkbox" name="accesorios" value="Mouse" /><span>Mouse</span></label>
+                <label class="check"><input type="checkbox" name="accesorios" value="Base Refrigerante" /><span>Base Refrigerante</span></label>
+                <label class="check"><input type="checkbox" name="accesorios" value="Teclado" /><span>Teclado</span></label>
+                <label class="check"><input type="checkbox" name="accesorios" value="Base Soporte" /><span>Base Soporte</span></label>
+                <label class="check"><input type="checkbox" name="accesorios" value="Morral" /><span>Morral</span></label>
+                <label class="check"><input type="checkbox" name="accesorios" value="Multipuerto USB" /><span>Multipuerto USB</span></label>
+                <label class="check"><input type="checkbox" name="accesorios" value="Base" /><span>Base</span></label>
+                <label class="check"><input type="checkbox" name="accesorios" value="Guaya" /><span>Guaya</span></label>
+                <label class="check">
+                  <input type="checkbox" name="accesorios" value="Otro" id="otroAccesorioChk" /><span>Otro</span>
+                </label>
+              </div>
+              <input
+                type="text"
+                id="otroAccesorio"
+                class="otro-input"
+                placeholder="¿Cuál otro accesorio?"
+                disabled
+              />
+            </section>
+
+            <!-- d) Software instalado -->
+            <section class="seccion">
+              <h2 class="seccion-titulo">Software Instalado</h2>
+              <div class="grid-checks">
+                <label class="check"><input type="checkbox" name="software" value="Microsoft Office" checked /><span>Microsoft Office</span></label>
+                <label class="check"><input type="checkbox" name="software" value="WinRAR" checked /><span>WinRAR</span></label>
+                <label class="check"><input type="checkbox" name="software" value="7zip" checked /><span>7zip</span></label>
+                <label class="check"><input type="checkbox" name="software" value="Antivirus" checked /><span>Antivirus</span></label>
+                <label class="check"><input type="checkbox" name="software" value="Adobe Reader" checked /><span>Adobe Reader</span></label>
+                <label class="check"><input type="checkbox" name="software" value="VPN" /><span>VPN</span></label>
+                <label class="check"><input type="checkbox" name="software" value="Impresora" checked /><span>Impresora</span></label>
+                <label class="check"><input type="checkbox" name="software" value="Foxit Reader" /><span>Foxit Reader</span></label>
+                <label class="check"><input type="checkbox" name="software" value="Team Viewer" checked /><span>Team Viewer</span></label>
+                <label class="check"><input type="checkbox" name="software" value="Softphone" /><span>Softphone</span></label>
+                <label class="check"><input type="checkbox" name="software" value="SAP GUI" checked /><span>SAP GUI</span></label>
+                <label class="check"><input type="checkbox" name="software" value="Sofsin" /><span>Sofsin</span></label>
+                <label class="check"><input type="checkbox" name="software" value="Google Chrome" checked /><span>Google Chrome</span></label>
+                <label class="check"><input type="checkbox" name="software" value="Adobe Creative Cloud" checked /><span>Adobe Creative Cloud</span></label>
+                <label class="check">
+                  <input type="checkbox" name="software" value="Otro" id="otroSoftwareChk" /><span>Otro</span>
+                </label>
+              </div>
+              <input
+                type="text"
+                id="otroSoftware"
+                class="otro-input"
+                placeholder="¿Cuál otro programa?"
+                disabled
+              />
+            </section>
+
+            <!-- e) Registro fotográfico -->
+            <section class="seccion">
+              <h2 class="seccion-titulo">Registro Fotográfico</h2>
+              <div class="grid-fotos">
+                <div class="campo-foto">
+                  <label for="fotoEncendido">Equipo Encendido</label>
+                  <input type="file" id="fotoEncendido" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                  <img id="previewEncendido" class="preview" alt="Vista previa del equipo encendido" />
+                </div>
+                <div class="campo-foto">
+                  <label for="fotoFrontal">Frontal</label>
+                  <input type="file" id="fotoFrontal" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                  <img id="previewFrontal" class="preview" alt="Vista previa frontal del equipo" />
+                </div>
+                <div class="campo-foto">
+                  <label for="fotoPosterior">Posterior</label>
+                  <input type="file" id="fotoPosterior" accept="image/png,image/jpeg,image/jpg,image/webp" />
+                  <img id="previewPosterior" class="preview" alt="Vista previa posterior del equipo" />
+                </div>
+              </div>
+            </section>
+
+            <!-- f) Observaciones -->
+            <section class="seccion">
+              <h2 class="seccion-titulo">Observaciones</h2>
+              <textarea
+                id="observaciones"
+                name="observaciones"
+                rows="4"
+                placeholder="Comentarios finales sobre el equipo, el estado o la entrega..."
+              ></textarea>
+            </section>
+
+            <!-- g) Firmas digitales -->
+            <section class="seccion seccion-firmas">
+              <h2 class="seccion-titulo">Firmas</h2>
+              <div class="grid-firmas">
+                <div class="bloque-firma">
+                  <h3 class="firma-titulo">Colaborador</h3>
+                  <div class="campo">
+                    <label for="firmaNombreColaborador">Nombre</label>
+                    <input
+                      type="text"
+                      id="firmaNombreColaborador"
+                      readonly
+                      placeholder="Se sincroniza con el nombre"
+                    />
+                  </div>
+                  <div class="campo">
+                    <label for="firmaDocumentoColaborador">N° DOC ID</label>
+                    <input
+                      type="text"
+                      id="firmaDocumentoColaborador"
+                      readonly
+                      placeholder="Se sincroniza con la cédula"
+                    />
+                  </div>
+                  <div class="lienzo-firma" id="lienzoFirmaColaborador">
+                    <canvas
+                      id="firmaColaborador"
+                      class="canvas-firma"
+                      width="1000"
+                      height="340"
+                      aria-label="Firma del colaborador"
+                    ></canvas>
+                    <span class="firma-guia" aria-hidden="true">Firme aquí</span>
+                  </div>
+                  <button type="button" class="btn btn-firma" data-limpiar="firmaColaborador">
+                    Limpiar
+                  </button>
+                </div>
+
+                <div class="bloque-firma">
+                  <h3 class="firma-titulo">Agente TI</h3>
+                  <div class="campo">
+                    <label for="firmaNombreAgente">Nombre</label>
+                    <input
+                      type="text"
+                      id="firmaNombreAgente"
+                      readonly
+                      placeholder="Se sincroniza con el Agente TI"
+                    />
+                  </div>
+                  <div class="campo">
+                    <label for="firmaDocumentoAgente">N° DOC ID</label>
+                    <input
+                      type="text"
+                      id="firmaDocumentoAgente"
+                      readonly
+                      placeholder="Se sincroniza con la cédula TI"
+                    />
+                  </div>
+                  <div class="lienzo-firma" id="lienzoFirmaAgente">
+                    <canvas
+                      id="firmaAgente"
+                      class="canvas-firma"
+                      width="1000"
+                      height="340"
+                      aria-label="Firma del Agente TI"
+                    ></canvas>
+                    <span class="firma-guia" aria-hidden="true">Firme aquí</span>
+                  </div>
+                  <button type="button" class="btn btn-firma" data-limpiar="firmaAgente">
+                    Limpiar
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <div class="pie-formulario">
+              <button type="submit" id="btnGenerar" class="btn btn-primario">
+                Generar y Guardar / Enviar
+              </button>
+              <button type="button" id="btnLimpiar" class="btn btn-limpiar">
                 Limpiar
               </button>
+              <span id="envioStatus" class="estado" role="status"></span>
             </div>
-
-            <div class="bloque-firma">
-              <h3 class="firma-titulo">Agente TI</h3>
-              <div class="campo">
-                <label for="firmaNombreAgente">Nombre</label>
-                <input
-                  type="text"
-                  id="firmaNombreAgente"
-                  readonly
-                  placeholder="Se sincroniza con el Agente TI"
-                />
-              </div>
-              <div class="campo">
-                <label for="firmaDocumentoAgente">N° DOC ID</label>
-                <input
-                  type="text"
-                  id="firmaDocumentoAgente"
-                  readonly
-                  placeholder="Se sincroniza con la cédula TI"
-                />
-              </div>
-              <div class="lienzo-firma" id="lienzoFirmaAgente">
-                <canvas
-                  id="firmaAgente"
-                  class="canvas-firma"
-                  width="1000"
-                  height="340"
-                  aria-label="Firma del Agente TI"
-                ></canvas>
-                <span class="firma-guia" aria-hidden="true">Firme aquí</span>
-              </div>
-              <button type="button" class="btn btn-firma" data-limpiar="firmaAgente">
-                Limpiar
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <div class="pie-formulario">
-          <button type="submit" id="btnGenerar" class="btn btn-primario">
-            Generar y Guardar / Enviar
-          </button>
-          <button type="button" id="btnLimpiar" class="btn btn-limpiar">
-            Limpiar
-          </button>
-          <span id="envioStatus" class="estado" role="status"></span>
+          </form>
         </div>
-      </form>
+      </div>
+    </div>
 
-      <footer class="pie">
-        <span>Levapan · Acta de Tecnología</span>
-        <span>Documento generado automáticamente</span>
-      </footer>
-    </main>
+    <!-- ================= MODALES ================= -->
+    <div id="modalEquipo" class="ws-modal" hidden>
+      <div class="ws-modal-caja" role="dialog" aria-modal="true" aria-labelledby="modalEquipoTitulo">
+        <div class="ws-modal-cab">
+          <h2 id="modalEquipoTitulo">Nuevo equipo</h2>
+          <button type="button" class="ws-cerrar" data-cerrar="modalEquipo" aria-label="Cerrar">×</button>
+        </div>
+        <form id="formEquipo" class="ws-form">
+          <input type="hidden" id="eqId" />
+          <label>Placa *<input type="text" id="eqPlaca" required /></label>
+          <label>Tipo<select id="eqTipo">
+            <option value="">—</option>
+            <option>CPU</option><option>Portátil</option><option>Handheld</option>
+            <option>Impresora</option><option>Impresora portátil</option>
+            <option>Monitor</option><option>Tablet</option><option>Proyector</option>
+            <option>Switch</option><option>Access Point</option><option>Terminal</option>
+            <option>UPS</option><option>Jabra</option><option>Otro</option>
+          </select></label>
+          <label>Marca<input type="text" id="eqMarca" /></label>
+          <label>Modelo<input type="text" id="eqModelo" /></label>
+          <label>Serial<input type="text" id="eqSerial" /></label>
+          <label>Estado<select id="eqEstado">
+            <option value="Disponible">Disponible</option>
+            <option value="Asignado">Asignado</option>
+            <option value="En Mantenimiento">En Mantenimiento</option>
+            <option value="Prestamo">Préstamo</option>
+            <option value="Dado de Baja">Dado de Baja</option>
+          </select></label>
+          <label>Sistema<select id="eqSistema">
+            <option value="">Sin sistema</option>
+          </select></label>
+          <label>Sede<input type="text" id="eqSede" /></label>
+          <label>Usuario asignado<input type="text" id="eqUsuario" /></label>
+          <label>Cédula del usuario<input type="text" id="eqCedula" /></label>
+          <label>Garantía hasta<input type="date" id="eqGarantia" /></label>
+          <label class="ws-ancho">Observaciones<textarea id="eqObservaciones" rows="3"></textarea></label>
+          <p id="modalEquipoError" class="ws-error" role="alert" hidden></p>
+          <div class="ws-modal-pie">
+            <button type="button" class="ws-boton" data-cerrar="modalEquipo">Cancelar</button>
+            <button type="submit" class="ws-boton ws-boton-rojo">Guardar equipo</button>
+          </div>
+        </form>
+      </div>
+    </div>
 
+    <div id="modalSistema" class="ws-modal" hidden>
+      <div class="ws-modal-caja" role="dialog" aria-modal="true" aria-labelledby="modalSistemaTitulo">
+        <div class="ws-modal-cab">
+          <h2 id="modalSistemaTitulo">Nuevo sistema</h2>
+          <button type="button" class="ws-cerrar" data-cerrar="modalSistema" aria-label="Cerrar">×</button>
+        </div>
+        <form id="formSistema" class="ws-form">
+          <input type="hidden" id="sisId" />
+          <label>Código *<input type="text" id="sisCodigo" placeholder="ERP-SAP" required /></label>
+          <label>Nombre *<input type="text" id="sisNombre" placeholder="ERP / SAP" required /></label>
+          <label>Categoría<input type="text" id="sisCategoria" placeholder="ERP, Productividad…" /></label>
+          <label>Criticidad<select id="sisCriticidad">
+            <option value="Critica">Crítica</option>
+            <option value="Alta">Alta</option>
+            <option value="Media" selected>Media</option>
+            <option value="Baja">Baja</option>
+          </select></label>
+          <label>Responsable<input type="text" id="sisResponsable" /></label>
+          <label class="ws-ancho">Descripción<textarea id="sisDescripcion" rows="3"></textarea></label>
+          <p id="modalSistemaError" class="ws-error" role="alert" hidden></p>
+          <div class="ws-modal-pie">
+            <button type="button" class="ws-boton" data-cerrar="modalSistema">Cancelar</button>
+            <button type="submit" class="ws-boton ws-boton-rojo">Guardar sistema</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="modalBoveda" class="ws-modal" hidden>
+      <div class="ws-modal-caja" role="dialog" aria-modal="true" aria-labelledby="modalBovedaTitulo">
+        <div class="ws-modal-cab">
+          <h2 id="modalBovedaTitulo">Subir a la Bóveda</h2>
+          <button type="button" class="ws-cerrar" data-cerrar="modalBoveda" aria-label="Cerrar">×</button>
+        </div>
+        <form id="formBoveda" class="ws-form">
+          <label class="ws-ancho">Archivo *<input type="file" id="bovArchivo" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" required /></label>
+          <label>Título<input type="text" id="bovTitulo" placeholder="Contrato marco 2026" /></label>
+          <label>Categoría<select id="bovCategoria">
+            <option value="Contrato">Contrato</option>
+            <option value="Factura">Factura</option>
+            <option value="Garantia">Garantía</option>
+            <option value="Manual">Manual</option>
+            <option value="Licencia">Licencia</option>
+            <option value="Acta">Acta</option>
+          </select></label>
+          <label>Proveedor<input type="text" id="bovProveedor" /></label>
+          <label>N° referencia<input type="text" id="bovReferencia" /></label>
+          <label>Fecha documento<input type="date" id="bovFecha" /></label>
+          <label>Vence<input type="date" id="bovVence" /></label>
+          <label class="ws-ancho">Placas vinculadas (separadas por coma)
+            <input type="text" id="bovPlacas" placeholder="199865, ML-199865" />
+          </label>
+          <label class="ws-ancho">Sistemas vinculados
+            <select id="bovSistemas" multiple size="4"></select>
+          </label>
+          <p id="modalBovedaError" class="ws-error" role="alert" hidden></p>
+          <div class="ws-modal-pie">
+            <button type="button" class="ws-boton" data-cerrar="modalBoveda">Cancelar</button>
+            <button type="submit" class="ws-boton ws-boton-rojo">Archivar documento</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="modalVinculo" class="ws-modal" hidden>
+      <div class="ws-modal-caja" role="dialog" aria-modal="true" aria-labelledby="modalVinculoTitulo">
+        <div class="ws-modal-cab">
+          <h2 id="modalVinculoTitulo">Vincular documento</h2>
+          <button type="button" class="ws-cerrar" data-cerrar="modalVinculo" aria-label="Cerrar">×</button>
+        </div>
+        <form id="formVinculo" class="ws-form">
+          <input type="hidden" id="vinDocumentoId" />
+          <label class="ws-ancho">Placas (separadas por coma)
+            <input type="text" id="vinPlacas" placeholder="199865, ML-199865" />
+          </label>
+          <label class="ws-ancho">Sistemas
+            <select id="vinSistemas" multiple size="4"></select>
+          </label>
+          <p id="modalVinculoError" class="ws-error" role="alert" hidden></p>
+          <div class="ws-modal-pie">
+            <button type="button" class="ws-boton" data-cerrar="modalVinculo">Cancelar</button>
+            <button type="submit" class="ws-boton ws-boton-rojo">Vincular</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="modalHistorial" class="ws-modal" hidden>
+      <div class="ws-modal-caja ws-modal-ancha" role="dialog" aria-modal="true" aria-labelledby="modalHistorialTitulo">
+        <div class="ws-modal-cab">
+          <h2 id="modalHistorialTitulo">Hoja de vida del equipo</h2>
+          <button type="button" class="ws-cerrar" data-cerrar="modalHistorial" aria-label="Cerrar">×</button>
+        </div>
+        <div id="modalHistorialContenido" class="ws-modal-cuerpo"></div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="js/auth.js"></script>
     <script src="js/pdf-lib.min.js"></script>
     <script>
       // Respaldo por si el archivo local no está disponible.
@@ -478,6 +941,7 @@
     </script>
     <script src="js/firmas.js"></script>
     <script src="js/inventario-storage.js"></script>
+    <script src="js/workspace.js"></script>
     <script src="js/pwa.js"></script>
     <script>
       // Alternar visibilidad del campo "Sede Otra" en el formulario.
@@ -495,6 +959,28 @@
           if (input) input.value = "";
         }
       }
+    </script>
+
+    <script>
+      // Garantiza la reproducción del fondo incluso si el autoplay fue diferido.
+      (function () {
+        const video = document.getElementById("videoFondo");
+        if (!video) return;
+
+        function reproducir() {
+          if (window.matchMedia("(max-width: 768px)").matches) return;
+          const promesa = video.play();
+          if (promesa && typeof promesa.catch === "function") promesa.catch(() => {});
+        }
+
+        video.muted = true;
+        video.defaultMuted = true;
+        video.playsInline = true;
+        if (document.readyState === "complete") reproducir();
+        else window.addEventListener("load", reproducir, { once: true });
+        window.addEventListener("pageshow", reproducir);
+        document.addEventListener("pointerdown", reproducir, { once: true, passive: true });
+      })();
     </script>
   </body>
 </html>

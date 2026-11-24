@@ -326,7 +326,20 @@ export async function generarActaPdf({
   escribirObservaciones(form, paginas, fuente, datos.observaciones);
 
   /* --- Página 2: constancia y firmas --- */
-  escribirCampo(form, paginas, fuente, "sede", datos.sede ?? "");
+  // En el formato oficial CORP-TEC-FR-002 el campo de la sede se llama
+  // "ciudad". Se intenta primero ese nombre y se conserva "sede" como
+  // compatibilidad con plantillas anteriores.
+  const sede = datos.sede ?? "";
+  escribirCampo(form, paginas, fuente, "ciudad", sede, { tamano: 9 });
+  let existeCiudad = true;
+  try {
+    form.getField("ciudad");
+  } catch {
+    existeCiudad = false;
+  }
+  if (!existeCiudad) {
+    escribirCampo(form, paginas, fuente, "sede", sede, { tamano: 9 });
+  }
   escribirCampo(form, paginas, fuente, "fecha", ` ${formatearFecha(datos.fecha)}`, {
     tamano: 9,
   });
