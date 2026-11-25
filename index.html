@@ -202,7 +202,6 @@
 
           <div class="ws-top-derecha">
             <span id="serverStatus" class="ws-chip" role="status">Conectando…</span>
-            <button type="button" id="btnSharePointSync" class="ws-chip ws-chip-accion">SharePoint Sync</button>
             <button type="button" id="btnConfigFolder" class="ws-chip ws-chip-accion">Carpeta</button>
             <span id="folderStatus" class="ws-chip" role="status" hidden></span>
             <span id="inventarioStatus" class="ws-chip ws-chip-oro" role="status"></span>
@@ -434,22 +433,6 @@
               <span class="ws-admin-nota">Ecosistemas mapeados</span>
             </article>
           </div>
-
-          <article class="ws-admin-tarjeta ws-sync-card" data-glow>
-            <span class="ws-admin-etiqueta">Conexión en Tiempo Real con SharePoint</span>
-            <strong>Power Automate → Webhook en vivo</strong>
-            <span class="ws-admin-nota">Tiempo real</span>
-            <code id="syncUrl" class="ws-sync-codigo">—</code>
-            <button type="button" class="ws-boton ws-boton-mini" data-accion="copiar-sync-url">Copiar URL</button>
-            <span class="ws-admin-nota">Carga maestra / limpieza de datos erróneos</span>
-            <code id="syncBulkUrl" class="ws-sync-codigo">—</code>
-            <button type="button" class="ws-boton ws-boton-mini" data-accion="copiar-sync-bulk">Copiar URL maestra</button>
-            <span class="ws-admin-nota">Token x-sync-token</span>
-            <code id="syncToken" class="ws-sync-codigo">—</code>
-            <button type="button" class="ws-boton ws-boton-mini" data-accion="copiar-sync-token">Copiar token</button>
-            <span class="ws-admin-nota">Última sincronización: <b id="syncUltima">—</b></span>
-            <span class="ws-admin-nota">Activos sincronizados: <b id="syncTotal">—</b></span>
-          </article>
 
           <h2 class="ws-admin-subtitulo">Usuarios corporativos @levapan.com</h2>
           <form id="formAdminUsuario" class="ws-form ws-form-admin" autocomplete="off">

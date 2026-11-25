@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#8B1E24" />
+    <title>Levapan TI — Arquitectura Inversa y Activos</title>
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/icon-192.png" />
+    <link rel="stylesheet" href="/css/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="/js/config.js"></script>
+  </head>
+  <body>
+    <video id="videoFondo" class="video-fondo" muted loop playsinline autoplay preload="metadata" poster="/assets/fondo.svg" aria-hidden="true"></video>
+    <div class="velo-fondo" aria-hidden="true"></div>
+
+    <!-- ================= LOGIN ================= -->
+    <section id="pantallaLogin" class="pantalla-login">
+      <form id="formLogin" class="tarjeta-login" autocomplete="off">
+        <div class="marca-login">
+          <img src="/assets/logo.svg" alt="Levapan" />
+          <span>LEVAPAN S.A.S.</span>
+        </div>
+        <h1>Arquitectura Inversa de TI</h1>
+        <p class="sub">Gestión corporativa de activos · CORP-TEC-FR-002</p>
+
+        <label for="loginEmail">Correo corporativo</label>
+        <input id="loginEmail" type="email" placeholder="nombre@levapan.com" autocomplete="username" required />
+
+        <label for="loginPassword">Contraseña</label>
+        <input id="loginPassword" type="password" placeholder="Tu contraseña corporativa" autocomplete="current-password" required />
+
+        <p id="loginError" class="error" role="alert" hidden></p>
+        <button id="btnLogin" type="submit" class="boton primario">Ingresar</button>
+        <button id="btnMicrosoft" type="button" class="boton microsoft">
+          Iniciar sesión con Microsoft 365 (@levapan.com)
+        </button>
+        <p class="nota">Solo personal autorizado de Tecnología e Infraestructura.</p>
+      </form>
+    </section>
+
+    <!-- ================= APP ================= -->
+    <main id="app" class="app" hidden>
+      <aside id="sidebar" class="sidebar">
+        <div class="marca-sidebar">
+          <img src="/assets/logo.svg" alt="Levapan" />
+          <div>
+            <strong>LEVAPAN</strong>
+            <span>Arquitectura Inversa de TI</span>
+          </div>
+        </div>
+        <nav class="nav" aria-label="Módulos">
+          <button class="nav-item activo" data-vista="sistemas"><span>◈</span> Ecosistemas de TI</button>
+          <button class="nav-item" data-vista="placas"><span>⬡</span> Placas & QR</button>
+          <button class="nav-item" data-vista="equipos"><span>▤</span> Equipos</button>
+          <button class="nav-item" data-vista="boveda"><span>◫</span> Bóveda PDF</button>
+          <button class="nav-item" data-vista="admin" data-admin hidden><span>⚙</span> Administración TI</button>
+        </nav>
+        <div class="sidebar-pie">
+          <button id="btnInstalar" class="boton instalar" hidden>Instalar App en Equipo</button>
+          <button id="btnSalir" class="boton salir">Cerrar sesión</button>
+        </div>
+      </aside>
+
+      <div class="principal">
+        <header class="barra-superior">
+          <div>
+            <span class="eyebrow">Workspace corporativo</span>
+            <h2 id="tituloVista">Ecosistemas de TI</h2>
+          </div>
+          <div class="barra-derecha">
+            <span id="estadoConexion" class="pildora">Conectando…</span>
+            <span id="usuarioNombre" class="usuario"></span>
+            <span id="usuarioRol" class="pildora rol"></span>
+          </div>
+        </header>
+
+        <div class="contenido">
+          <!-- SISTEMAS -->
+          <section id="vista-sistemas" class="vista activo">
+            <div class="cabecera-seccion">
+              <p>Cada placa pertenece a un ecosistema crítico. Entra por el sistema y baja hasta el contrato y el acta.</p>
+              <button class="boton primario" data-accion="nuevo-sistema">+ Nuevo sistema</button>
+            </div>
+            <div id="gridSistemas" class="grid-sistemas"></div>
+          </section>
+
+          <!-- PLACAS -->
+          <section id="vista-placas" class="vista" hidden>
+            <div class="cabecera-seccion">
+              <input id="buscarPlaca" class="input" placeholder="Buscar placa, serial, responsable o CECO…" />
+              <button id="btnImprimirQR" class="boton">Imprimir hoja QR</button>
+            </div>
+            <div id="listaPlacas" class="tabla-caja"></div>
+          </section>
+
+          <!-- EQUIPOS -->
+          <section id="vista-equipos" class="vista" hidden>
+            <div class="cabecera-seccion filtros">
+              <input id="buscarEquipo" class="input" placeholder="Buscar en el inventario…" />
+              <select id="filtroSede" class="input"><option value="">Todas las sedes</option></select>
+              <select id="filtroCeco" class="input"><option value="">Todos los CECO</option></select>
+              <select id="filtroEstado" class="input"><option value="">Todos los estados</option></select>
+            </div>
+            <div class="acciones">
+              <button class="boton primario" data-accion="nuevo-equipo">+ Registrar equipo</button>
+              <button class="boton" data-accion="asignar">Asignar / Reasignar</button>
+              <button class="boton" data-accion="devolver">Devolver a bodega</button>
+              <button class="boton" data-accion="baja">Dar de baja</button>
+              <button class="boton" data-accion="exportar">Exportar Excel</button>
+              <button class="boton" data-accion="importar">Importar masivo</button>
+              <input id="archivoImportar" type="file" accept=".csv,.xlsx,.xls,.ods" hidden />
+            </div>
+            <div id="tablaEquipos" class="tabla-caja"></div>
+          </section>
+
+          <!-- BÓVEDA -->
+          <section id="vista-boveda" class="vista" hidden>
+            <div class="cabecera-seccion">
+              <p>Actas CORP-TEC-FR-002, contratos y documentos PDF del inventario.</p>
+              <button class="boton" data-accion="nueva-acta">Emitir acta</button>
+            </div>
+            <div id="listaBoveda" class="grid-docs"></div>
+          </section>
+
+          <!-- ADMIN -->
+          <section id="vista-admin" class="vista" hidden>
+            <div class="cabecera-seccion">
+              <p>Usuarios corporativos, permisos y migración única desde CSV/Excel.</p>
+            </div>
+            <div id="listaUsuarios" class="tabla-caja"></div>
+            <div class="tarjeta migrants">
+              <h3>Migración única desde CSV / Excel</h3>
+              <p>Lee SharePoint/Excel (UTF-8 BOM, «;» o «,»), normaliza las 27 columnas y clasifica cada equipo en su ecosistema.</p>
+              <button class="boton primario" data-accion="migrar">Seleccionar archivo y migrar</button>
+              <p id="mensajeMigracion" class="mensaje"></p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <!-- MODAL EQUIPO -->
+    <div id="modalEquipo" class="modal" hidden>
+      <div class="modal-caja">
+        <header><h2 id="tituloModalEquipo">Registrar equipo</h2><button class="cerrar" data-cerrar="modalEquipo">×</button></header>
+        <form id="formEquipo" class="formulario">
+          <input type="hidden" id="eqId" />
+          <h3>Identificación</h3>
+          <label>Placa *<input id="eqPlaca" required /></label>
+          <label>Nombre en Red<input id="eqNombreRed" /></label>
+          <label>Serial<input id="eqSerial" /></label>
+          <label>Tipo de Equipo<input id="eqTipoEquipo" /></label>
+          <label>Marca<input id="eqMarca" /></label>
+          <label>Modelo<input id="eqModelo" /></label>
+          <label>Procesador<input id="eqProcesador" /></label>
+          <label>RAM<input id="eqRam" /></label>
+          <label>Disco<input id="eqDisco" /></label>
+          <h3>Responsable y ubicación</h3>
+          <label>Responsable<input id="eqResponsable" /></label>
+          <label>Cédula<input id="eqCedula" /></label>
+          <label>Empresa<input id="eqEmpresa" /></label>
+          <label>Sede<input id="eqSede" /></label>
+          <label>CECO<input id="eqCeco" /></label>
+          <label>Área<input id="eqArea" /></label>
+          <h3>Contrato y estado</h3>
+          <label>Estado<input id="eqEstado" /></label>
+          <label>Proveedor<input id="eqProveedor" /></label>
+          <label>N° Contrato<input id="eqContrato" /></label>
+          <label>Tipo de Contrato<input id="eqTipoContrato" /></label>
+          <label>Vencimiento<input id="eqVencimiento" type="date" /></label>
+          <label>Ecosistema<select id="eqSistema"></select></label>
+          <h3>Bitácora</h3>
+          <label class="ancho">Accesorios<textarea id="eqAccesorios" rows="2"></textarea></label>
+          <label class="ancho">Bitácora<textarea id="eqBitacora" rows="3"></textarea></label>
+          <p id="errorEquipo" class="error" hidden></p>
+          <div class="form-pie">
+            <button type="button" class="boton" data-cerrar="modalEquipo">Cancelar</button>
+            <button type="submit" class="boton primario">Guardar equipo</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL SISTEMA -->
+    <div id="modalSistema" class="modal" hidden>
+      <div class="modal-caja pequeno">
+        <header><h2>Ecosistema de TI</h2><button class="cerrar" data-cerrar="modalSistema">×</button></header>
+        <form id="formSistema" class="formulario">
+          <input type="hidden" id="sisId" />
+          <label>Código *<input id="sisCodigo" required /></label>
+          <label>Nombre *<input id="sisNombre" required /></label>
+          <label>Criticidad<select id="sisCriticidad"><option>CRÍTICA</option><option>ALTA</option><option>MEDIA</option></select></label>
+          <label>Responsable<input id="sisResponsable" /></label>
+          <label class="ancho">Descripción<textarea id="sisDescripcion" rows="3"></textarea></label>
+          <div class="form-pie">
+            <button type="button" class="boton" data-cerrar="modalSistema">Cancelar</button>
+            <button type="submit" class="boton primario">Guardar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL ACTA -->
+    <div id="modalActa" class="modal" hidden>
+      <div class="modal-caja">
+        <header><h2>Acta CORP-TEC-FR-002</h2><button class="cerrar" data-cerrar="modalActa">×</button></header>
+        <form id="formActa" class="formulario">
+          <label>Placa *<input id="actaPlaca" required /></label>
+          <label>Colaborador *<input id="actaColaborador" required /></label>
+          <label>Cédula *<input id="actaCedula" required /></label>
+          <label>Sede<input id="actaSede" /></label>
+          <label>Tipo<select id="actaTipo"><option>ASIGNACIÓN</option><option>DEVOLUCIÓN</option></select></label>
+          <label class="ancho">Observaciones<textarea id="actaObs" rows="3"></textarea></label>
+          <div class="form-pie">
+            <button type="button" class="boton" data-cerrar="modalActa">Cancelar</button>
+            <button type="submit" class="boton primario">Generar y subir PDF</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ASISTENTE TI -->
+    <div id="asistente" class="asistente">
+      <button id="btnAsistente" class="boton-asistente" aria-label="Abrir Asistente TI">
+        <span class="punto"></span><span>✦</span> Asistente TI
+      </button>
+      <section id="panelAsistente" class="panel-asistente" hidden>
+        <header>
+          <div><strong>Asistente Integral TI</strong><small>Conectado a la nube Levapan</small></div>
+          <button id="cerrarAsistente" class="cerrar">×</button>
+        </header>
+        <div id="chatMensajes" class="chat-mensajes"></div>
+        <form id="formChat" class="chat-form">
+          <input id="chatInput" placeholder="Pregunta u orden…" autocomplete="off" />
+          <button class="boton primario" type="submit">Enviar</button>
+        </form>
+      </section>
+    </div>
+
+    <script src="/js/app.js"></script>
+  </body>
+</html>

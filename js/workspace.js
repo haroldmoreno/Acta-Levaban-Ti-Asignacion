@@ -1736,11 +1736,6 @@
       byId("wsSidebar")?.classList.toggle("abierto");
     });
 
-    byId("btnSharePointSync")?.addEventListener("click", () => {
-      if (estado.perfil?.rol === "admin") return irAVista("administracion");
-      window.alert("La sincronización SharePoint se configura solo desde Administración TI.");
-    });
-
     window.addEventListener("resize", posicionarIndicador);
 
     document.addEventListener("click", (evento) => {
@@ -1772,22 +1767,6 @@
         if (tipo === "exportar") return exportarExcel();
         if (tipo === "respaldo-json") return descargarRespaldo("json");
         if (tipo === "respaldo-excel") return descargarRespaldo("xlsx");
-        if (["copiar-sync-url", "copiar-sync-bulk", "copiar-sync-token"].includes(tipo)) {
-          const id =
-            tipo === "copiar-sync-url"
-              ? "syncUrl"
-              : tipo === "copiar-sync-bulk"
-                ? "syncBulkUrl"
-                : "syncToken";
-          const texto = byId(id)?.textContent || "";
-          if (navigator.clipboard?.writeText) {
-            navigator.clipboard
-              .writeText(texto)
-              .then(() => mensaje("adminMensaje", "Copiado al portapapeles.", "ok"))
-              .catch(() => mensaje("adminMensaje", "No se pudo copiar. Selecciona el texto manualmente.", "error"));
-          }
-          return;
-        }
         if (tipo === "subir-documento") {
           byId("modalBovedaError").hidden = true;
           return abrirModal("modalBoveda");
@@ -2093,28 +2072,6 @@
     }
   }
 
-  async function cargarConfigSync() {
-    try {
-      const datos = await api("/api/admin/config-sync");
-      const url = byId("syncUrl");
-      const bulk = byId("syncBulkUrl");
-      const token = byId("syncToken");
-      const ultima = byId("syncUltima");
-      const total = byId("syncTotal");
-      if (url) url.textContent = datos.webhookUrl || "—";
-      if (bulk) bulk.textContent = datos.webhookBulkUrl || "—";
-      if (token) token.textContent = datos.token || "Sin token configurado";
-      if (ultima) {
-        ultima.textContent = datos.ultimaSincronizacion
-          ? fechaHora(datos.ultimaSincronizacion)
-          : "Aún sin sincronizaciones";
-      }
-      if (total) total.textContent = numero(datos.totalSincronizados || 0);
-    } catch (err) {
-      mensaje("adminMensaje", `No se pudo cargar la configuración SharePoint: ${err.message}`, "error");
-    }
-  }
-
   async function actualizarAdmin() {
     if (estado.perfil?.rol !== "admin") return;
     const poner = (id, texto) => {
@@ -2139,7 +2096,6 @@
       poner("adminStorage", "supabase · boveda-ti");
     }
     await cargarUsuariosAdmin();
-    await cargarConfigSync();
   }
 
   async function cargarDatosIniciales() {
