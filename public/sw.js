@@ -1,6 +1,6 @@
 /* Levapan TI PWA — Network-First para estáticos, Network-Only para Supabase/Auth. */
 const CACHE = "levapan-ti-pwa-v1";
-const SHELL = ["/", "/index.html", "/css/styles.css", "/js/config.js", "/js/app.js", "/manifest.json", "/assets/icon.svg", "/assets/logo.svg", "/assets/fondo.svg"];
+const SHELL = ["./", "./index.html", "./css/styles.css", "./js/config.js", "./js/app.js", "./manifest.json", "./assets/icon.svg", "./assets/logo.svg", "./assets/fondo.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -30,7 +30,7 @@ self.addEventListener("fetch", (event) => {
           }
           return resp;
         })
-        .catch(() => caches.match(req).then((r) => r || caches.match("/index.html")))
+        .catch(() => caches.match(req).then((r) => r || caches.match("./index.html")))
     );
   }
 });

@@ -5,25 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#8B1E24" />
     <title>Levapan TI — Arquitectura Inversa y Activos</title>
-    <link rel="manifest" href="/manifest.json" />
-    <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/assets/icon-192.png" />
-    <link rel="stylesheet" href="/css/styles.css" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="assets/icon-192.png" />
+    <link rel="stylesheet" href="css/styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="/js/config.js"></script>
+    <script src="js/config.js"></script>
   </head>
   <body>
-    <video id="videoFondo" class="video-fondo" muted loop playsinline autoplay preload="metadata" poster="/assets/fondo.svg" aria-hidden="true"></video>
+    <video id="videoFondo" class="video-fondo" muted loop playsinline autoplay preload="metadata" poster="assets/fondo.svg" aria-hidden="true"></video>
     <div class="velo-fondo" aria-hidden="true"></div>
 
     <!-- ================= LOGIN ================= -->
     <section id="pantallaLogin" class="pantalla-login">
-      <form id="formLogin" class="tarjeta-login" autocomplete="off">
+      <div class="login-contenedor">
+        <div class="login-tabs" role="tablist">
+          <button id="tabLogin" type="button" class="login-tab activa" role="tab" aria-selected="true">Iniciar sesión</button>
+          <button id="tabRegistro" type="button" class="login-tab" role="tab" aria-selected="false">Crear cuenta corporativa (@levapan.com)</button>
+        </div>
+
+        <form id="formLogin" class="tarjeta-login" autocomplete="off" role="tabpanel">
         <div class="marca-login">
-          <img src="/assets/logo.svg" alt="Levapan" />
+          <img src="assets/logo.svg" alt="Levapan" />
           <span>LEVAPAN S.A.S.</span>
         </div>
         <h1>Arquitectura Inversa de TI</h1>
@@ -41,14 +47,40 @@
           Iniciar sesión con Microsoft 365 (@levapan.com)
         </button>
         <p class="nota">Solo personal autorizado de Tecnología e Infraestructura.</p>
-      </form>
+        </form>
+
+        <form id="formRegistro" class="tarjeta-login" autocomplete="off" role="tabpanel" hidden>
+          <div class="marca-login">
+            <img src="assets/logo.svg" alt="Levapan" />
+            <span>LEVAPAN S.A.S.</span>
+          </div>
+          <h1>Crear cuenta corporativa</h1>
+          <p class="sub">Acceso operativo Técnico TI · @levapan.com</p>
+
+          <label for="regNombre">Nombre completo</label>
+          <input id="regNombre" type="text" placeholder="Nombre y apellidos" autocomplete="name" required />
+
+          <label for="regCedula">Cédula</label>
+          <input id="regCedula" type="text" placeholder="Número de documento" required />
+
+          <label for="regCorreo">Correo corporativo</label>
+          <input id="regCorreo" type="email" placeholder="nombre@levapan.com" autocomplete="username" required />
+
+          <label for="regClave">Contraseña</label>
+          <input id="regClave" type="password" placeholder="Mínimo 6 caracteres" autocomplete="new-password" minlength="6" required />
+
+          <p id="registroError" class="error" role="alert" hidden></p>
+          <button id="btnRegistro" type="submit" class="boton primario">Crear cuenta e ingresar</button>
+          <p class="nota">Solo correos institucionales @levapan.com. Rol inicial: TÉCNICO TI.</p>
+        </form>
+      </div>
     </section>
 
     <!-- ================= APP ================= -->
     <main id="app" class="app" hidden>
       <aside id="sidebar" class="sidebar">
         <div class="marca-sidebar">
-          <img src="/assets/logo.svg" alt="Levapan" />
+          <img src="assets/logo.svg" alt="Levapan" />
           <div>
             <strong>LEVAPAN</strong>
             <span>Arquitectura Inversa de TI</span>
@@ -63,20 +95,17 @@
         </nav>
         <div class="sidebar-pie">
           <button id="btnInstalar" class="boton instalar" hidden>Instalar App en Equipo</button>
-          <button id="btnSalir" class="boton salir">Cerrar sesión</button>
         </div>
       </aside>
 
       <div class="principal">
         <header class="barra-superior">
-          <div>
-            <span class="eyebrow">Workspace corporativo</span>
-            <h2 id="tituloVista">Ecosistemas de TI</h2>
-          </div>
+          <h2 id="tituloVista">Ecosistemas de TI</h2>
           <div class="barra-derecha">
-            <span id="estadoConexion" class="pildora">Conectando…</span>
+            <span id="estadoConexion" class="pildora">Supabase en vivo</span>
             <span id="usuarioNombre" class="usuario"></span>
             <span id="usuarioRol" class="pildora rol"></span>
+            <button id="btnSalir" class="boton salir">Cerrar sesión</button>
           </div>
         </header>
 
@@ -96,11 +125,18 @@
               <input id="buscarPlaca" class="input" placeholder="Buscar placa, serial, responsable o CECO…" />
               <button id="btnImprimirQR" class="boton">Imprimir hoja QR</button>
             </div>
+            <div id="fichaPlaca" class="ficha-placa"></div>
             <div id="listaPlacas" class="tabla-caja"></div>
           </section>
 
           <!-- EQUIPOS -->
           <section id="vista-equipos" class="vista" hidden>
+            <div class="metricas">
+              <article class="metrica"><strong id="metricaTotal">—</strong><span>TOTAL EQUIPOS</span></article>
+              <article class="metrica asignado"><strong id="metricaAsignado">—</strong><span>ASIGNADO</span></article>
+              <article class="metrica disponible"><strong id="metricaDisponible">—</strong><span>DISPONIBLE</span></article>
+              <article class="metrica prestamo"><strong id="metricaPrestamo">—</strong><span>PRÉSTAMO</span></article>
+            </div>
             <div class="cabecera-seccion filtros">
               <input id="buscarEquipo" class="input" placeholder="Buscar en el inventario…" />
               <select id="filtroSede" class="input"><option value="">Todas las sedes</option></select>
@@ -108,13 +144,7 @@
               <select id="filtroEstado" class="input"><option value="">Todos los estados</option></select>
             </div>
             <div class="acciones">
-              <button class="boton primario" data-accion="nuevo-equipo">+ Registrar equipo</button>
-              <button class="boton" data-accion="asignar">Asignar / Reasignar</button>
-              <button class="boton" data-accion="devolver">Devolver a bodega</button>
-              <button class="boton" data-accion="baja">Dar de baja</button>
-              <button class="boton" data-accion="exportar">Exportar Excel</button>
-              <button class="boton" data-accion="importar">Importar masivo</button>
-              <input id="archivoImportar" type="file" accept=".csv,.xlsx,.xls,.ods" hidden />
+              <button class="boton primario" data-accion="nuevo-equipo">+ Nuevo equipo</button>
             </div>
             <div id="tablaEquipos" class="tabla-caja"></div>
           </section>
@@ -131,12 +161,17 @@
           <!-- ADMIN -->
           <section id="vista-admin" class="vista" hidden>
             <div class="cabecera-seccion">
-              <p>Usuarios corporativos, permisos y migración única desde CSV/Excel.</p>
+              <p>Usuarios corporativos, permisos, exportación y migración única desde CSV/Excel.</p>
+              <div class="acciones">
+                <button class="boton" data-accion="exportar">Exportar Excel</button>
+                <button class="boton" data-accion="importar">Importar Excel</button>
+                <input id="archivoImportar" type="file" accept=".csv,.xlsx,.xls,.ods" hidden />
+              </div>
             </div>
             <div id="listaUsuarios" class="tabla-caja"></div>
             <div class="tarjeta migrants">
               <h3>Migración única desde CSV / Excel</h3>
-              <p>Lee SharePoint/Excel (UTF-8 BOM, «;» o «,»), normaliza las 27 columnas y clasifica cada equipo en su ecosistema.</p>
+              <p>Normaliza las 27 columnas del inventario y clasifica cada equipo en su ecosistema.</p>
               <button class="boton primario" data-accion="migrar">Seleccionar archivo y migrar</button>
               <p id="mensajeMigracion" class="mensaje"></p>
             </div>
@@ -151,39 +186,62 @@
         <header><h2 id="tituloModalEquipo">Registrar equipo</h2><button class="cerrar" data-cerrar="modalEquipo">×</button></header>
         <form id="formEquipo" class="formulario">
           <input type="hidden" id="eqId" />
-          <h3>Identificación</h3>
-          <label>Placa *<input id="eqPlaca" required /></label>
-          <label>Nombre en Red<input id="eqNombreRed" /></label>
-          <label>Serial<input id="eqSerial" /></label>
-          <label>Tipo de Equipo<input id="eqTipoEquipo" /></label>
-          <label>Marca<input id="eqMarca" /></label>
-          <label>Modelo<input id="eqModelo" /></label>
-          <label>Procesador<input id="eqProcesador" /></label>
-          <label>RAM<input id="eqRam" /></label>
-          <label>Disco<input id="eqDisco" /></label>
-          <h3>Responsable y ubicación</h3>
-          <label>Responsable<input id="eqResponsable" /></label>
-          <label>Cédula<input id="eqCedula" /></label>
-          <label>Empresa<input id="eqEmpresa" /></label>
-          <label>Sede<input id="eqSede" /></label>
-          <label>CECO<input id="eqCeco" /></label>
-          <label>Área<input id="eqArea" /></label>
-          <h3>Contrato y estado</h3>
-          <label>Estado<input id="eqEstado" /></label>
-          <label>Proveedor<input id="eqProveedor" /></label>
-          <label>N° Contrato<input id="eqContrato" /></label>
-          <label>Tipo de Contrato<input id="eqTipoContrato" /></label>
-          <label>Vencimiento<input id="eqVencimiento" type="date" /></label>
-          <label>Ecosistema<select id="eqSistema"></select></label>
-          <h3>Bitácora</h3>
-          <label class="ancho">Accesorios<textarea id="eqAccesorios" rows="2"></textarea></label>
-          <label class="ancho">Bitácora<textarea id="eqBitacora" rows="3"></textarea></label>
+
+          <fieldset class="form-seccion">
+            <legend>A · Identificación y Red</legend>
+            <label>Placa *<input id="eqPlaca" required /></label>
+            <label>Nombre equipo en Red<input id="eqNombreRed" /></label>
+            <label>Serial del equipo<input id="eqSerial" /></label>
+            <label>Estado<input id="eqEstado" /></label>
+            <label>Ecosistema<select id="eqSistema"></select></label>
+          </fieldset>
+
+          <fieldset class="form-seccion">
+            <legend>B · Hardware y Especificaciones</legend>
+            <label>Tipo de Equipo<input id="eqTipoEquipo" /></label>
+            <label>Marca<input id="eqMarca" /></label>
+            <label>Modelo<input id="eqModelo" /></label>
+            <label>Procesador<input id="eqProcesador" /></label>
+            <label>Memoria RAM<input id="eqRam" /></label>
+            <label>Tamaño en Disco<input id="eqDisco" /></label>
+          </fieldset>
+
+          <fieldset class="form-seccion">
+            <legend>C · Asignación y Ubicación</legend>
+            <label>Nombre del responsable<input id="eqResponsable" /></label>
+            <label>Cedula del responsable<input id="eqCedula" /></label>
+            <label>Empresa<input id="eqEmpresa" /></label>
+            <label>Sede<input id="eqSede" /></label>
+            <label>CECO<input id="eqCeco" /></label>
+            <label>Area<input id="eqArea" /></label>
+            <label class="ancho">Accesorios entregados<textarea id="eqAccesorios" rows="2"></textarea></label>
+          </fieldset>
+
+          <fieldset class="form-seccion">
+            <legend>D · Contrato y Proveedor</legend>
+            <label>Proveedor<input id="eqProveedor" /></label>
+            <label>N° Contrato<input id="eqContrato" /></label>
+            <label>Tipo de Contrato<input id="eqTipoContrato" /></label>
+            <label>Fecha de Vencimiento Contrato<input id="eqVencimiento" type="date" /></label>
+          </fieldset>
+
+          <fieldset class="form-seccion">
+            <legend>E · Bitácora y Trazabilidad</legend>
+            <label class="ancho">Bitacora del Equipo<textarea id="eqBitacora" rows="4"></textarea></label>
+            <label>Creado por<input id="eqCreadoPor" /></label>
+            <label>Modificado por<input id="eqModificadoPor" /></label>
+            <label>Modificado<input id="eqModificado" type="datetime-local" /></label>
+            <label>Tipo de elemento<input id="eqTipoElemento" /></label>
+            <label class="ancho">Ruta de acceso<input id="eqRutaAcceso" /></label>
+          </fieldset>
+
           <p id="errorEquipo" class="error" hidden></p>
           <div class="form-pie">
             <button type="button" class="boton" data-cerrar="modalEquipo">Cancelar</button>
             <button type="submit" class="boton primario">Guardar equipo</button>
           </div>
         </form>
+        <div id="historialEquipo" class="historial-seccion"></div>
       </div>
     </div>
 
@@ -243,6 +301,6 @@
       </section>
     </div>
 
-    <script src="/js/app.js"></script>
+    <script src="js/app.js"></script>
   </body>
 </html>

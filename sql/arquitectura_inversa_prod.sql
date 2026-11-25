@@ -60,11 +60,19 @@ create table if not exists public.equipos (
   disco text,
   bitacora text,
   accesorios text,
+  creado_por text,
+  tipo_elemento text,
+  ruta_acceso text,
   area text,
   modificado_por text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Columnas incorporadas al orden maestro (tablas ya existentes).
+alter table public.equipos add column if not exists creado_por text;
+alter table public.equipos add column if not exists tipo_elemento text;
+alter table public.equipos add column if not exists ruta_acceso text;
 
 create index if not exists equipos_sistema_idx on public.equipos(sistema_id);
 create index if not exists equipos_placa_idx on public.equipos(placa);

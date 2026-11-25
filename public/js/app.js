@@ -24,34 +24,98 @@
     admin: "Administración TI",
   };
 
-  const COLUMNAS = {
-    "Placa": "placa",
-    "Nombre equipo en red": "nombre_red",
-    "Serial del equipo": "serial",
-    "Nombre del responsable": "responsable",
-    "Cedula del responsable": "cedula",
-    "Empresa": "empresa",
-    "Sede": "sede",
-    "CECO": "ceco",
-    "Estado": "estado",
-    "Proveedor": "proveedor",
-    "N° Contrato": "num_contrato",
-    "Tipo de Contrato": "tipo_contrato",
-    "Fecha de Vencimiento Contrato": "fecha_vencimiento_contrato",
-    "Tipo de Equipo": "tipo_equipo",
-    "Marca": "marca",
-    "Modelo": "modelo",
-    "Procesador": "procesador",
-    "Memoria RAM": "ram",
-    "Tamaño en Disco": "disco",
-    "Bitacora del Equipo": "bitacora",
-    "Creado por": "modificado_por",
-    "Modificado por": "modificado_por",
-    "Accesorios entregados": "accesorios",
-    "Area": "area",
-    "Tipo de elemento": "tipo_equipo",
-    "Ruta de acceso": "bitacora",
+  const ORDEN_MAESTRO = [
+    ["Nombre equipo en Red", "nombre_red"],
+    ["Serial del equipo", "serial"],
+    ["Nombre del responsable", "responsable"],
+    ["Cedula del responsable", "cedula"],
+    ["Empresa", "empresa"],
+    ["Sede", "sede"],
+    ["CECO", "ceco"],
+    ["Estado", "estado"],
+    ["Proveedor", "proveedor"],
+    ["N° Contrato", "num_contrato"],
+    ["Tipo de Contrato", "tipo_contrato"],
+    ["Tipo de Equipo", "tipo_equipo"],
+    ["Marca", "marca"],
+    ["Modelo", "modelo"],
+    ["Placa", "placa"],
+    ["Procesador", "procesador"],
+    ["Memoria RAM", "ram"],
+    ["Tamaño en Disco", "disco"],
+    ["Bitacora del Equipo", "bitacora"],
+    ["Creado por", "creado_por"],
+    ["Modificado por", "modificado_por"],
+    ["Accesorios entregados", "accesorios"],
+    ["Modificado", "updated_at"],
+    ["Area", "area"],
+    ["Fecha de Vencimiento Contrato", "fecha_vencimiento_contrato"],
+    ["Tipo de elemento", "tipo_elemento"],
+    ["Ruta de acceso", "ruta_acceso"],
+  ];
+  const COLUMNAS = Object.fromEntries(ORDEN_MAESTRO);
+
+  const ALIAS_IMPORT = {
+    "nombre equipo en red": "nombre_red",
+    "serial del equipo": "serial",
+    "nombre del responsable": "responsable",
+    "cedula del responsable": "cedula",
+    empresa: "empresa",
+    sede: "sede",
+    ceco: "ceco",
+    estado: "estado",
+    proveedor: "proveedor",
+    "n° contrato": "num_contrato",
+    "no contrato": "num_contrato",
+    "numero contrato": "num_contrato",
+    "nro contrato": "num_contrato",
+    "num contrato": "num_contrato",
+    "tipo de contrato": "tipo_contrato",
+    "tipo de equipo": "tipo_equipo",
+    marca: "marca",
+    modelo: "modelo",
+    placa: "placa",
+    procesador: "procesador",
+    "memoria ram": "ram",
+    "tamaño en disco": "disco",
+    "tamano en disco": "disco",
+    "bitacora del equipo": "bitacora",
+    "creado por": "creado_por",
+    "modificado por": "modificado_por",
+    "accesorios entregados": "accesorios",
+    area: "area",
+    "fecha de vencimiento contrato": "fecha_vencimiento_contrato",
+    "tipo de elemento": "tipo_elemento",
+    "ruta de acceso": "ruta_acceso",
   };
+
+  function normalizarEncabezado(texto) {
+    return String(texto ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[°º]/g, " ")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function fechaDesdeExcel(valor) {
+    if (valor == null || valor === "") return null;
+    if (valor instanceof Date && !Number.isNaN(valor.getTime())) return valor.toISOString().slice(0, 10);
+    const texto = String(valor).trim();
+    if (!texto) return null;
+    if (/^\d+(\.\d+)?$/.test(texto)) {
+      const dias = Number(texto);
+      if (dias > 20000 && dias < 80000) {
+        return new Date(Date.UTC(1899, 11, 30) + Math.floor(dias) * 86400000).toISOString().slice(0, 10);
+      }
+    }
+    const partes = texto.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (partes) return `${partes[3]}-${partes[2].padStart(2, "0")}-${partes[1].padStart(2, "0")}`;
+    if (/^\d{4}-\d{2}-\d{2}/.test(texto)) return texto.slice(0, 10);
+    return null;
+  }
 
   function escapar(valor) {
     return String(valor ?? "")
@@ -103,6 +167,36 @@
     if (error) throw error;
   }
 
+  async function registrarCuenta(nombre, cedula, correo, clave) {
+    const email = correo.trim().toLowerCase();
+    if (!email.endsWith("@levapan.com")) throw new Error("Solo se permiten correos corporativos @levapan.com");
+    if (!nombre.trim() || !cedula.trim()) throw new Error("Nombre completo y cédula son obligatorios");
+    if (clave.length < 6) throw new Error("La contraseña debe tener al menos 6 caracteres");
+
+    const { data, error } = await sb.auth.signUp({
+      email,
+      password: clave,
+      options: { data: { nombre_completo: nombre.trim(), cedula: cedula.trim() } },
+    });
+    if (error) throw error;
+
+    const usuario = data?.user;
+    if (usuario) {
+      await sb.from("usuarios_corporativos").upsert([{
+        id: usuario.id,
+        email,
+        nombre_completo: nombre.trim(),
+        rol: "TECNICO_TI",
+        activo: true,
+      }], { onConflict: "id" });
+    }
+
+    if (!data?.session) {
+      throw new Error("Cuenta creada. Confirma tu correo corporativo e ingresa con tu contraseña.");
+    }
+    await cargarSesion();
+  }
+
   async function cargarSesion() {
     const { data } = await sb.auth.getSession();
     const sesion = data?.session;
@@ -136,10 +230,13 @@
     byId("app").hidden = false;
     byId("usuarioNombre").textContent = perfil.nombre_completo || email;
     byId("usuarioRol").textContent = perfil.rol === "ADMINISTRADOR_TI" ? "ADMINISTRADOR TI" : "TECNICO TI";
-    byId("estadoConexion").textContent = "En vivo · Supabase";
+    const conteo = await sb.from("equipos").select("id", { count: "exact", head: true });
+    const total = Number(conteo.count || 0).toLocaleString("es-CO");
+    byId("estadoConexion").textContent = `Nube Supabase activa · ${total} equipos`;
     document.querySelectorAll("[data-admin]").forEach((el) => { el.hidden = perfil.rol !== "ADMINISTRADOR_TI"; });
 
-    await Promise.all([cargarSistemas(), cargarEquipos(), cargarBoveda(), cargarUsuarios()]);
+    await cargarSistemas();
+    await Promise.all([cargarEquipos(), cargarBoveda(), cargarUsuarios()]);
     irAVista("sistemas");
     suscribirRealtime();
   }
@@ -196,23 +293,23 @@
   async function cargarSistemas() {
     const [sistemas, equipos, documentos] = await Promise.all([
       sb.from("sistemas").select("*").order("nombre"),
-      sb.from("equipos").select("id, sistema_id, placa"),
-      sb.from("boveda_documentos").select("id, placa"),
+      cargarTodos("equipos", "id, sistema_id, placa"),
+      cargarTodos("boveda_documentos", "id, placa"),
     ]);
 
     ESTADO.sistemas = sistemas.data || [];
     const placasPorSistema = {};
-    (equipos.data || []).forEach((e) => {
+    equipos.forEach((e) => {
       if (e.sistema_id) placasPorSistema[e.sistema_id] = (placasPorSistema[e.sistema_id] || 0) + 1;
     });
     const docsPorPlaca = {};
-    (documentos.data || []).forEach((d) => {
+    documentos.forEach((d) => {
       if (d.placa) docsPorPlaca[d.placa] = (docsPorPlaca[d.placa] || 0) + 1;
     });
 
     byId("gridSistemas").innerHTML = ESTADO.sistemas.map((s) => {
       const placas = placasPorSistema[s.id] || 0;
-      const docs = (equipos.data || []).filter((e) => e.sistema_id === s.id).reduce((n, e) => n + (docsPorPlaca[e.placa] || 0), 0);
+      const docs = equipos.filter((e) => e.sistema_id === s.id).reduce((n, e) => n + (docsPorPlaca[e.placa] || 0), 0);
       return `<article class="tarjeta" data-sistema="${escapar(s.id)}" tabindex="0">
         <span class="codigo">${escapar(s.codigo)} · ${escapar(s.criticidad)}</span>
         <h3>${escapar(s.nombre)}</h3>
@@ -253,43 +350,99 @@
   /* ---------------- Equipos ---------------- */
 
   function columnasVisibles() {
-    return "id, sistema_id, placa, nombre_red, serial, responsable, cedula, empresa, sede, ceco, estado, proveedor, num_contrato, tipo_contrato, fecha_vencimiento_contrato, tipo_equipo, marca, modelo, procesador, ram, disco, bitacora, accesorios, area, modificado_por";
+    return ["id", "sistema_id", ...ORDEN_MAESTRO.map(([, columna]) => columna)].join(", ");
+  }
+
+  async function cargarTodos(tabla, columnas, aplicarFiltros) {
+    const todo = [];
+    for (let desde = 0; desde <= 50000; desde += 1000) {
+      let consulta = sb.from(tabla).select(columnas).range(desde, desde + 999);
+      if (aplicarFiltros) consulta = aplicarFiltros(consulta);
+      const { data, error } = await consulta;
+      if (error) throw error;
+      todo.push(...(data || []));
+      if ((data || []).length < 1000) break;
+    }
+    return todo;
   }
 
   async function cargarEquipos() {
-    let consulta = sb.from("equipos").select(columnasVisibles()).order("placa").limit(2000);
+    try {
+      await cargarEquiposInterno();
+    } catch (err) {
+      byId("tablaEquipos").innerHTML = `<p class="vacio">${escapar(err.message || "Error al cargar equipos")}</p>`;
+    }
+  }
+
+  async function cargarEquiposInterno() {
     const q = byId("buscarEquipo")?.value.trim();
     const sede = byId("filtroSede")?.value;
     const ceco = byId("filtroCeco")?.value;
     const estado = byId("filtroEstado")?.value;
-    if (q) consulta = consulta.or(`placa.ilike.%${q}%,serial.ilike.%${q}%,responsable.ilike.%${q}%,nombre_red.ilike.%${q}%`);
-    if (sede) consulta = consulta.eq("sede", sede);
-    if (ceco) consulta = consulta.eq("ceco", ceco);
-    if (estado) consulta = consulta.eq("estado", estado);
 
-    const { data, error } = await consulta;
-    if (error) { byId("tablaEquipos").innerHTML = `<p class="vacio">${escapar(error.message)}</p>`; return; }
-    ESTADO.equipos = data || [];
-    actualizarFiltros(ESTADO.equipos);
-    byId("tablaEquipos").innerHTML = `<table>
-      <thead><tr><th>Placa</th><th>Nombre en red</th><th>Equipo</th><th>Serial</th><th>Responsable</th><th>Sede / CECO</th><th>Estado</th><th>Acciones</th></tr></thead>
-      <tbody>${ESTADO.equipos.map((e) => `<tr>
-        <td class="mono">${escapar(e.placa)}</td>
-        <td>${escapar(e.nombre_red || "—")}</td>
-        <td>${escapar([e.tipo_equipo, e.marca, e.modelo].filter(Boolean).join(" · ") || "—")}</td>
-        <td class="mono">${escapar(e.serial || "—")}</td>
-        <td>${escapar(e.responsable || "—")}${e.cedula ? " · " + escapar(e.cedula) : ""}</td>
-        <td>${escapar(e.sede || "—")} · ${escapar(e.ceco || "—")}</td>
-        <td>${escapar(e.estado || "—")}</td>
-        <td>
-          <button class="boton" data-equipo="editar" data-id="${escapar(e.id)}">Editar</button>
-          <button class="boton" data-equipo="asignar" data-id="${escapar(e.id)}">Asignar</button>
-          <button class="boton" data-equipo="devolver" data-id="${escapar(e.id)}">Devolver</button>
-          <button class="boton" data-equipo="baja" data-id="${escapar(e.id)}">Baja</button>
-          <button class="boton" data-equipo="hoja" data-id="${escapar(e.id)}">Hoja</button>
-          <button class="boton" data-equipo="qr" data-id="${escapar(e.id)}">QR</button>
-        </td>
-      </tr>`).join("")}</tbody></table>` || '<p class="vacio">Sin equipos.</p>';
+    const todos = await cargarTodos("equipos", columnasVisibles(), (consulta) => {
+      let c = consulta;
+      if (q) c = c.or(`placa.ilike.%${q}%,serial.ilike.%${q}%,responsable.ilike.%${q}%,nombre_red.ilike.%${q}%`);
+      if (sede) c = c.eq("sede", sede);
+      if (ceco) c = c.eq("ceco", ceco);
+      if (estado) c = c.eq("estado", estado);
+      return c;
+    });
+
+    const { count: totalReal } = await sb.from("equipos").select("id", { count: "exact", head: true });
+    const total = Number(totalReal || 0);
+    const normalizar = (valor) => String(valor || "").trim().toUpperCase();
+    const porEstado = (prefijo) => todos.filter((e) => normalizar(e.estado).startsWith(prefijo)).length;
+    byId("metricaTotal").textContent = total.toLocaleString("es-CO");
+    byId("metricaAsignado").textContent = porEstado("ASIGNADO").toLocaleString("es-CO");
+    byId("metricaDisponible").textContent = porEstado("DISPONIBLE").toLocaleString("es-CO");
+    byId("metricaPrestamo").textContent = (porEstado("PRÉSTAMO") + porEstado("PRESTAMO")).toLocaleString("es-CO");
+    byId("estadoConexion").textContent = `Supabase en vivo · ${total.toLocaleString("es-CO")} equipos`;
+
+    ESTADO.equipos = todos;
+    actualizarFiltros(todos);
+    const sistemasPorId = Object.fromEntries(ESTADO.sistemas.map((s) => [s.id, s]));
+    const estadoBadge = (valor) => {
+      const texto = String(valor || "—");
+      const clase = /asign/i.test(texto) ? "asignado" : /dispon/i.test(texto) ? "disponible" : /pr[eé]stamo/i.test(texto) ? "prestamo" : "neutro";
+      return `<span class="estado-badge ${clase}">${escapar(texto)}</span>`;
+    };
+
+    byId("tablaEquipos").innerHTML = `<table class="tabla-inventario">
+      <colgroup>
+        <col style="width:115px" /><col style="width:23%" /><col style="width:20%" />
+        <col style="width:17%" /><col style="width:20%" /><col style="width:11%" /><col style="width:150px" />
+      </colgroup>
+      <thead><tr><th>Placa</th><th>Equipo y Red</th><th>Responsable</th><th>Ubicación</th><th>Contrato</th><th>Estado</th><th class="acciones-col">Acciones</th></tr></thead>
+      <tbody>${ESTADO.equipos.map((e) => {
+        const sistema = sistemasPorId[e.sistema_id];
+        return `<tr>
+          <td><span class="placa-badge mono">${escapar(e.placa)}</span></td>
+          <td class="celda-doble">
+            <span class="principal">${escapar([e.tipo_equipo, e.marca, e.modelo].filter(Boolean).join(" · ") || "—")}</span>
+            <span class="secundario mono">${escapar(e.serial || "S/N —")} · ${escapar(e.nombre_red || "Sin nombre en red")}${sistema ? ` · ${escapar(sistema.codigo)}` : ""}</span>
+          </td>
+          <td class="celda-doble">
+            <span class="principal">${escapar(e.responsable || "—")}</span>
+            <span class="secundario">${escapar(e.cedula || "—")} · ${escapar(e.empresa || "—")}</span>
+          </td>
+          <td class="celda-doble">
+            <span class="principal">${escapar(e.sede || "—")}</span>
+            <span class="secundario">${escapar(e.ceco || "—")} · ${escapar(e.area || "—")}</span>
+          </td>
+          <td class="celda-doble">
+            <span class="principal">${escapar(e.proveedor || "—")} · ${escapar(e.num_contrato || "—")}</span>
+            <span class="secundario">${escapar(e.tipo_contrato || "—")} · ${escapar(e.fecha_vencimiento_contrato || "—")}</span>
+          </td>
+          <td>${estadoBadge(e.estado)}</td>
+          <td class="acciones-col">
+            <div class="acciones-fila">
+              <button class="boton mini" data-equipo="editar" data-id="${escapar(e.id)}" title="Editar ficha técnica">Editar</button>
+              <button class="boton mini" data-equipo="hoja" data-id="${escapar(e.id)}" title="Hoja de vida y acta PDF">Hoja</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join("")}</tbody></table>` || '<p class="vacio">Sin equipos.</p>';
   }
 
   function actualizarFiltros(equipos) {
@@ -319,7 +472,10 @@
       ["eqContrato", "num_contrato"], ["eqTipoContrato", "tipo_contrato"],
       ["eqVencimiento", "fecha_vencimiento_contrato"], ["eqAccesorios", "accesorios"],
       ["eqBitacora", "bitacora"], ["eqArea", "area"], ["eqSistema", "sistema_id"],
+      ["eqCreadoPor", "creado_por"], ["eqModificadoPor", "modificado_por"],
+      ["eqTipoElemento", "tipo_elemento"], ["eqRutaAcceso", "ruta_acceso"],
     ].forEach(([id, campo]) => poner(id, equipo?.[campo]));
+    if (equipo?.updated_at) byId("eqModificado").value = String(equipo.updated_at).slice(0, 16);
     byId("eqSistema").innerHTML = '<option value="">Sin ecosistema</option>' + ESTADO.sistemas.map((s) => `<option value="${escapar(s.id)}">${escapar(s.nombre)}</option>`).join("");
     byId("eqSistema").value = equipo?.sistema_id || "";
     byId("tituloModalEquipo").textContent = equipo ? "Editar ficha técnica" : "Registrar equipo";
@@ -330,6 +486,11 @@
     evento.preventDefault();
     const id = byId("eqId").value;
     const valor = (idCampo) => byId(idCampo)?.value.trim() || null;
+    let equipoAnterior = null;
+    if (id) {
+      const anterior = await sb.from("equipos").select("creado_por").eq("id", id).maybeSingle();
+      equipoAnterior = anterior.data;
+    }
     const registro = {
       placa: valor("eqPlaca"), nombre_red: valor("eqNombreRed"), serial: valor("eqSerial"),
       tipo_equipo: valor("eqTipoEquipo"), marca: valor("eqMarca"), modelo: valor("eqModelo"),
@@ -339,7 +500,11 @@
       proveedor: valor("eqProveedor"), num_contrato: valor("eqContrato"),
       tipo_contrato: valor("eqTipoContrato"), fecha_vencimiento_contrato: valor("eqVencimiento"),
       sistema_id: valor("eqSistema"), accesorios: valor("eqAccesorios"), bitacora: valor("eqBitacora"),
-      area: valor("eqArea"), modificado_por: ESTADO.perfil?.nombre_completo || "sistema",
+      area: valor("eqArea"),
+      creado_por: valor("eqCreadoPor") || equipoAnterior?.creado_por || ESTADO.perfil?.nombre_completo || null,
+      modificado_por: ESTADO.perfil?.nombre_completo || valor("eqModificadoPor") || "sistema",
+      tipo_elemento: valor("eqTipoElemento"), ruta_acceso: valor("eqRutaAcceso"),
+      updated_at: byId("eqModificado")?.value ? new Date(byId("eqModificado").value).toISOString() : new Date().toISOString(),
     };
     if (!registro.placa) return alert("La placa es obligatoria");
 
@@ -418,17 +583,11 @@
     const doc = new jsPDF();
     doc.setFontSize(16); doc.setTextColor(139, 30, 36);
     doc.text("LEVAPAN S.A.S. — CORP-TEC-FR-002", 18, 22);
-    doc.setFontSize(11); doc.setTextColor(28, 28, 28);
-    doc.text(`Acta de ${tipo === "DEVOLUCIÓN" ? "devolución" : "asignación"} de activo`, 18, 34);
+    doc.setFontSize(8.5); doc.setTextColor(28, 28, 28);
     const lineas = [
-      `Placa: ${equipo.placa}`,
-      `Nombre en red: ${equipo.nombre_red || "—"}`,
-      `Serial: ${equipo.serial || "—"}`,
-      `Equipo: ${[equipo.tipo_equipo, equipo.marca, equipo.modelo].filter(Boolean).join(" · ")}`,
-      `Responsable: ${responsable || "—"}`,
-      `Cédula: ${cedula || "—"}`,
-      `Sede: ${sede || "—"} · CECO: ${equipo.ceco || "—"}`,
-      `Estado: ${equipo.estado || "—"}`,
+      ...ORDEN_MAESTRO.map(([header, columna]) => `${header}: ${equipo[columna] ?? "—"}`),
+      "",
+      `Responsable del acta: ${responsable || "—"} · Cédula: ${cedula || "—"} · Sede: ${sede || "—"}`,
       `Observaciones: ${observaciones || "—"}`,
       "",
       "El colaborador declara recibir el activo en buen estado y se compromete a su custodia.",
@@ -436,7 +595,7 @@
       "______________________________     ______________________________",
       "Firma colaborador                 Firma Tecnología e Infraestructura",
     ];
-    lineas.forEach((linea, i) => doc.text(linea, 18, 50 + i * 9));
+    lineas.forEach((linea, i) => doc.text(linea, 18, 44 + i * 6.5));
     const blob = doc.output("blob");
     const ruta = `actas/${equipo.placa}/${Date.now()}.pdf`;
     const subida = await sb.storage.from(CFG.bucket).upload(ruta, blob, { contentType: "application/pdf", upsert: false });
@@ -467,22 +626,66 @@
   }
 
   async function mostrarHojaVida(equipo) {
+    abrirModalEquipo(equipo);
+    byId("tituloModalEquipo").textContent = `Hoja de Vida · ${equipo.placa}`;
+    const area = byId("historialEquipo");
+    if (!area) return;
+    area.innerHTML = '<p class="vacio">Cargando historial…</p>';
+
     const { data } = await sb.from("historial_movimientos").select("*").eq("equipo_id", equipo.id).order("fecha_colombia", { ascending: false }).limit(30);
-    const lineas = (data || []).map((m) => `<div class="tarjeta" style="margin-bottom:8px"><strong>${escapar(m.tipo_movimiento)}</strong><p>${escapar(m.observaciones || "—")}</p><small>${fechaHora(m.fecha_colombia)} · ${escapar(m.tecnico_responsable || "sistema")}</small></div>`).join("");
-    const ventana = window.open("", "_blank");
-    ventana.document.write(`<title>Hoja de Vida · ${equipo.placa}</title><body style="font-family:Inter,sans-serif;padding:24px"><h1>${equipo.placa}</h1><p>${escapar(equipo.nombre_red || "")}</p>${lineas || "<p>Sin movimientos</p>"}</body>`);
+    const lineas = (data || []).map((m) => `<div class="linea-historial">
+      <span class="codigo">${escapar(m.tipo_movimiento)}</span>
+      <strong>${escapar(m.observaciones || "—")}</strong>
+      <small>${fechaHora(m.fecha_colombia)} · ${escapar(m.tecnico_responsable || "sistema")}${m.acta_pdf_url ? ` · <a href="${escapar(m.acta_pdf_url)}" target="_blank" rel="noopener">Acta PDF</a>` : ""}</small>
+    </div>`).join("");
+    area.innerHTML = `<h3>Hoja de vida cronológica</h3>${lineas || '<p class="vacio">Sin movimientos registrados.</p>'}
+      <div class="form-pie"><button class="boton" data-accion="generar-acta-placa" data-placa="${escapar(equipo.placa)}">Generar acta PDF</button></div>`;
   }
 
   /* ---------------- Placas y QR ---------------- */
 
   async function cargarPlacas() {
-    const { data } = await sb.from("equipos").select(columnasVisibles()).order("placa").limit(2000);
-    byId("listaPlacas").innerHTML = `<div class="grid-sistemas">${(data || []).map((e) => `<article class="tarjeta">
-      <span class="codigo mono">${escapar(e.placa)}</span>
-      <h3>${escapar(e.nombre_red || "Sin nombre en red")}</h3>
-      <p>${escapar(e.sede || "—")} · ${escapar(e.ceco || "—")}</p>
-      <button class="boton" data-equipo="qr" data-id="${escapar(e.id)}">Generar QR</button>
-    </article>`).join("")}</div>`;
+    const data = await cargarTodos("equipos", columnasVisibles());
+    ESTADO.placas = data;
+    byId("listaPlacas").innerHTML = `<div class="grid-placas">${(data || []).map((e) => `<button type="button" class="tarjeta placa-item mono" data-placa-ficha="${escapar(e.id)}">
+      <strong>${escapar(e.placa)}</strong>
+      <small>${escapar(e.nombre_red || "Sin nombre en red")} · ${escapar(e.sede || "—")}</small>
+    </button>`).join("")}</div>` || '<p class="vacio">Sin placas registradas.</p>';
+    if (data?.[0]) mostrarFichaPlaca(data[0]);
+  }
+
+  function mostrarFichaPlaca(equipo) {
+    const contenedor = byId("fichaPlaca");
+    if (!contenedor || !equipo) return;
+    const sistema = ESTADO.sistemas.find((s) => s.id === equipo.sistema_id);
+    const grupos = [
+      ["Identificación y Red", [["Placa", "placa"], ["Nombre equipo en Red", "nombre_red"], ["Serial del equipo", "serial"], ["Estado", "estado"], ["Ecosistema", null]]],
+      ["Responsable", [["Nombre del responsable", "responsable"], ["Cedula del responsable", "cedula"], ["Empresa", "empresa"]]],
+      ["Ubicación", [["Sede", "sede"], ["CECO", "ceco"], ["Area", "area"], ["Ruta de acceso", "ruta_acceso"]]],
+      ["Hardware", [["Tipo de Equipo", "tipo_equipo"], ["Marca", "marca"], ["Modelo", "modelo"], ["Procesador", "procesador"], ["Memoria RAM", "ram"], ["Tamaño en Disco", "disco"], ["Tipo de elemento", "tipo_elemento"]]],
+      ["Contrato y Proveedor", [["Proveedor", "proveedor"], ["N° Contrato", "num_contrato"], ["Tipo de Contrato", "tipo_contrato"], ["Fecha de Vencimiento Contrato", "fecha_vencimiento_contrato"]]],
+      ["Trazabilidad", [["Accesorios entregados", "accesorios"], ["Bitacora del Equipo", "bitacora"], ["Creado por", "creado_por"], ["Modificado por", "modificado_por"], ["Modificado", "updated_at"]]],
+    ];
+
+    contenedor.innerHTML = `<article class="tarjeta ficha-completa">
+      <header class="ficha-cab">
+        <div><span class="codigo mono">FICHA DEL EQUIPO</span><h3>${escapar(equipo.placa)}</h3></div>
+        <div class="acciones-fila">
+          <button class="boton mini" data-equipo="qr" data-id="${escapar(equipo.id)}">QR</button>
+          <button class="boton mini" data-equipo="editar" data-id="${escapar(equipo.id)}">Editar</button>
+          <button class="boton mini" data-equipo="hoja" data-id="${escapar(equipo.id)}">Hoja</button>
+        </div>
+      </header>
+      <div class="ficha-grupos">
+        ${grupos.map(([titulo, campos]) => `<section class="ficha-grupo">
+          <h4>${titulo}</h4>
+          <dl>${campos.map(([etiqueta, columna]) => {
+            const valor = columna ? (equipo[columna] ?? "—") : (sistema?.codigo || "—");
+            return `<div><dt>${escapar(etiqueta)}</dt><dd class="${["Placa","Serial del equipo","N° Contrato","CECO"].includes(etiqueta) ? "mono" : ""}">${escapar(valor)}</dd></div>`;
+          }).join("")}</dl>
+        </section>`).join("")}
+      </div>
+    </article>`;
   }
 
   async function mostrarQR(equipo) {
@@ -540,26 +743,43 @@
       const libro = window.XLSX.read(buffer, { type: "array", cellDates: true });
       const hoja = libro.Sheets[libro.SheetNames[0]];
       const filas = window.XLSX.utils.sheet_to_json(hoja, { defval: "", raw: false, FS: ",", RS: "\n" });
+      const existentes = await cargarTodos("equipos", "*");
+      const porPlaca = new Map(existentes.map((equipo) => [String(equipo.placa || "").trim(), equipo]));
       const registros = [];
+      let sinCambios = 0;
+
       for (const fila of filas) {
-        const registro = {};
-        for (const [encabezado, columna] of Object.entries(COLUMNAS)) {
-          if (Object.hasOwn(fila, encabezado)) registro[columna] = String(fila[encabezado] ?? "").trim() || null;
+        const cambios = {};
+        for (const [encabezado, valor] of Object.entries(fila)) {
+          const columna = ALIAS_IMPORT[normalizarEncabezado(encabezado)];
+          if (!columna) continue;
+          if (valor == null || String(valor).trim() === "") continue;
+          cambios[columna] = columna === "fecha_vencimiento_contrato"
+            ? fechaDesdeExcel(valor)
+            : String(valor).trim();
         }
-        if (!registro.placa) continue;
-        const codigo = clasificarEcosistema(registro);
-        if (codigo) {
-          const sistema = ESTADO.sistemas.find((s) => s.codigo === codigo);
+
+        const placa = cambios.placa || "";
+        if (!placa) continue;
+
+        const anterior = porPlaca.get(placa) || {};
+        const registro = { ...anterior, ...cambios };
+        delete registro.id;
+
+        if (!registro.sistema_id) {
+          const codigo = clasificarEcosistema(registro);
+          const sistema = codigo ? ESTADO.sistemas.find((s) => s.codigo === codigo) : null;
           if (sistema) registro.sistema_id = sistema.id;
         }
         registro.modificado_por = ESTADO.perfil?.nombre_completo || "migración";
+        if (Object.keys(cambios).length === 1) sinCambios += 1;
         registros.push(registro);
       }
       for (let i = 0; i < registros.length; i += 200) {
         const { error } = await sb.from("equipos").upsert(registros.slice(i, i + 200), { onConflict: "placa" });
         if (error) throw error;
       }
-      mensaje(`${registros.length} equipos migrados y clasificados.`, "ok");
+      mensaje(`${registros.length} equipos procesados · ${sinCambios} sin cambios nuevos · celdas vacías conservadas.`, "ok");
       await cargarEquipos();
     } catch (err) {
       mensaje("Error: " + err.message, "error");
@@ -567,8 +787,11 @@
   }
 
   async function exportarExcel() {
-    const { data } = await sb.from("equipos").select(columnasVisibles()).order("placa").limit(5000);
-    const hoja = window.XLSX.utils.json_to_sheet(data || []);
+    const data = await cargarTodos("equipos", columnasVisibles());
+    const encabezados = ORDEN_MAESTRO.map(([header]) => header);
+    const filas = data.map((equipo) => ORDEN_MAESTRO.map(([, columna]) => equipo[columna] ?? ""));
+    const hoja = window.XLSX.utils.aoa_to_sheet([encabezados, ...filas]);
+    hoja["!cols"] = ORDEN_MAESTRO.map(([header]) => ({ wch: Math.min(28, Math.max(12, header.length + 4)) }));
     const libro = window.XLSX.utils.book_new();
     window.XLSX.utils.book_append_sheet(libro, hoja, "Inventario");
     window.XLSX.writeFile(libro, `Levapan_Inventario_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -672,6 +895,42 @@
     byId("btnMicrosoft").addEventListener("click", async () => {
       try { await iniciarMicrosoft(); } catch (err) { alert(err.message); }
     });
+
+    byId("tabLogin").addEventListener("click", () => {
+      byId("formLogin").hidden = false;
+      byId("formRegistro").hidden = true;
+      byId("tabLogin").classList.add("activa");
+      byId("tabRegistro").classList.remove("activa");
+      byId("tabLogin").setAttribute("aria-selected", "true");
+      byId("tabRegistro").setAttribute("aria-selected", "false");
+    });
+
+    byId("tabRegistro").addEventListener("click", () => {
+      byId("formRegistro").hidden = false;
+      byId("formLogin").hidden = true;
+      byId("tabRegistro").classList.add("activa");
+      byId("tabLogin").classList.remove("activa");
+      byId("tabRegistro").setAttribute("aria-selected", "true");
+      byId("tabLogin").setAttribute("aria-selected", "false");
+    });
+
+    byId("formRegistro").addEventListener("submit", async (evento) => {
+      evento.preventDefault();
+      const error = byId("registroError");
+      error.hidden = true;
+      try {
+        await registrarCuenta(
+          byId("regNombre").value,
+          byId("regCedula").value,
+          byId("regCorreo").value,
+          byId("regClave").value
+        );
+      } catch (err) {
+        error.textContent = err.message || "No se pudo crear la cuenta";
+        error.hidden = false;
+      }
+    });
+
     byId("btnSalir").addEventListener("click", cerrarSesion);
 
     document.querySelectorAll(".nav-item").forEach((b) => b.addEventListener("click", () => irAVista(b.dataset.vista)));
@@ -682,6 +941,12 @@
     byId("formActa").addEventListener("submit", guardarActa);
 
     document.addEventListener("click", (evento) => {
+      const ficha = evento.target.closest("[data-placa-ficha]");
+      if (ficha) {
+        const equipo = (ESTADO.placas || []).find((e) => e.id === ficha.dataset.placaFicha);
+        if (equipo) mostrarFichaPlaca(equipo);
+        return;
+      }
       const botonEquipo = evento.target.closest("[data-equipo]");
       if (botonEquipo) return accionEquipo(botonEquipo.dataset.equipo, botonEquipo.dataset.id);
       const tarjeta = evento.target.closest("[data-sistema]");
@@ -705,6 +970,10 @@
       if (accion === "nuevo-sistema") return abrirModalSistema(null);
       if (accion === "nuevo-equipo") return abrirModalEquipo(null);
       if (accion === "nueva-acta") return abrirActa(null, "ASIGNACIÓN");
+      if (accion === "generar-acta-placa") {
+        const equipo = ESTADO.equipos.find((e) => e.placa === byId("actaPlaca")?.dataset.placa) || ESTADO.equipos.find((e) => e.placa === evento.target.dataset.placa);
+        return abrirActa(equipo || null, "ASIGNACIÓN");
+      }
       if (accion === "exportar") return exportarExcel();
       if (accion === "importar" || accion === "migrar") return byId("archivoImportar").click();
     });
@@ -740,7 +1009,7 @@
       byId("btnInstalar").hidden = true;
     });
 
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
   }
 
   async function iniciar() {

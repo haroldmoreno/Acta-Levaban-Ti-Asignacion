@@ -2,6 +2,12 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // En despliegues estáticos (Cloudflare/Vercel/Netlify) la PWA vive en /public/.
+      if (/(pages\.dev|vercel\.app|netlify\.app|workers\.dev)$/.test(location.hostname)) {
+        location.replace("/public/index.html");
+      }
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#981127" />
     <title>Actas Levapan · Gestión de Activos de TI</title>

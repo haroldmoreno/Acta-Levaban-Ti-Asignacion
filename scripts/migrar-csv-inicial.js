@@ -26,34 +26,20 @@ const ARCHIVOS = ["data/inventario.ods", "data/inventario.xlsx", "data/inventari
 const ruta = process.argv[2] || ARCHIVOS.find((archivo) => fs.existsSync(archivo));
 if (!ruta || !fs.existsSync(ruta)) throw new Error("No se encontró archivo de inventario");
 
-const COLUMNAS = {
-  "Placa": "placa",
-  "Nombre equipo en Red": "nombre_red",
-  "Serial del equipo": "serial",
-  "Nombre del responsable": "responsable",
-  "Cedula del responsable": "cedula",
-  "Empresa": "empresa",
-  "Sede": "sede",
-  "CECO": "ceco",
-  "Estado": "estado",
-  "Proveedor": "proveedor",
-  "N° Contrato": "num_contrato",
-  "Tipo de Contrato": "tipo_contrato",
-  "Fecha de Vencimiento Contrato": "fecha_vencimiento_contrato",
-  "Tipo de Equipo": "tipo_equipo",
-  "Marca": "marca",
-  "Modelo": "modelo",
-  "Procesador": "procesador",
-  "Memoria RAM": "ram",
-  "Tamaño en Disco": "disco",
-  "Bitacora del Equipo": "bitacora",
-  "Creado por": "modificado_por",
-  "Modificado por": "modificado_por",
-  "Accesorios entregados": "accesorios",
-  "Area": "area",
-  "Tipo de elemento": "tipo_equipo",
-  "Ruta de acceso": "bitacora",
-};
+const ORDEN_MAESTRO = [
+  ["Nombre equipo en Red", "nombre_red"], ["Serial del equipo", "serial"],
+  ["Nombre del responsable", "responsable"], ["Cedula del responsable", "cedula"],
+  ["Empresa", "empresa"], ["Sede", "sede"], ["CECO", "ceco"], ["Estado", "estado"],
+  ["Proveedor", "proveedor"], ["N° Contrato", "num_contrato"], ["Tipo de Contrato", "tipo_contrato"],
+  ["Tipo de Equipo", "tipo_equipo"], ["Marca", "marca"], ["Modelo", "modelo"], ["Placa", "placa"],
+  ["Procesador", "procesador"], ["Memoria RAM", "ram"], ["Tamaño en Disco", "disco"],
+  ["Bitacora del Equipo", "bitacora"], ["Creado por", "creado_por"],
+  ["Modificado por", "modificado_por"], ["Accesorios entregados", "accesorios"],
+  ["Modificado", "updated_at"], ["Area", "area"],
+  ["Fecha de Vencimiento Contrato", "fecha_vencimiento_contrato"],
+  ["Tipo de elemento", "tipo_elemento"], ["Ruta de acceso", "ruta_acceso"],
+];
+const COLUMNAS = Object.fromEntries(ORDEN_MAESTRO);
 
 function clasificar(registro) {
   const texto = `${registro.tipo_equipo || ""} ${registro.nombre_red || ""} ${registro.area || ""}`.toLowerCase();
