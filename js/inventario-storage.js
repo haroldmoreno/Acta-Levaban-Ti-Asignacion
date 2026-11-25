@@ -1921,7 +1921,7 @@ async function cargarSesionUsuario() {
     }
 
     if (etiqueta) {
-      etiqueta.textContent = `Conectado como: ${usuario.nombre_completo || usuario.name || usuario.email}`;
+      etiqueta.textContent = usuario.nombre_completo || usuario.name || usuario.email || "";
       etiqueta.title = usuario.email || "";
     }
     preseleccionarAgenteSesion(usuario);

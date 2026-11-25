@@ -104,6 +104,10 @@
     try {
       const perfil = await cargarPerfil();
       Estado.perfil = perfil;
+      // Nunca dejar correo/contraseña ni parámetros de auth en la URL.
+      if (window.history?.replaceState && location.search) {
+        window.history.replaceState({}, "", "/");
+      }
       pintarSesion();
       if (resolvePerfil) resolvePerfil(perfil);
       notificarListo();

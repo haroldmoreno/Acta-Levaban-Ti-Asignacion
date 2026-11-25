@@ -32,7 +32,9 @@ import { generarActaPdf } from "./server/acta-pdf.js";
 import {
   LOTE_EQUIPOS,
   mapearFila,
+  mapearFilaSharepoint,
   renombrarEncabezados,
+  CAMPOS_SHAREPOINT,
 } from "./server/normalizar.js";
 import { extraerTextoPdf } from "./server/extraer-texto-pdf.js";
 import {
@@ -191,26 +193,10 @@ function normalizarTipoActa(valor) {
   return "Asignacion";
 }
 
-const ESTADOS_PERMITIDOS = [
-  "Disponible",
-  "Asignado",
-  "En Mantenimiento",
-  "Prestamo",
-  "Dado de Baja",
-];
-
 function normalizarEstadoEquipo(valor) {
-  const texto = sinAcentos(valor).toLowerCase().replace(/\s+/g, " ");
-  const mapa = {
-    disponible: "Disponible",
-    "disponible para asignar": "Disponible",
-    asignado: "Asignado",
-    prestamo: "Prestamo",
-    mantenimiento: "En Mantenimiento",
-    "en mantenimiento": "En Mantenimiento",
-    "dado de baja": "Dado de Baja",
-  };
-  return mapa[texto] || (ESTADOS_PERMITIDOS.includes(valor) ? valor : "Disponible");
+  // SharePoint manda estados exactos: se conserva el texto original.
+  const texto = String(valor ?? "").trim();
+  return texto || null;
 }
 
 function limpiarBusqueda(valor) {
@@ -231,9 +217,40 @@ function sanitizarPlaca(valor) {
 }
 
 async function registrarMovimiento(movimiento) {
-  const { error } = await supabaseAdmin
+  const usuario = movimiento.usuario || {};
+  const registro = {
+    ...movimiento,
+    tipo_movimiento:
+      movimiento.tipo_movimiento || movimiento.accion || "Edición",
+    descripcion:
+      movimiento.descripcion || movimiento.detalle || "Movimiento registrado",
+    usuario_nombre:
+      movimiento.usuario_nombre || usuario.nombre_completo || movimiento.realizado_por || "sistema",
+    usuario_email: movimiento.usuario_email || usuario.email || null,
+    created_at: movimiento.created_at || new Date().toISOString(),
+  };
+  delete registro.usuario;
+
+  let { error } = await supabaseAdmin
     .from("historial_movimientos")
-    .insert([movimiento]);
+    .insert([registro]);
+
+  if (error && /does not exist/i.test(error.message)) {
+    const legado = {
+      equipo_id: registro.equipo_id,
+      placa: registro.placa,
+      acta_id: registro.acta_id,
+      accion: registro.accion || registro.tipo_movimiento,
+      detalle: registro.detalle || registro.descripcion,
+      realizado_por: registro.realizado_por || registro.usuario_nombre,
+      created_at: registro.created_at,
+    };
+    Object.keys(legado).forEach((clave) => {
+      if (legado[clave] === undefined) delete legado[clave];
+    });
+    ({ error } = await supabaseAdmin.from("historial_movimientos").insert([legado]));
+  }
+
   if (error) console.warn("[HISTORIAL] No se pudo registrar:", error.message);
 }
 
@@ -421,6 +438,8 @@ async function contarCon(base, estado) {
   }
   if (base.sede) consulta = consulta.eq("sede", base.sede);
   if (base.tipo) consulta = consulta.eq("tipo", base.tipo);
+  if (base.ceco) consulta = consulta.eq("ceco", base.ceco);
+  if (base.empresa) consulta = consulta.eq("empresa", base.empresa);
   if (base.sistema) consulta = consulta.eq("sistema_id", base.sistema);
   if (estado) consulta = consulta.eq("estado", estado);
 
@@ -434,18 +453,49 @@ async function listarEquipos(res, url) {
     q: limpiarBusqueda(url.searchParams.get("q")),
     sede: String(url.searchParams.get("sede") || "").trim(),
     tipo: String(url.searchParams.get("tipo") || "").trim(),
+    ceco: String(url.searchParams.get("ceco") || "").trim(),
+    empresa: String(url.searchParams.get("empresa") || "").trim(),
     sistema: String(url.searchParams.get("sistema") || "").trim(),
   };
   const estado = String(url.searchParams.get("estado") || "").trim();
   const pagina = Math.max(1, Number(url.searchParams.get("pagina")) || 1);
   const limite = Math.min(200, Math.max(1, Number(url.searchParams.get("limite")) || 25));
 
-  const [total, disponibles, asignados, mantenimiento] = await Promise.all([
-    contarCon(base, ""),
-    contarCon(base, "Disponible"),
-    contarCon(base, "Asignado"),
-    contarCon(base, "En Mantenimiento"),
-  ]);
+  const total = await contarCon(base, "");
+
+  const construirConsultaEstados = () => {
+    let consulta = supabaseAdmin.from("equipos").select("estado");
+    if (base.q) {
+      consulta = consulta.or(
+        `placa.ilike.%${base.q}%,serial.ilike.%${base.q}%,usuario_asignado.ilike.%${base.q}%`
+      );
+    }
+    if (base.sede) consulta = consulta.eq("sede", base.sede);
+    if (base.tipo) consulta = consulta.eq("tipo", base.tipo);
+    if (base.ceco) consulta = consulta.eq("ceco", base.ceco);
+    if (base.empresa) consulta = consulta.eq("empresa", base.empresa);
+    if (base.sistema) consulta = consulta.eq("sistema_id", base.sistema);
+    if (estado) consulta = consulta.eq("estado", estado);
+    return consulta;
+  };
+
+  const filasEstado = [];
+  let desdeEstados = 0;
+  while (desdeEstados <= 50000) {
+    const { data: lote, error: errorEstados } = await construirConsultaEstados()
+      .order("placa", { ascending: true })
+      .range(desdeEstados, desdeEstados + 999);
+    if (errorEstados) throw Object.assign(new Error(errorEstados.message), { status: 502 });
+    filasEstado.push(...(lote || []));
+    if ((lote || []).length < 1000) break;
+    desdeEstados += 1000;
+  }
+
+  const porEstado = {};
+  for (const fila of filasEstado || []) {
+    const clave = String(fila.estado || "Sin estado");
+    porEstado[clave] = (porEstado[clave] || 0) + 1;
+  }
 
   let consulta = supabaseAdmin
     .from("equipos")
@@ -457,6 +507,8 @@ async function listarEquipos(res, url) {
   }
   if (base.sede) consulta = consulta.eq("sede", base.sede);
   if (base.tipo) consulta = consulta.eq("tipo", base.tipo);
+  if (base.ceco) consulta = consulta.eq("ceco", base.ceco);
+  if (base.empresa) consulta = consulta.eq("empresa", base.empresa);
   if (base.sistema) consulta = consulta.eq("sistema_id", base.sistema);
   if (estado) consulta = consulta.eq("estado", estado);
 
@@ -472,7 +524,7 @@ async function listarEquipos(res, url) {
     pagina,
     limite,
     total: Number(count) || total,
-    resumen: { total, disponibles, asignados, mantenimiento },
+    resumen: { total, disponibles: porEstado.Disponible || 0, asignados: porEstado.Asignado || 0, mantenimiento: porEstado["En Mantenimiento"] || 0, porEstado },
   });
 }
 
@@ -490,28 +542,47 @@ async function crearEquipo(req, res, usuario) {
     marca: cuerpo.marca || null,
     modelo: cuerpo.modelo || null,
     serial: cuerpo.serial || null,
-    estado: normalizarEstadoEquipo(cuerpo.estado || "Disponible"),
+    estado: normalizarEstadoEquipo(cuerpo.estado),
     sede: cuerpo.sede || null,
     usuario_asignado: cuerpo.usuario_asignado || null,
     usuario_cedula: cuerpo.usuario_cedula || null,
     garantia_hasta: cuerpo.garantia_hasta || null,
     observaciones: cuerpo.observaciones || null,
     sistema_id: cuerpo.sistema_id || null,
+    ...mapearFilaSharepoint(cuerpo),
   };
 
-  const { data, error } = await supabaseAdmin
-    .from("equipos")
-    .insert([registro])
-    .select()
-    .single();
-  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+  let insercion = await supabaseAdmin.from("equipos").insert([registro]).select().single();
+
+  if (insercion.error && /does not exist/i.test(insercion.error.message)) {
+    const legado = {
+      placa,
+      tipo: registro.tipo,
+      marca: registro.marca,
+      modelo: registro.modelo,
+      serial: registro.serial,
+      estado: registro.estado,
+      sede: registro.sede,
+      usuario_asignado: registro.usuario_asignado,
+      usuario_cedula: registro.usuario_cedula,
+      garantia_hasta: registro.garantia_hasta,
+      observaciones: registro.observaciones,
+      sistema_id: registro.sistema_id,
+    };
+    insercion = await supabaseAdmin.from("equipos").insert([legado]).select().single();
+  }
+
+  if (insercion.error) throw Object.assign(new Error(insercion.error.message), { status: 502 });
+  const data = insercion.data;
 
   await registrarMovimiento({
     equipo_id: data.id,
     placa,
     accion: "Creacion",
+    tipo_movimiento: "Creación",
     detalle: `Equipo creado con estado ${data.estado}${data.sede ? ` · sede ${data.sede}` : ""}`,
     realizado_por: usuario.nombre_completo,
+    usuario,
   });
 
   return enviarJson(res, 201, { ok: true, equipo: data });
@@ -529,6 +600,9 @@ const CAMPOS_EDITABLES = [
   "garantia_hasta",
   "observaciones",
   "sistema_id",
+  ...CAMPOS_SHAREPOINT.filter(
+    (campo) => campo !== "placa" && campo !== "serial" && campo !== "sede" && campo !== "estado"
+  ),
 ];
 
 async function editarEquipo(req, res, usuario, id) {
@@ -551,13 +625,31 @@ async function editarEquipo(req, res, usuario, id) {
   }
   if (!Object.keys(cambios).length) throw fallo("No se enviaron cambios.");
 
-  const { data, error } = await supabaseAdmin
+  let respuesta = await supabaseAdmin
     .from("equipos")
     .update(cambios)
     .eq("id", id)
     .select()
     .single();
-  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+
+  if (respuesta.error && /does not exist/i.test(respuesta.error.message)) {
+    const camposLegado = new Set([
+      "tipo", "marca", "modelo", "serial", "estado", "sede",
+      "usuario_asignado", "usuario_cedula", "garantia_hasta", "observaciones", "sistema_id",
+    ]);
+    const cambiosLegado = Object.fromEntries(
+      Object.entries(cambios).filter(([clave]) => camposLegado.has(clave))
+    );
+    respuesta = await supabaseAdmin
+      .from("equipos")
+      .update(cambiosLegado)
+      .eq("id", id)
+      .select()
+      .single();
+  }
+
+  if (respuesta.error) throw Object.assign(new Error(respuesta.error.message), { status: 502 });
+  const data = respuesta.data;
 
   const detalle = Object.keys(cambios)
     .map((campo) => `${campo}: ${anterior[campo] ?? "—"} → ${data[campo] ?? "—"}`)
@@ -568,61 +660,151 @@ async function editarEquipo(req, res, usuario, id) {
     equipo_id: id,
     placa: data.placa,
     accion: "Edicion",
+    tipo_movimiento: "Edición",
     detalle,
     realizado_por: usuario.nombre_completo,
+    usuario,
   });
 
   return enviarJson(res, 200, { ok: true, equipo: data });
 }
 
-async function historialEquipo(res, id) {
-  const { data: equipo, error: errorEquipo } = await supabaseAdmin
+async function registrarNovedadEquipo(req, res, usuario, id) {
+  const cuerpo = await leerJson(req);
+  const observacion = String(cuerpo.observacion || "").trim();
+  if (!observacion) throw fallo("La observación es obligatoria.");
+
+  const { data: equipo, error } = await supabaseAdmin
     .from("equipos")
     .select("id, placa")
     .eq("id", id)
     .maybeSingle();
-  if (errorEquipo) throw Object.assign(new Error(errorEquipo.message), { status: 502 });
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
   if (!equipo) throw fallo("No se encontró el equipo.", 404);
 
-  const [movimientos, porEquipo, porPlaca] = await Promise.all([
+  const permite =
+    usuario.rol === "admin" || usuario.permisos?.puede_crear_editar_equipos !== false;
+  if (!permite) throw fallo("Tu perfil no tiene permiso para registrar novedades.", 403);
+
+  const tipo = String(cuerpo.tipo || "Novedad");
+  const tipoMovimiento = /mantenim/i.test(tipo)
+    ? "Mantenimiento"
+    : /reparac/i.test(tipo)
+      ? "Mantenimiento"
+      : /accesorio/i.test(tipo)
+        ? "Edición"
+        : "Novedad";
+  const fecha = cuerpo.fecha ? new Date(cuerpo.fecha).toISOString() : new Date().toISOString();
+
+  await registrarMovimiento({
+    equipo_id: equipo.id,
+    placa: equipo.placa,
+    accion: "Edicion",
+    tipo_movimiento: tipoMovimiento,
+    descripcion: `${tipo}: ${observacion}`,
+    detalle: `${tipo}: ${observacion}`,
+    realizado_por: usuario.nombre_completo,
+    usuario,
+    created_at: fecha,
+  });
+
+  return enviarJson(res, 201, {
+    ok: true,
+    mensaje: "Novedad registrada en la hoja de vida.",
+    equipo_id: equipo.id,
+    placa: equipo.placa,
+  });
+}
+
+async function construirHojaVida(res, equipo) {
+  if (!equipo) throw fallo("No se encontró el equipo.", 404);
+
+  const [movimientos, porEquipo, porPlaca, vinculos] = await Promise.all([
     supabaseAdmin
       .from("historial_movimientos")
       .select("*")
-      .eq("equipo_id", id)
+      .eq("equipo_id", equipo.id)
       .order("created_at", { ascending: false })
       .limit(200),
     supabaseAdmin
       .from("actas")
       .select("*")
-      .eq("equipo_id", id)
+      .eq("equipo_id", equipo.id)
       .order("created_at", { ascending: false }),
     supabaseAdmin
       .from("actas")
       .select("*")
       .eq("placa", equipo.placa)
       .order("created_at", { ascending: false }),
+    supabaseAdmin
+      .from("documento_vinculos")
+      .select("documento_id, boveda_documentos(id, titulo, categoria, fecha_documento, created_at)")
+      .or(`equipo_id.eq.${equipo.id},placa.eq.${equipo.placa}`),
   ]);
 
-  if (movimientos.error || porEquipo.error || porPlaca.error) {
-    throw Object.assign(
-      new Error(movimientos.error?.message || porEquipo.error?.message || porPlaca.error.message),
-      { status: 502 }
-    );
-  }
+  const error =
+    movimientos.error || porEquipo.error || porPlaca.error || vinculos.error;
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
 
   const actasMap = new Map();
   [...(porEquipo.data || []), ...(porPlaca.data || [])].forEach((acta) =>
     actasMap.set(acta.id, acta)
   );
+  const actas = [...actasMap.values()].sort(
+    (a, b) => new Date(b.created_at) - new Date(a.created_at)
+  );
+
+  const documentosMap = new Map();
+  for (const vinculo of vinculos.data || []) {
+    const documento = vinculo.boveda_documentos;
+    if (documento) documentosMap.set(documento.id, documento);
+  }
+  const documentos = [...documentosMap.values()].sort(
+    (a, b) => new Date(b.created_at) - new Date(a.created_at)
+  );
+
+  const lineaTiempo = [
+    ...(movimientos.data || []).map((movimiento) => ({
+      tipo: "movimiento",
+      fecha: movimiento.created_at,
+      data: movimiento,
+    })),
+    ...actas.map((acta) => ({ tipo: "acta", fecha: acta.created_at, data: acta })),
+    ...documentos.map((documento) => ({
+      tipo: "documento",
+      fecha: documento.created_at,
+      data: documento,
+    })),
+  ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
 
   return enviarJson(res, 200, {
     ok: true,
     equipo,
     historial: movimientos.data || [],
-    actas: [...actasMap.values()].sort(
-      (a, b) => new Date(b.created_at) - new Date(a.created_at)
-    ),
+    actas,
+    documentos,
+    lineaTiempo,
   });
+}
+
+async function historialEquipo(res, id) {
+  const { data: equipo, error } = await supabaseAdmin
+    .from("equipos")
+    .select("id, placa, nombre_equipo_red, serial, marca, modelo, responsable, usuario_asignado, cedula_responsable, usuario_cedula, sede, ceco, area, estado, sistema_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+  return construirHojaVida(res, equipo);
+}
+
+async function historialPorPlaca(res, placa) {
+  const { data: equipo, error } = await supabaseAdmin
+    .from("equipos")
+    .select("id, placa, nombre_equipo_red, serial, marca, modelo, responsable, usuario_asignado, cedula_responsable, usuario_cedula, sede, ceco, area, estado, sistema_id")
+    .ilike("placa", String(placa || "").trim())
+    .maybeSingle();
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+  return construirHojaVida(res, equipo);
 }
 
 /* ------------------------------------------------------------
@@ -673,20 +855,31 @@ async function importarEquipos(req, res, usuario) {
   const libro = XLSX.read(archivo.buffer, { type: "buffer", cellDates: true });
   const hoja = libro.Sheets[libro.SheetNames[0]];
   const filas = XLSX.utils.sheet_to_json(hoja, { defval: "", raw: false });
-  const registros = renombrarEncabezados(filas)
-    .map(mapearFila)
+  const registros = filas
+    .map((fila) => {
+      const legado = mapearFila(fila) || {};
+      const sharepoint = mapearFilaSharepoint(fila);
+      const registro = { ...legado, ...sharepoint };
+      return registro.placa || registro.serial ? registro : null;
+    })
     .filter(Boolean);
 
   const totalLeidos = filas.length;
   let errores = totalLeidos - registros.length;
   let procesados = 0;
 
-  for (let inicio = 0; inicio < registros.length; inicio += LOTE_EQUIPOS) {
-    const lote = registros.slice(inicio, inicio + LOTE_EQUIPOS);
-    const { data, error } = await supabaseAdmin
-      .from("equipos")
-      .upsert(lote, { onConflict: "placa" })
-      .select("id, placa");
+  const grupos = [
+    { clave: "placa", filas: registros.filter((registro) => registro.placa) },
+    { clave: "serial", filas: registros.filter((registro) => !registro.placa && registro.serial) },
+  ];
+
+  for (const grupo of grupos) {
+    for (let inicio = 0; inicio < grupo.filas.length; inicio += LOTE_EQUIPOS) {
+      const lote = grupo.filas.slice(inicio, inicio + LOTE_EQUIPOS);
+      const { data, error } = await supabaseAdmin
+        .from("equipos")
+        .upsert(lote, { onConflict: grupo.clave })
+        .select("id, placa");
     if (error) {
       errores += lote.length;
       console.error("[IMPORTAR] Error en lote:", error.message);
@@ -698,14 +891,14 @@ async function importarEquipos(req, res, usuario) {
       equipo_id: equipo.id,
       placa: equipo.placa,
       accion: "Importacion Lote",
+      tipo_movimiento: "Sincronización",
       detalle: `Importación masiva desde ${archivo.originalname}`,
       realizado_por: usuario.nombre_completo,
+      usuario,
     }));
-    if (eventos.length) {
-      const { error: errorHistorial } = await supabaseAdmin
-        .from("historial_movimientos")
-        .insert(eventos);
-      if (errorHistorial) console.warn("[IMPORTAR] Historial:", errorHistorial.message);
+    for (const evento of eventos) {
+      await registrarMovimiento(evento);
+    }
     }
   }
 
@@ -911,8 +1104,10 @@ async function guardarActa(req, res, usuario) {
     acta_id: acta.id,
     placa,
     accion: tipoActa,
+    tipo_movimiento: "Acta Emitida",
     detalle: `Acta CORP-TEC-FR-002 N.º ${acta.consecutivo} · ${colaborador} · ${sede} · ${nombre}`,
     realizado_por: usuario.nombre_completo,
+    usuario,
   });
 
   const { data: firmada, error: errorFirma } = await supabaseAdmin.storage
@@ -1024,6 +1219,554 @@ async function exportarExcel(res) {
     nombre,
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   );
+}
+
+/* ------------------------------------------------------------
+   USUARIOS CORPORATIVOS @levapan.com
+   ------------------------------------------------------------ */
+
+function correoCorporativoValido(valor) {
+  return /^[A-Za-z0-9._%+-]+@levapan\.com$/i.test(String(valor || "").trim());
+}
+
+function exigirAdmin(usuario) {
+  if (usuario?.rol !== "admin") {
+    throw fallo("Esta acción solo está disponible para administradores TI.", 403);
+  }
+}
+
+const PERMISOS_TI = [
+  "puede_crear_editar_equipos",
+  "puede_emitir_actas",
+  "puede_sincronizar_importar",
+  "puede_gestionar_boveda",
+  "puede_eliminar_registros",
+  "puede_administrar_usuarios",
+];
+
+function normalizarPermisos(valor) {
+  const permisos = {
+    puede_crear_editar_equipos: true,
+    puede_emitir_actas: true,
+    puede_sincronizar_importar: false,
+    puede_gestionar_boveda: true,
+    puede_eliminar_registros: false,
+    puede_administrar_usuarios: false,
+  };
+  if (valor && typeof valor === "object" && !Array.isArray(valor)) {
+    for (const clave of PERMISOS_TI) {
+      if (Object.hasOwn(valor, clave)) permisos[clave] = Boolean(valor[clave]);
+    }
+  }
+  return permisos;
+}
+
+/** Crea el usuario en Supabase Auth y su perfil TI operativo. */
+async function crearUsuarioCorporativo(cuerpo, rol = "tecnico") {
+  const nombreCompleto = String(cuerpo.nombre_completo || "").trim();
+  const cedula = String(cuerpo.cedula || "").trim();
+  const email = String(cuerpo.email || "").trim().toLowerCase();
+  const password = String(cuerpo.password || "");
+  const rolFinal = rol === "admin" ? "admin" : "tecnico";
+
+  if (!nombreCompleto) throw fallo("El nombre completo es obligatorio.");
+  if (!cedula) throw fallo("La cédula es obligatoria.");
+  if (!correoCorporativoValido(email)) {
+    throw fallo("El correo corporativo debe terminar estrictamente en @levapan.com.");
+  }
+  if (password.length < 6) throw fallo("La contraseña debe tener al menos 6 caracteres.");
+
+  const { data: repetido, error: errorRepetido } = await supabaseAdmin
+    .from("perfiles_ti")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle();
+  if (errorRepetido) throw Object.assign(new Error(errorRepetido.message), { status: 502 });
+  if (repetido) throw fallo("Ya existe un perfil con ese correo corporativo.", 409);
+
+  const { data: creado, error: errorAuth } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { nombre_completo: nombreCompleto, cedula },
+  });
+  if (errorAuth) {
+    const duplicado = /already|exists|registered/i.test(errorAuth.message);
+    throw Object.assign(
+      new Error(
+        duplicado
+          ? "Ese correo ya está registrado en Supabase Auth."
+          : `No se pudo crear el usuario: ${errorAuth.message}`
+      ),
+      { status: duplicado ? 409 : 502 }
+    );
+  }
+
+  let insercion = await supabaseAdmin
+    .from("perfiles_ti")
+    .insert([
+      {
+        id: creado.user.id,
+        nombre_completo: nombreCompleto,
+        cedula,
+        email,
+        rol: rolFinal,
+        activo: true,
+        sede_asignada: String(cuerpo.sede_asignada || "").trim() || null,
+        sistema_asignado: cuerpo.sistema_asignado || null,
+        permisos: normalizarPermisos(cuerpo.permisos),
+      },
+    ])
+    .select()
+    .single();
+
+  if (insercion.error && /does not exist/i.test(insercion.error.message)) {
+    insercion = await supabaseAdmin
+      .from("perfiles_ti")
+      .insert([
+        {
+          id: creado.user.id,
+          nombre_completo: nombreCompleto,
+          cedula,
+          email,
+          rol: rolFinal,
+          activo: true,
+        },
+      ])
+      .select()
+      .single();
+  }
+
+  if (insercion.error) {
+    await supabaseAdmin.auth.admin.deleteUser(creado.user.id).catch(() => {});
+    throw Object.assign(
+      new Error(`No se pudo crear el perfil TI: ${insercion.error.message}`),
+      { status: 502 }
+    );
+  }
+
+  return insercion.data;
+}
+
+async function registroCorporativo(req, res) {
+  const cuerpo = await leerJson(req);
+  const perfil = await crearUsuarioCorporativo(cuerpo, "tecnico");
+  return enviarJson(res, 201, {
+    ok: true,
+    mensaje: "Cuenta corporativa creada. Ya puedes iniciar sesión.",
+    perfil: {
+      id: perfil.id,
+      email: perfil.email,
+      nombre_completo: perfil.nombre_completo,
+      rol: perfil.rol,
+      activo: perfil.activo,
+    },
+  });
+}
+
+async function seleccionarPerfilesAdmin() {
+  const camposCompletos =
+    "id, nombre_completo, cedula, email, rol, activo, sede_asignada, sistema_asignado, permisos, created_at";
+  const camposBasicos = "id, nombre_completo, cedula, email, rol, activo, created_at";
+
+  let respuesta = await supabaseAdmin
+    .from("perfiles_ti")
+    .select(camposCompletos)
+    .order("created_at", { ascending: false });
+  if (respuesta.error && /does not exist/i.test(respuesta.error.message)) {
+    respuesta = await supabaseAdmin
+      .from("perfiles_ti")
+      .select(camposBasicos)
+      .order("created_at", { ascending: false });
+  }
+  if (respuesta.error) {
+    throw Object.assign(new Error(respuesta.error.message), { status: 502 });
+  }
+  return (respuesta.data || []).map((perfil) => ({
+    ...perfil,
+    sede_asignada: perfil.sede_asignada ?? null,
+    sistema_asignado: perfil.sistema_asignado ?? null,
+    permisos: perfil.permisos ?? normalizarPermisos(null),
+  }));
+}
+
+async function listarUsuariosCorporativos(res) {
+  const usuarios = await seleccionarPerfilesAdmin();
+  return enviarJson(res, 200, { ok: true, total: usuarios.length, usuarios });
+}
+
+async function actualizarUsuarioCorporativo(req, res, id) {
+  const cuerpo = await leerJson(req);
+  const cambios = {};
+  if (Object.hasOwn(cuerpo, "activo")) cambios.activo = Boolean(cuerpo.activo);
+  if (Object.hasOwn(cuerpo, "rol")) {
+    if (!["admin", "tecnico"].includes(cuerpo.rol)) throw fallo("Rol no válido.");
+    cambios.rol = cuerpo.rol;
+  }
+  if (Object.hasOwn(cuerpo, "sede_asignada")) {
+    cambios.sede_asignada = String(cuerpo.sede_asignada || "").trim() || null;
+  }
+  if (Object.hasOwn(cuerpo, "sistema_asignado")) {
+    cambios.sistema_asignado = cuerpo.sistema_asignado || null;
+  }
+  if (Object.hasOwn(cuerpo, "permisos")) {
+    cambios.permisos = normalizarPermisos(cuerpo.permisos);
+  }
+  if (!Object.keys(cambios).length) throw fallo("No se enviaron cambios.");
+
+  let respuesta = await supabaseAdmin
+    .from("perfiles_ti")
+    .update(cambios)
+    .eq("id", id)
+    .select("id, nombre_completo, cedula, email, rol, activo, sede_asignada, sistema_asignado, permisos, created_at")
+    .maybeSingle();
+
+  if (respuesta.error && /does not exist/i.test(respuesta.error.message)) {
+    const cambiosBasicos = { activo: cambios.activo, rol: cambios.rol };
+    Object.keys(cambiosBasicos).forEach((clave) => {
+      if (cambiosBasicos[clave] === undefined) delete cambiosBasicos[clave];
+    });
+    respuesta = await supabaseAdmin
+      .from("perfiles_ti")
+      .update(cambiosBasicos)
+      .eq("id", id)
+      .select("id, nombre_completo, cedula, email, rol, activo, created_at")
+      .maybeSingle();
+  }
+
+  if (respuesta.error) throw Object.assign(new Error(respuesta.error.message), { status: 502 });
+  if (!respuesta.data) throw fallo("No se encontró el usuario.", 404);
+  return enviarJson(res, 200, { ok: true, usuario: respuesta.data });
+}
+
+async function crearUsuarioCorporativoAdmin(req, res, usuario) {
+  exigirAdmin(usuario);
+  const cuerpo = await leerJson(req);
+  const perfil = await crearUsuarioCorporativo(cuerpo, cuerpo.rol || "tecnico");
+  return enviarJson(res, 201, { ok: true, usuario: perfil });
+}
+
+async function desactivarUsuarioCorporativo(req, res, url, id, usuario) {
+  exigirAdmin(usuario);
+  const eliminar = url.searchParams.get("modo") === "eliminar";
+
+  const { data: perfil, error } = await supabaseAdmin
+    .from("perfiles_ti")
+    .select("id, email")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw Object.assign(new Error(error.message), { status: 502 });
+  if (!perfil) throw fallo("No se encontró el usuario.", 404);
+
+  if (eliminar) {
+    const { error: errorBorrado } = await supabaseAdmin
+      .from("perfiles_ti")
+      .delete()
+      .eq("id", id);
+    if (errorBorrado) throw Object.assign(new Error(errorBorrado.message), { status: 502 });
+    await supabaseAdmin.auth.admin.deleteUser(id).catch(() => {});
+    return enviarJson(res, 200, { ok: true, eliminado: id, mensaje: "Acceso eliminado." });
+  }
+
+  const { data, error: errorUpdate } = await supabaseAdmin
+    .from("perfiles_ti")
+    .update({ activo: false })
+    .eq("id", id)
+    .select("id, nombre_completo, email, rol, activo")
+    .maybeSingle();
+  if (errorUpdate) throw Object.assign(new Error(errorUpdate.message), { status: 502 });
+  return enviarJson(res, 200, {
+    ok: true,
+    usuario: data,
+    mensaje: "Acceso desactivado. El usuario ya no puede iniciar sesión.",
+  });
+}
+
+const estadoSync = {
+  ultimaSincronizacion: null,
+  totalSincronizados: 0,
+  ultimoModo: null,
+  ultimoOrigen: null,
+};
+
+function marcarSync(procesados, modo, origen) {
+  estadoSync.ultimaSincronizacion = new Date().toISOString();
+  estadoSync.totalSincronizados = Number(procesados) || 0;
+  estadoSync.ultimoModo = modo || "upsert";
+  estadoSync.ultimoOrigen = origen || "x-sync-token";
+}
+
+async function autorizarSync(req) {
+  const esperado = String(process.env.SYNC_SECRET_KEY || "").trim();
+  const tokenSync = String(req.headers["x-sync-token"] || "").trim();
+  if (esperado && tokenSync && tokenSync === esperado) {
+    return { origen: "x-sync-token", usuario: null };
+  }
+
+  const bearer = /^Bearer\s+(.+)$/i.exec(String(req.headers.authorization || ""))?.[1];
+  if (bearer) {
+    try {
+      const usuario = await autenticarToken(bearer);
+      if (usuario?.rol === "admin") return { origen: "admin", usuario };
+    } catch {
+      /* se reporta como token inválido más abajo */
+    }
+  }
+
+  if (!esperado) {
+    throw Object.assign(new Error("SYNC_SECRET_KEY no está configurado en el servidor."), {
+      status: 500,
+    });
+  }
+  throw fallo("Token de sincronización inválido.", 401);
+}
+
+async function configuracionSync(res) {
+  const baseUrl =
+    process.env.PUBLIC_APP_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    `http://localhost:${PUERTO}`;
+  const raiz = String(baseUrl).replace(/\/$/, "");
+  return enviarJson(res, 200, {
+    ok: true,
+    webhookUrl: `${raiz}/api/sync/sharepoint`,
+    webhookBulkUrl: `${raiz}/api/sync/sharepoint-bulk`,
+    token: String(process.env.SYNC_SECRET_KEY || ""),
+    columnas: CAMPOS_SHAREPOINT,
+    ultimaSincronizacion: estadoSync.ultimaSincronizacion,
+    totalSincronizados: estadoSync.totalSincronizados,
+    ultimoModo: estadoSync.ultimoModo,
+    ultimoOrigen: estadoSync.ultimoOrigen,
+  });
+}
+
+function registroLegadoSharepoint(registro) {
+  return {
+    placa: registro.placa || null,
+    serial: registro.serial || null,
+    tipo: registro.tipo_equipo || null,
+    marca: registro.marca || null,
+    modelo: registro.modelo || null,
+    estado: registro.estado ?? "",
+    sede: registro.sede ?? "",
+    usuario_asignado: registro.responsable || null,
+    usuario_cedula: registro.cedula_responsable || null,
+  };
+}
+
+async function upsertSharepoint(registro, clave) {
+  let respuesta = await supabaseAdmin
+    .from("equipos")
+    .upsert(registro, { onConflict: clave })
+    .select("id, placa, serial")
+    .maybeSingle();
+
+  if (respuesta.error && /does not exist/i.test(respuesta.error.message)) {
+    respuesta = await supabaseAdmin
+      .from("equipos")
+      .upsert(registroLegadoSharepoint(registro), { onConflict: clave })
+      .select("id, placa, serial")
+      .maybeSingle();
+  }
+  return respuesta;
+}
+
+async function sincronizarSharepoint(req, res) {
+  const autorizacion = await autorizarSync(req);
+  const cuerpo = await leerJson(req);
+  const filas = Array.isArray(cuerpo) ? cuerpo : cuerpo?.registros || [];
+  if (!Array.isArray(filas) || !filas.length) throw fallo("No se enviaron registros.");
+
+  const accion = String(cuerpo?.accion || "upsert").toLowerCase();
+  let procesados = 0;
+  let eliminados = 0;
+  let errores = 0;
+  let primerError = null;
+
+  for (const fila of filas) {
+    const registro = mapearFilaSharepoint(fila);
+    const clave = registro.placa ? "placa" : registro.serial ? "serial" : null;
+    if (!clave) {
+      errores += 1;
+      continue;
+    }
+
+    if (accion === "delete") {
+      const { data: existente } = await supabaseAdmin
+        .from("equipos")
+        .select("id, placa")
+        .eq(clave, registro[clave])
+        .maybeSingle();
+
+      await registrarMovimiento({
+        equipo_id: null,
+        placa: registro.placa || registro.serial || "",
+        accion: "Edicion",
+        tipo_movimiento: "Sincronización",
+        descripcion: `Retirado por sincronización SharePoint (${clave}: ${registro[clave]})`,
+        detalle: `Retirado por sincronización SharePoint (${clave}: ${registro[clave]})`,
+        realizado_por: autorizacion.usuario?.nombre_completo || "webhook-sharepoint",
+        usuario: autorizacion.usuario,
+      });
+
+      if (existente) {
+        const { error: errorDelete } = await supabaseAdmin
+          .from("equipos")
+          .delete()
+          .eq("id", existente.id);
+        if (errorDelete) {
+          errores += 1;
+          primerError = primerError || errorDelete.message;
+        } else eliminados += 1;
+      }
+      continue;
+    }
+
+    const { data, error } = await upsertSharepoint(
+      registro,
+      clave
+    );
+    if (error || !data) {
+      errores += 1;
+      const textoError = error?.message || "UPSERT sin fila devuelta";
+      primerError =
+        primerError ||
+        (/estado_check|not-null constraint/i.test(textoError)
+          ? "El campo Estado de SharePoint aún no cabe en la BD: ejecuta sql/migracion_sharepoint_27.sql para quitar el CHECK/NOT NULL."
+          : textoError);
+      continue;
+    }
+
+    await registrarMovimiento({
+      equipo_id: data.id,
+      placa: data.placa || "",
+      accion: "Importacion Lote",
+      tipo_movimiento: "Sincronización",
+      detalle: `Sincronización SharePoint por ${clave}: ${registro[clave] || "—"}`,
+      descripcion: `Sincronización SharePoint por ${clave}: ${registro[clave] || "—"}`,
+      realizado_por: autorizacion.usuario?.nombre_completo || "webhook-sharepoint",
+      usuario: autorizacion.usuario,
+    });
+    procesados += 1;
+  }
+
+  marcarSync(procesados + eliminados, accion, autorizacion.origen);
+
+  return enviarJson(res, 200, {
+    ok: true,
+    accion,
+    total: filas.length,
+    procesados,
+    eliminados,
+    errores,
+    detalle: primerError,
+    columnas: CAMPOS_SHAREPOINT.length,
+    ultimaSincronizacion: estadoSync.ultimaSincronizacion,
+  });
+}
+
+async function sincronizarSharepointBulk(req, res) {
+  const autorizacion = await autorizarSync(req);
+  const cuerpo = await leerJson(req);
+  const modo = String(cuerpo?.modo || "actualizar").toLowerCase();
+  const items = Array.isArray(cuerpo?.items) ? cuerpo.items : [];
+  if (!items.length) throw fallo("No se enviaron elementos para la carga maestra.");
+  if (!["reemplazo_total", "actualizar"].includes(modo)) {
+    throw fallo('modo debe ser "reemplazo_total" o "actualizar".');
+  }
+
+  let eliminados = 0;
+  let procesados = 0;
+  let errores = 0;
+  let primerError = null;
+
+  if (modo === "reemplazo_total") {
+    await registrarMovimiento({
+      equipo_id: null,
+      placa: "",
+      accion: "Importacion Lote",
+      tipo_movimiento: "Sincronización",
+      descripcion: `Carga maestra SharePoint: se reemplazan todos los activos por ${items.length} registros reales.`,
+      detalle: `Carga maestra SharePoint: se reemplazan todos los activos por ${items.length} registros reales.`,
+      realizado_por: autorizacion.usuario?.nombre_completo || "webhook-sharepoint",
+      usuario: autorizacion.usuario,
+    });
+
+    const { data: borrados, error: errorBorrado } = await supabaseAdmin
+      .from("equipos")
+      .delete()
+      .gte("created_at", "1900-01-01")
+      .select("id");
+    if (errorBorrado) throw Object.assign(new Error(errorBorrado.message), { status: 502 });
+    eliminados = borrados?.length || 0;
+  }
+
+  for (let inicio = 0; inicio < items.length; inicio += LOTE_EQUIPOS) {
+    const lote = items.slice(inicio, inicio + LOTE_EQUIPOS);
+    const registros = [];
+    for (const fila of lote) {
+      const registro = mapearFilaSharepoint(fila);
+      if (registro.placa || registro.serial) registros.push(registro);
+      else {
+        errores += 1;
+        primerError = primerError || "Fila sin Placa ni Serial";
+      }
+    }
+    if (!registros.length) continue;
+
+    const porPlaca = registros.filter((registro) => registro.placa);
+    const porSerial = registros.filter((registro) => !registro.placa && registro.serial);
+
+    for (const [clave, grupo] of [
+      ["placa", porPlaca],
+      ["serial", porSerial],
+    ]) {
+      if (!grupo.length) continue;
+      let resultado = await supabaseAdmin
+        .from("equipos")
+        .upsert(grupo, { onConflict: clave })
+        .select("id, placa");
+      if (resultado.error && /does not exist/i.test(resultado.error.message)) {
+        resultado = await supabaseAdmin
+          .from("equipos")
+          .upsert(grupo.map(registroLegadoSharepoint), { onConflict: clave })
+          .select("id, placa");
+      }
+      if (resultado.error) {
+        errores += grupo.length;
+        const textoError = resultado.error.message;
+        primerError =
+          primerError ||
+          (/estado_check|not-null constraint/i.test(textoError)
+            ? "Ejecuta sql/migracion_sharepoint_27.sql para permitir el Estado exacto de SharePoint."
+            : textoError);
+      } else procesados += resultado.data?.length || 0;
+    }
+  }
+
+  await registrarMovimiento({
+    equipo_id: null,
+    placa: "",
+    accion: "Importacion Lote",
+    tipo_movimiento: "Sincronización",
+    descripcion: `Carga maestra SharePoint (${modo}): ${procesados} procesados, ${eliminados} eliminados, ${errores} errores.`,
+    detalle: `Carga maestra SharePoint (${modo}): ${procesados} procesados, ${eliminados} eliminados, ${errores} errores.`,
+    realizado_por: autorizacion.usuario?.nombre_completo || "webhook-sharepoint",
+    usuario: autorizacion.usuario,
+  });
+
+  marcarSync(procesados, modo, autorizacion.origen);
+
+  return enviarJson(res, 200, {
+    ok: true,
+    modo,
+    total: items.length,
+    procesados,
+    eliminados,
+    errores,
+    detalle: primerError,
+    ultimaSincronizacion: estadoSync.ultimaSincronizacion,
+  });
 }
 
 /* ------------------------------------------------------------
@@ -1704,6 +2447,506 @@ async function reindexarDocumento(res, id) {
 }
 
 /* ------------------------------------------------------------
+   ASISTENTE TI · consulta y modificación en lenguaje natural
+   ------------------------------------------------------------ */
+
+function extraerIdentificadorAsistente(texto) {
+  const mensaje = String(texto || "");
+  const numerico = mensaje.match(/(?:ML-?)?\d{3,}/i);
+  if (numerico) return numerico[0];
+
+  const stopwords = new Set([
+    "busca", "buscar", "muestra", "muéstrame", "muestrame", "consulta", "dame",
+    "equipo", "equipos", "de", "del", "la", "el", "los", "las", "en", "con",
+    "que", "tiene", "serial", "ceco", "sede", "area", "área", "por", "para",
+    "cambia", "cambiale", "cámbiale", "estado", "vincular", "vincúlalo",
+  ]);
+
+  const limpio = mensaje
+    .replace(/^[^\p{L}\p{N}]+/u, "")
+    .replace(/[?¿.,!;:]/g, " ")
+    .trim();
+
+  const palabras = limpio
+    .split(/\s+/)
+    .filter((palabra) => palabra.length >= 3 && !stopwords.has(palabra.toLowerCase()));
+
+  return palabras.slice(-3).join(" ") || limpio;
+}
+
+async function buscarEquipoAsistente(texto) {
+  const identificador = extraerIdentificadorAsistente(texto);
+  const termino = limpiarBusqueda(identificador).slice(0, 80);
+  if (!termino) return null;
+
+  const filtrosCompletos = [
+    `placa.ilike.%${termino}%`,
+    `nombre_equipo_red.ilike.%${termino}%`,
+    `serial.ilike.%${termino}%`,
+    `responsable.ilike.%${termino}%`,
+    `usuario_asignado.ilike.%${termino}%`,
+    `cedula_responsable.ilike.%${termino}%`,
+    `usuario_cedula.ilike.%${termino}%`,
+    `ceco.ilike.%${termino}%`,
+    `sede.ilike.%${termino}%`,
+    `area.ilike.%${termino}%`,
+    `marca.ilike.%${termino}%`,
+    `modelo.ilike.%${termino}%`,
+    `proveedor.ilike.%${termino}%`,
+    `numero_contrato.ilike.%${termino}%`,
+    `estado.ilike.%${termino}%`,
+  ];
+
+  let respuesta = await supabaseAdmin
+    .from("equipos")
+    .select("*")
+    .or(filtrosCompletos.join(","))
+    .limit(1);
+
+  if (respuesta.error && /does not exist/i.test(respuesta.error.message)) {
+    const filtrosBasicos = [
+      `placa.ilike.%${termino}%`,
+      `serial.ilike.%${termino}%`,
+      `usuario_asignado.ilike.%${termino}%`,
+      `usuario_cedula.ilike.%${termino}%`,
+    ];
+    respuesta = await supabaseAdmin
+      .from("equipos")
+      .select("*")
+      .or(filtrosBasicos.join(","))
+      .limit(1);
+  }
+
+  if (respuesta.error) throw Object.assign(new Error(respuesta.error.message), { status: 502 });
+  return respuesta.data?.[0] || null;
+}
+
+function interpretarCambioAsistente(texto) {
+  const mensaje = String(texto || "").trim();
+  if (!mensaje) return null;
+
+  const id = extraerIdentificadorAsistente(mensaje);
+  if (!id || !/\d/.test(id)) return null;
+
+  const cambios = {};
+
+  const estado = mensaje.match(/\bestado\b[^.]*?\ba\s+([^,;.]+)/i)?.[1];
+  if (estado) cambios.estado = estado.trim();
+
+  const ceco = mensaje.match(/\bceco\b[^.]*?\ba\s+([A-Za-z0-9-]+)/i)?.[1];
+  if (ceco) cambios.ceco = ceco.trim();
+
+  const cedula = mensaje.match(/\bcedula\b\s*(\d{6,})/i)?.[1];
+  if (cedula) {
+    cambios.cedula_responsable = cedula;
+    cambios.usuario_cedula = cedula;
+  }
+
+  const sede = mensaje.match(/\bsede\b\s+([^,;.]+)/i)?.[1];
+  if (sede) cambios.sede = sede.trim();
+
+  const area = mensaje.match(/\barea\b\s+([^,;.]+)/i)?.[1];
+  if (area) cambios.area = area.trim();
+
+  if (/\basigna|\basignar/i.test(mensaje)) {
+    const nombre = mensaje
+      .match(/\ba\s+([A-Za-zÁÉÍÓÚÑáéíóúñ]+(?:\s+[A-Za-zÁÉÍÓÚÑáéíóúñ]+){0,3})(?=\s+cedula|\s+sede|\s+ceco|\s+area|$)/i)?.[1];
+    if (nombre) {
+      cambios.responsable = nombre.trim();
+      cambios.usuario_asignado = nombre.trim();
+      cambios.estado = cambios.estado || "Asignado";
+    }
+  }
+
+  if (/\bdisponible\b/i.test(mensaje) && !cambios.estado) {
+    cambios.estado = "Disponible";
+  }
+
+  const bitacora = mensaje.match(/\bbitacora\b[^:]*:\s*(.+)$/i)?.[1];
+  if (bitacora) cambios.bitacora_equipo = bitacora.trim();
+
+  if (/\bvincula|\bvincular|\basigna\b.*\bsistema\b/i.test(mensaje)) {
+    const sistema = mensaje.match(/(?:al\s+sistema|sistema)\s+([A-Za-z0-9_-]+)/i)?.[1];
+    if (sistema) cambios.sistema_codigo = sistema;
+  }
+
+  return Object.keys(cambios).length ? { id, cambios } : null;
+}
+
+const memoriaChat = new Map();
+
+function primerNombreChat(nombre) {
+  return String(nombre || "")
+    .trim()
+    .split(/\s+/)[0] || "colega";
+}
+
+function saludoPorHora() {
+  const hora = Number(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "America/Bogota",
+      hour: "2-digit",
+      hour12: false,
+    }).format(new Date())
+  );
+  if (hora < 12) return "Buenos días";
+  if (hora < 19) return "Buenas tardes";
+  return "Buenas noches";
+}
+
+function esSaludoChat(texto) {
+  return /^(hola|buenos días|buenas tardes|buenas noches|qué tal|como estas|cómo estás|hey|saludos|gracias|muchas gracias|excelente|listo|quién eres|que puedes hacer|qué puedes hacer|ayuda)\b/i.test(
+    String(texto || "").trim()
+  );
+}
+
+function respuestaSaludo(texto, usuario) {
+  const nombre = primerNombreChat(usuario?.nombre_completo);
+  const saludo = saludoPorHora();
+  const mensaje = String(texto || "").trim().toLowerCase();
+
+  if (/gracias|excelente|listo/.test(mensaje)) {
+    return `Con gusto, ${nombre}. Quedo atento si necesitas otra consulta.`;
+  }
+  if (/quién eres|quien eres/.test(mensaje)) {
+    return `Soy tu Asistente Integral de TI Levapan, ${nombre}. Estoy conectado a Sistemas, Placas, Equipos, Actas y Bóveda PDF.`;
+  }
+  if (/ayuda|qué puedes hacer|que puedes hacer/.test(mensaje)) {
+    return `${saludo}, ${nombre}. Soy tu Asistente Integral de TI Levapan. Puedo ayudarte con:\n` +
+      "• Buscar una placa, serial, cédula, CECO, sede o responsable.\n" +
+      "• Cambiar estado, responsable, sede, CECO, área o bitácora de un equipo.\n" +
+      "• Vincular placas a sistemas (ERP-SAP, M365, INFRA-PLANTA, POS-CAJAS, REDES-SRV).\n" +
+      "• Ver su Hoja de Vida y preparar actas CORP-TEC-FR-002.\n" +
+      "Ejemplo: «cambia el estado de 01882 a Disponible».";
+  }
+  return `${saludo}, ${nombre}! Soy tu Asistente Integral de TI Levapan. ¿Qué equipo o sistema revisamos hoy?`;
+}
+
+function recordarPlacaChat(usuario, placa) {
+  if (!placa || !usuario?.id) return;
+  const actual = memoriaChat.get(usuario.id) || {};
+  memoriaChat.set(usuario.id, {
+    ...actual,
+    ultimaPlaca: placa,
+    actualizadaEn: new Date().toISOString(),
+  });
+}
+
+function placaContextual(usuario, mensaje) {
+  const directa = extraerIdentificadorAsistente(mensaje);
+  if (/\d{3,}/.test(String(mensaje))) {
+    if (directa) recordarPlacaChat(usuario, directa);
+    return directa;
+  }
+  const usaContexto =
+    /cámbiale|cambiale|su |suyo|sus |vincúlalo|vinculalo|muéstrame su|muestrame su|genera su|historial|qué se le ha hecho|que se le ha hecho|quien lo tiene|quién lo tiene|quién tiene|quien tiene|ese equipo|eso\b/i.test(
+      String(mensaje)
+    );
+  if (!usaContexto) return null;
+  return memoriaChat.get(usuario?.id)?.ultimaPlaca || null;
+}
+
+async function asistenteTi(req, res, usuario) {
+  const cuerpo = await leerJson(req);
+  const mensaje = String(cuerpo.mensaje || "").trim();
+  if (!mensaje) throw fallo("Escribe una consulta o una orden para el asistente.");
+
+  if (esSaludoChat(mensaje)) {
+    return enviarJson(res, 200, {
+      ok: true,
+      tipo: "conversacion",
+      mensaje: respuestaSaludo(mensaje, usuario),
+    });
+  }
+
+  const placaContexto = placaContextual(usuario, mensaje);
+  const mensajeEfectivo = placaContexto && !/\d{3,}/.test(mensaje)
+    ? `${placaContexto} · ${mensaje}`
+    : mensaje;
+
+  // Hoja de vida desde el chat.
+  if (/historial|qué se le ha hecho|que se le ha hecho|hoja de vida/i.test(mensaje)) {
+    const equipoHistorial = await buscarEquipoAsistente(mensajeEfectivo);
+    if (!equipoHistorial) {
+      return enviarJson(res, 200, {
+        ok: true,
+        tipo: "sin_resultados",
+        mensaje: "No tengo una placa en memoria. Dime de qué equipo quieres ver el historial.",
+      });
+    }
+    const { data: movimientos, error } = await supabaseAdmin
+      .from("historial_movimientos")
+      .select("*")
+      .eq("equipo_id", equipoHistorial.id)
+      .order("created_at", { ascending: false })
+      .limit(12);
+    if (error) throw Object.assign(new Error(error.message), { status: 502 });
+    const detalle = (movimientos || [])
+      .map(
+        (mov) =>
+          `• ${new Date(mov.created_at).toLocaleString("es-CO", { timeZone: "America/Bogota" })} · ${
+            mov.tipo_movimiento || mov.accion
+          }: ${mov.descripcion || mov.detalle || "—"}`
+      )
+      .join("\n");
+    return enviarJson(res, 200, {
+      ok: true,
+      tipo: "historial",
+      mensaje: `Estos son los últimos movimientos de ${equipoHistorial.placa}:\n${detalle || "Sin movimientos registrados."}`,
+      equipo: equipoHistorial,
+      movimientos: movimientos || [],
+    });
+  }
+
+  // ¿Quién lo tiene?
+  if (/quién lo tiene|quien lo tiene|quién tiene|quien tiene|responsable de/i.test(mensaje)) {
+    const equipoResponsable = await buscarEquipoAsistente(mensajeEfectivo);
+    if (equipoResponsable) {
+      recordarPlacaChat(usuario, equipoResponsable.placa || equipoResponsable.serial);
+      return enviarJson(res, 200, {
+        ok: true,
+        tipo: "busqueda",
+        mensaje: `El equipo ${equipoResponsable.placa || equipoResponsable.serial} está a cargo de ${
+          equipoResponsable.responsable || equipoResponsable.usuario_asignado || "sin responsable registrado"
+        }${equipoResponsable.sede ? `, en ${equipoResponsable.sede}` : ""}.`,
+        equipo: equipoResponsable,
+      });
+    }
+  }
+
+  // a) Acta lista para firmar: devuelve acción directa con los datos de la placa.
+  if (/generar acta|preparar acta/i.test(mensajeEfectivo)) {
+    const equipoActa = await buscarEquipoAsistente(mensajeEfectivo);
+    if (!equipoActa) {
+      return enviarJson(res, 200, {
+        ok: true,
+        tipo: "sin_resultados",
+        mensaje: "No encontré esa placa para preparar el acta.",
+      });
+    }
+    return enviarJson(res, 200, {
+      ok: true,
+      tipo: "accion_acta",
+      mensaje: `Acta CORP-TEC-FR-002 lista para ${equipoActa.placa || equipoActa.serial}. Los 27 datos están precargados.`,
+      placa: equipoActa.placa,
+      equipo: equipoActa,
+    });
+  }
+
+  // d) Bóveda documental vinculada a la placa.
+  if (/(buscar|muestra|listar|ver).*(contrato|acta|documento|pdf|boveda)/i.test(mensajeEfectivo) || /(contratos|actas) de/i.test(mensajeEfectivo)) {
+    const identificador = extraerIdentificadorAsistente(mensajeEfectivo);
+    const vinculos = await supabaseAdmin
+      .from("documento_vinculos")
+      .select("documento_id")
+      .ilike("placa", identificador)
+      .limit(50);
+    let documentos = [];
+    if (!vinculos.error && vinculos.data?.length) {
+      const ids = vinculos.data.map((vinculo) => vinculo.documento_id);
+      const consultaDocs = await supabaseAdmin
+        .from("boveda_documentos")
+        .select("id, titulo, categoria, fecha_documento")
+        .in("id", ids)
+        .order("created_at", { ascending: false });
+      documentos = consultaDocs.data || [];
+    }
+    return enviarJson(res, 200, {
+      ok: true,
+      tipo: "documentos",
+      mensaje: `${documentos.length} documento(s) vinculado(s) a ${identificador}.`,
+      documentos,
+    });
+  }
+
+  // c) Sistemas: listado y equipos por sistema.
+  if (/listar sistemas|sistemas disponibles/i.test(mensajeEfectivo)) {
+    const { data, error } = await supabaseAdmin
+      .from("sistemas")
+      .select("id, codigo, nombre, criticidad")
+      .order("nombre", { ascending: true });
+    if (error) throw Object.assign(new Error(error.message), { status: 502 });
+    return enviarJson(res, 200, {
+      ok: true,
+      tipo: "resumen",
+      mensaje: `${data.length} sistema(s) mapeados: ${data.map((s) => `${s.codigo} · ${s.nombre}`).join(" | ")}.`,
+      sistemas: data,
+    });
+  }
+
+  const mencionSistema = mensajeEfectivo.match(/(?:sistema|en)\s+([A-Za-z0-9_-]+)(?:\s|$)/i);
+  if (mencionSistema && /\bsistemas?\b|equipos en/i.test(mensajeEfectivo) && !/vincula/i.test(mensajeEfectivo)) {
+    const buscado = mencionSistema[1];
+    const { data: sistemas } = await supabaseAdmin
+      .from("sistemas")
+      .select("id, codigo, nombre")
+      .or(`codigo.ilike.%${buscado}%,nombre.ilike.%${buscado}%`)
+      .limit(1);
+    if (sistemas?.length) {
+      const { count } = await supabaseAdmin
+        .from("equipos")
+        .select("id", { count: "exact", head: true })
+        .eq("sistema_id", sistemas[0].id);
+      return enviarJson(res, 200, {
+        ok: true,
+        tipo: "resumen",
+        mensaje: `${sistemas[0].nombre} (${sistemas[0].codigo}) tiene ${Number(count) || 0} equipo(s).`,
+        sistema: sistemas[0],
+        total: Number(count) || 0,
+      });
+    }
+  }
+
+  // a) Consultas agregadas sin placa concreta.
+  const esAgregado =
+    /(cuántos|cuantos|resumen|disponibles|mantenimiento|por sede|equipos en|ceco)/i.test(mensajeEfectivo) &&
+    !/\d{4,}/.test(mensajeEfectivo);
+  if (esAgregado) {
+    let filas = [];
+    let desde = 0;
+    while (desde <= 50000) {
+      const { data: lote, error } = await supabaseAdmin
+        .from("equipos")
+        .select("estado, sede, ceco")
+        .order("placa", { ascending: true })
+        .range(desde, desde + 999);
+      if (error) throw Object.assign(new Error(error.message), { status: 502 });
+      filas = filas.concat(lote || []);
+      if ((lote || []).length < 1000) break;
+      desde += 1000;
+    }
+
+    const porEstado = {};
+    const porSede = {};
+    const porCeco = {};
+    for (const fila of filas || []) {
+      if (fila.estado) porEstado[fila.estado] = (porEstado[fila.estado] || 0) + 1;
+      if (fila.sede) porSede[fila.sede] = (porSede[fila.sede] || 0) + 1;
+      if (fila.ceco) porCeco[fila.ceco] = (porCeco[fila.ceco] || 0) + 1;
+    }
+    const principales = (objeto) =>
+      Object.entries(objeto)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([clave, total]) => `${clave}: ${total}`)
+        .join(" · ");
+
+    let respuesta = `Total: ${(filas || []).length} equipos. Por estado: ${principales(porEstado) || "sin datos"}.`;
+    if (/sede/i.test(mensajeEfectivo)) respuesta += ` Por sede: ${principales(porSede) || "sin datos"}.`;
+    if (/ceco/i.test(mensajeEfectivo)) respuesta += ` Por CECO: ${principales(porCeco) || "sin datos"}.`;
+    return enviarJson(res, 200, {
+      ok: true,
+      tipo: "resumen",
+      mensaje: respuesta,
+      resumen: { total: (filas || []).length, porEstado, porSede, porCeco },
+    });
+  }
+
+  const intencion = interpretarCambioAsistente(mensajeEfectivo);
+  const equipo = await buscarEquipoAsistente(intencion ? intencion.id : mensajeEfectivo);
+  if (equipo) recordarPlacaChat(usuario, equipo.placa || equipo.serial);
+
+  if (!equipo) {
+    return enviarJson(res, 200, {
+      ok: true,
+      tipo: "sin_resultados",
+      mensaje: "No encontré un equipo con esos datos. Prueba con la placa, serial, cédula o CECO exactos.",
+    });
+  }
+
+  if (!intencion) {
+    return enviarJson(res, 200, {
+      ok: true,
+      tipo: "busqueda",
+      mensaje: `Equipo ${equipo.placa || equipo.serial || "encontrado"} localizado.`,
+      equipo,
+    });
+  }
+
+  const permiteEditar =
+    usuario.rol === "admin" || usuario.permisos?.puede_crear_editar_equipos !== false;
+  if (!permiteEditar) {
+    throw fallo("Tu perfil no tiene permiso para modificar equipos.", 403);
+  }
+
+  const cambios = { ...intencion.cambios };
+  let tipoResultado = "modificacion";
+  if (cambios.sistema_codigo) {
+    const codigoSistema = cambios.sistema_codigo;
+    delete cambios.sistema_codigo;
+    const { data: sistemas } = await supabaseAdmin
+      .from("sistemas")
+      .select("id, codigo, nombre")
+      .or(`codigo.ilike.%${codigoSistema}%,nombre.ilike.%${codigoSistema}%`)
+      .limit(1);
+    if (!sistemas?.length) throw fallo(`No encontré el sistema ${codigoSistema}.`, 404);
+    cambios.sistema_id = sistemas[0].id;
+    tipoResultado = "vinculacion";
+  }
+  Object.keys(cambios).forEach((clave) => {
+    if (cambios[clave] === "") cambios[clave] = null;
+  });
+
+  let respuesta = await supabaseAdmin
+    .from("equipos")
+    .update(cambios)
+    .eq("id", equipo.id)
+    .select()
+    .maybeSingle();
+
+  if (respuesta.error && /does not exist/i.test(respuesta.error.message)) {
+    const legado = {};
+    if (Object.hasOwn(cambios, "estado")) legado.estado = cambios.estado;
+    if (Object.hasOwn(cambios, "sede")) legado.sede = cambios.sede;
+    if (Object.hasOwn(cambios, "responsable")) legado.usuario_asignado = cambios.responsable;
+    if (Object.hasOwn(cambios, "usuario_asignado")) legado.usuario_asignado = cambios.usuario_asignado;
+    if (Object.hasOwn(cambios, "cedula_responsable")) legado.usuario_cedula = cambios.cedula_responsable;
+    if (Object.hasOwn(cambios, "usuario_cedula")) legado.usuario_cedula = cambios.usuario_cedula;
+    respuesta = await supabaseAdmin
+      .from("equipos")
+      .update(legado)
+      .eq("id", equipo.id)
+      .select()
+      .maybeSingle();
+  }
+
+  if (respuesta.error) throw Object.assign(new Error(respuesta.error.message), { status: 502 });
+
+  const detalle = `Asistente TI: ${Object.entries(cambios)
+    .map(([clave, valor]) => `${clave} → ${valor ?? "—"}`)
+    .join(" · ")
+    .slice(0, 900)}`;
+
+  const tipoMovimiento = /mantenim|reparac/i.test(mensajeEfectivo)
+    ? "Mantenimiento"
+    : /estado/i.test(mensajeEfectivo)
+      ? "Cambio de Estado"
+      : /asigna|responsable/i.test(mensajeEfectivo)
+        ? "Asignación"
+        : tipoResultado === "vinculacion"
+          ? "Edición"
+          : "Edición";
+
+  await registrarMovimiento({
+    equipo_id: equipo.id,
+    placa: equipo.placa || "",
+    accion: "Edicion",
+    tipo_movimiento: tipoMovimiento,
+    detalle,
+    realizado_por: usuario.nombre_completo || "asistente-ti",
+    usuario,
+  });
+
+  return enviarJson(res, 200, {
+    ok: true,
+    tipo: tipoResultado,
+    mensaje: `Listo. Actualicé ${Object.keys(cambios).join(", ")} del equipo ${equipo.placa || equipo.serial}.`,
+    equipo: respuesta.data,
+    cambios,
+  });
+}
+
+/* ------------------------------------------------------------
    Router de API
    ------------------------------------------------------------ */
 
@@ -1720,6 +2963,19 @@ async function manejarApi(req, res, url) {
     });
   }
 
+  // Webhook de sincronización con SharePoint (token compartido).
+  if (ruta === "/api/sync/sharepoint" && metodo === "POST") {
+    return sincronizarSharepoint(req, res);
+  }
+  if (ruta === "/api/sync/sharepoint-bulk" && metodo === "POST") {
+    return sincronizarSharepointBulk(req, res);
+  }
+
+  // Registro público de cuentas corporativas @levapan.com.
+  if (ruta === "/api/registro-corporativo" && metodo === "POST") {
+    return registroCorporativo(req, res);
+  }
+
   // Todas las demás rutas requieren JWT válido y perfil TI activo.
   const usuario = await requiereSesion(req);
 
@@ -1730,6 +2986,10 @@ async function manejarApi(req, res, url) {
       nombre: usuario.nombre_completo,
       name: usuario.nombre_completo,
     });
+  }
+
+  if (ruta === "/api/asistente-ti" && metodo === "POST") {
+    return asistenteTi(req, res, usuario);
   }
 
   /* ---------------- Sistemas ---------------- */
@@ -1799,6 +3059,16 @@ async function manejarApi(req, res, url) {
     return crearEquipo(req, res, usuario);
   }
 
+  const coincideNovedad = /^\/api\/equipos\/([^/]+)\/novedades$/.exec(ruta);
+  if (coincideNovedad && metodo === "POST") {
+    return registrarNovedadEquipo(req, res, usuario, coincideNovedad[1]);
+  }
+
+  const coincideHistorialPlaca = /^\/api\/equipos\/placa\/([^/]+)\/historial$/.exec(ruta);
+  if (coincideHistorialPlaca && metodo === "GET") {
+    return historialPorPlaca(res, decodeURIComponent(coincideHistorialPlaca[1]));
+  }
+
   const coincideHistorial = /^\/api\/equipos\/([^/]+)\/historial$/.exec(ruta);
   if (coincideHistorial && metodo === "GET") {
     return historialEquipo(res, coincideHistorial[1]);
@@ -1830,6 +3100,29 @@ async function manejarApi(req, res, url) {
     return exportarExcel(res);
   }
 
+  /* ---------------- Usuarios corporativos (admin) ---------------- */
+  if (ruta === "/api/admin/usuarios" && metodo === "GET") {
+    exigirAdmin(usuario);
+    return listarUsuariosCorporativos(res);
+  }
+  if (ruta === "/api/admin/usuarios" && metodo === "POST") {
+    return crearUsuarioCorporativoAdmin(req, res, usuario);
+  }
+  const coincideUsuario = /^\/api\/admin\/usuarios\/([^/]+)$/.exec(ruta);
+  if (coincideUsuario && metodo === "PATCH") {
+    exigirAdmin(usuario);
+    return actualizarUsuarioCorporativo(req, res, coincideUsuario[1]);
+  }
+  if (coincideUsuario && metodo === "DELETE") {
+    return desactivarUsuarioCorporativo(req, res, url, coincideUsuario[1], usuario);
+  }
+
+  if (ruta === "/api/admin/config-sync" && metodo === "GET") {
+    exigirAdmin(usuario);
+    return configuracionSync(res);
+  }
+
+  /* ---------------- Respaldo total (admin) ---------------- */
   if (ruta === "/api/admin/respaldo-completo" && metodo === "GET") {
     return respaldoCompleto(res, url, usuario);
   }

@@ -44,7 +44,14 @@
     <meta name="twitter:image:alt" content="Logo de Actas Levapan" />
 
     <link rel="stylesheet" href="css/style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="css/workspace.css" />
+    <link rel="stylesheet" href="css/asistente-ti.css" />
   </head>
   <body>
     <!-- Fondo animado (video) -->
@@ -69,7 +76,17 @@
 
     <!-- Pantalla de inicio de sesión corporativo (Supabase Auth) -->
     <div id="pantallaLogin" class="pantalla-login">
-      <form id="loginForm" class="login-tarjeta" autocomplete="on">
+      <div class="login-contenedor">
+        <div class="login-tabs" role="tablist" aria-label="Acceso corporativo">
+          <button type="button" id="tabIniciarSesion" class="login-tab activa" role="tab" aria-selected="true">
+            Iniciar sesión
+          </button>
+          <button type="button" id="tabCrearCuenta" class="login-tab" role="tab" aria-selected="false">
+            Crear cuenta corporativa (@levapan.com)
+          </button>
+        </div>
+
+        <form id="loginForm" class="login-tarjeta" autocomplete="on" role="tabpanel">
         <img class="login-logo" src="images/logo-levadesk.png" alt="Levadesk" />
         <span class="login-marca">LEVAPAN</span>
         <h2>Ingreso corporativo</h2>
@@ -100,7 +117,33 @@
           Ingresar
         </button>
         <small class="login-nota">Solo personal autorizado de Tecnología e Infraestructura.</small>
-      </form>
+        </form>
+
+        <form id="registroForm" class="login-tarjeta" autocomplete="on" role="tabpanel" hidden>
+          <img class="login-logo" src="images/logo-levadesk.png" alt="Levadesk" />
+          <span class="login-marca">LEVAPAN</span>
+          <h2>Crear cuenta corporativa</h2>
+          <p class="login-sub">Acceso operativo de Tecnología · @levapan.com</p>
+
+          <label for="registroNombre">Nombre completo</label>
+          <input type="text" id="registroNombre" name="nombre_completo" placeholder="Nombre y apellidos" autocomplete="name" required />
+
+          <label for="registroCedula">Cédula</label>
+          <input type="text" id="registroCedula" name="cedula" inputmode="numeric" placeholder="Número de documento" autocomplete="off" required />
+
+          <label for="registroCorreo">Correo corporativo</label>
+          <input type="email" id="registroCorreo" name="email" placeholder="nombre.apellido@levapan.com" autocomplete="username" required />
+
+          <label for="registroClave">Contraseña</label>
+          <input type="password" id="registroClave" name="password" placeholder="Mínimo 6 caracteres" autocomplete="new-password" minlength="6" required />
+
+          <p id="registroError" class="login-error" role="alert" hidden></p>
+          <button type="submit" id="registroBoton" class="btn btn-primario login-boton">
+            Crear cuenta e ingresar
+          </button>
+          <small class="login-nota">Solo correos institucionales @levapan.com. Rol inicial: técnico TI.</small>
+        </form>
+      </div>
     </div>
 
     <!-- ============================================================
@@ -149,19 +192,20 @@
 
       <div class="ws-principal">
         <header class="ws-top">
-          <button type="button" id="btnMenuMovil" class="ws-menu-movil" aria-label="Abrir menú">☰</button>
-          <div class="ws-top-encabezado">
-            <span class="ws-eyebrow">Workspace corporativo</span>
-            <h2 id="wsTituloSeccion">Ecosistemas de TI</h2>
+          <div class="ws-top-izquierda">
+            <button type="button" id="btnMenuMovil" class="ws-menu-movil" aria-label="Abrir menú">☰</button>
+            <div class="ws-top-encabezado">
+              <span class="ws-eyebrow">Workspace corporativo</span>
+              <h2 id="wsTituloSeccion">Ecosistemas de TI</h2>
+            </div>
           </div>
 
-          <div class="ws-sesion">
+          <div class="ws-top-derecha">
             <span id="serverStatus" class="ws-chip" role="status">Conectando…</span>
-            <span id="inventarioStatus" class="ws-chip ws-chip-oro" role="status"></span>
-            <button type="button" id="btnConfigFolder" class="ws-chip ws-chip-accion">
-              Carpeta
-            </button>
+            <button type="button" id="btnSharePointSync" class="ws-chip ws-chip-accion">SharePoint Sync</button>
+            <button type="button" id="btnConfigFolder" class="ws-chip ws-chip-accion">Carpeta</button>
             <span id="folderStatus" class="ws-chip" role="status" hidden></span>
+            <span id="inventarioStatus" class="ws-chip ws-chip-oro" role="status"></span>
             <div class="ws-usuario">
               <span id="sesionNombre" class="ws-usuario-nombre">Sin sesión</span>
               <span id="sesionRol" class="ws-usuario-rol"></span>
@@ -173,20 +217,22 @@
       <div class="ws-cuerpo">
         <!-- ================= SISTEMAS ================= -->
         <section id="vistaSistemas" class="ws-panel activo" aria-labelledby="tituloSistemas">
-          <header class="ws-panel-cab">
-            <div>
-              <span class="ws-eyebrow">Mapa macro</span>
-              <h1 id="tituloSistemas">Ecosistemas de TI</h1>
-              <p class="ws-panel-sub">
-                Cada placa pertenece a un sistema. Entra por el sistema y baja hasta el equipo,
-                sus actas y sus contratos.
-              </p>
-            </div>
-            <button type="button" class="ws-boton ws-boton-rojo" data-accion="nuevo-sistema">
-              + Nuevo sistema
-            </button>
-          </header>
-          <p id="mensajeSistemas" class="ws-mensaje" role="status"></p>
+          <div class="ws-seccion-barra">
+            <header class="ws-panel-cab">
+              <div>
+                <span class="ws-eyebrow">Mapa macro</span>
+                <h1 id="tituloSistemas">Ecosistemas de TI</h1>
+                <p class="ws-panel-sub">
+                  Cada placa pertenece a un sistema. Entra por el sistema y baja hasta el equipo,
+                  sus actas y sus contratos.
+                </p>
+              </div>
+              <button type="button" class="ws-boton ws-boton-rojo" data-accion="nuevo-sistema">
+                + Nuevo sistema
+              </button>
+            </header>
+            <p id="mensajeSistemas" class="ws-mensaje" role="status"></p>
+          </div>
           <div id="gridSistemas" class="ws-grid-sistemas"></div>
         </section>
 
@@ -255,15 +301,15 @@
             </article>
             <article class="ws-metrica ws-metrica-verde" data-glow>
               <span class="ws-metrica-valor" id="metricaDisponibles">—</span>
-              <span class="ws-metrica-label">Disponibles</span>
+              <span class="ws-metrica-label" id="metricaDisponiblesLabel">Estados reales</span>
             </article>
             <article class="ws-metrica ws-metrica-rojo" data-glow>
               <span class="ws-metrica-valor" id="metricaAsignados">—</span>
-              <span class="ws-metrica-label">Asignados</span>
+              <span class="ws-metrica-label" id="metricaAsignadosLabel">Estados reales</span>
             </article>
             <article class="ws-metrica ws-metrica-oro" data-glow>
               <span class="ws-metrica-valor" id="metricaMantenimiento">—</span>
-              <span class="ws-metrica-label">En mantenimiento</span>
+              <span class="ws-metrica-label" id="metricaMantenimientoLabel">Estados reales</span>
             </article>
           </div>
 
@@ -277,6 +323,12 @@
             />
             <select id="invSede" class="ws-select" aria-label="Filtrar por sede">
               <option value="">Todas las sedes</option>
+            </select>
+            <select id="invCeco" class="ws-select" aria-label="Filtrar por CECO">
+              <option value="">Todos los CECO</option>
+            </select>
+            <select id="invEmpresa" class="ws-select" aria-label="Filtrar por empresa">
+              <option value="">Todas las empresas</option>
             </select>
             <select id="invEstado" class="ws-select" aria-label="Filtrar por estado">
               <option value="">Todos los estados</option>
@@ -383,6 +435,41 @@
             </article>
           </div>
 
+          <article class="ws-admin-tarjeta ws-sync-card" data-glow>
+            <span class="ws-admin-etiqueta">Conexión en Tiempo Real con SharePoint</span>
+            <strong>Power Automate → Webhook en vivo</strong>
+            <span class="ws-admin-nota">Tiempo real</span>
+            <code id="syncUrl" class="ws-sync-codigo">—</code>
+            <button type="button" class="ws-boton ws-boton-mini" data-accion="copiar-sync-url">Copiar URL</button>
+            <span class="ws-admin-nota">Carga maestra / limpieza de datos erróneos</span>
+            <code id="syncBulkUrl" class="ws-sync-codigo">—</code>
+            <button type="button" class="ws-boton ws-boton-mini" data-accion="copiar-sync-bulk">Copiar URL maestra</button>
+            <span class="ws-admin-nota">Token x-sync-token</span>
+            <code id="syncToken" class="ws-sync-codigo">—</code>
+            <button type="button" class="ws-boton ws-boton-mini" data-accion="copiar-sync-token">Copiar token</button>
+            <span class="ws-admin-nota">Última sincronización: <b id="syncUltima">—</b></span>
+            <span class="ws-admin-nota">Activos sincronizados: <b id="syncTotal">—</b></span>
+          </article>
+
+          <h2 class="ws-admin-subtitulo">Usuarios corporativos @levapan.com</h2>
+          <form id="formAdminUsuario" class="ws-form ws-form-admin" autocomplete="off">
+            <label>Nombre completo<input type="text" id="adminUsuNombre" autocomplete="off" required /></label>
+            <label>Cédula<input type="text" id="adminUsuCedula" autocomplete="off" required /></label>
+            <label>Correo corporativo<input type="email" id="adminUsuCorreo" placeholder="nombre@levapan.com" autocomplete="off" required /></label>
+            <label>Contraseña<input type="password" id="adminUsuClave" autocomplete="new-password" minlength="6" required /></label>
+            <label>Rol<select id="adminUsuRol" autocomplete="off">
+              <option value="tecnico">Técnico TI</option>
+              <option value="admin">Administrador TI</option>
+            </select></label>
+            <label>Sede asignada<input type="text" id="adminUsuSede" autocomplete="off" /></label>
+            <label>Sistema asignado<select id="adminUsuSistema" autocomplete="off"><option value="">Sin sistema</option></select></label>
+            <div class="ws-modal-pie">
+              <button type="submit" class="ws-boton ws-boton-rojo">Crear usuario corporativo</button>
+            </div>
+          </form>
+          <p id="adminUsuariosMensaje" class="ws-mensaje" role="status"></p>
+          <div id="listaUsuariosAdmin" class="ws-tabla-caja"></div>
+
           <p id="adminMensaje" class="ws-mensaje" role="status"></p>
 
           <div class="ws-admin-acciones">
@@ -405,6 +492,39 @@
       </div>
     </div>
   </main>
+
+    <!-- ============================================================
+         ASISTENTE TI FLOTANTE
+         ============================================================ -->
+    <div id="wsAsistente" class="ws-asistente">
+      <button type="button" id="btnAsistente" class="ws-asistente-boton" aria-label="Abrir Asistente TI">
+        <span class="ws-asistente-dot" aria-hidden="true"></span>
+        <span class="ws-asistente-ico" aria-hidden="true">✦</span>
+        <span class="ws-asistente-texto">Asistente TI</span>
+      </button>
+      <section id="wsAsistentePanel" class="ws-asistente-panel" hidden aria-label="Copiloto TI · Levapan">
+        <header class="ws-asistente-cab">
+          <div>
+            <strong>Copiloto TI · Levapan</strong>
+            <small>Conectado a Sistemas, Placas, Equipos y Bóveda</small>
+          </div>
+          <button type="button" id="btnCerrarAsistente" class="ws-cerrar" aria-label="Cerrar">×</button>
+        </header>
+        <div class="ws-chat-sugerencias" aria-label="Sugerencias rápidas">
+          <button type="button" data-chat-sugerencia="Buscar placa">Buscar placa</button>
+          <button type="button" data-chat-sugerencia="Equipos disponibles">Equipos disponibles</button>
+          <button type="button" data-chat-sugerencia="Resumen por sede">Resumen por sede</button>
+          <button type="button" data-chat-sugerencia="Vincular a sistema">Vincular a sistema</button>
+        </div>
+        <div id="wsAsistenteMensajes" class="ws-chat-mensajes" role="log">
+          <p class="ws-vacio">Ejemplo: «cambia el estado de ML-194291 a Disponible» o «actualiza ceco de ML-194291 a 4502».</p>
+        </div>
+        <form id="wsAsistenteForm" class="ws-chat-form" autocomplete="off">
+          <input type="text" id="wsAsistenteInput" placeholder="Escribe tu consulta u orden…" aria-label="Mensaje para el asistente" />
+          <button type="submit" class="ws-boton ws-boton-rojo">Enviar</button>
+        </form>
+      </section>
+    </div>
 
     <!-- ============================================================
          CAJÓN DEL ACTA OFICIAL (formulario intacto)
@@ -793,10 +913,14 @@
           <h2 id="modalEquipoTitulo">Nuevo equipo</h2>
           <button type="button" class="ws-cerrar" data-cerrar="modalEquipo" aria-label="Cerrar">×</button>
         </div>
-        <form id="formEquipo" class="ws-form">
+        <form id="formEquipo" class="ws-form" autocomplete="off">
           <input type="hidden" id="eqId" />
-          <label>Placa *<input type="text" id="eqPlaca" required /></label>
-          <label>Tipo<select id="eqTipo">
+
+          <h3 class="ws-form-seccion">1 · Identificación</h3>
+          <label>Placa *<input type="text" id="eqPlaca" class="ws-mono" required /></label>
+          <label>Nombre equipo en Red<input type="text" id="eqNombreRed" /></label>
+          <label>Serial<input type="text" id="eqSerial" class="ws-mono" /></label>
+          <label>Tipo de Equipo<select id="eqTipo">
             <option value="">—</option>
             <option>CPU</option><option>Portátil</option><option>Handheld</option>
             <option>Impresora</option><option>Impresora portátil</option>
@@ -806,22 +930,40 @@
           </select></label>
           <label>Marca<input type="text" id="eqMarca" /></label>
           <label>Modelo<input type="text" id="eqModelo" /></label>
-          <label>Serial<input type="text" id="eqSerial" /></label>
-          <label>Estado<select id="eqEstado">
-            <option value="Disponible">Disponible</option>
-            <option value="Asignado">Asignado</option>
-            <option value="En Mantenimiento">En Mantenimiento</option>
-            <option value="Prestamo">Préstamo</option>
-            <option value="Dado de Baja">Dado de Baja</option>
-          </select></label>
+          <label>Tipo de elemento<input type="text" id="eqTipoElemento" /></label>
+
+          <h3 class="ws-form-seccion">2 · Responsable y ubicación</h3>
+          <label>Nombre del responsable<input type="text" id="eqUsuario" /></label>
+          <label>Cédula del responsable<input type="text" id="eqCedula" class="ws-mono" /></label>
+          <label>Empresa<input type="text" id="eqEmpresa" /></label>
+          <label>Sede<input type="text" id="eqSede" /></label>
+          <label>CECO<input type="text" id="eqCeco" class="ws-mono" /></label>
+          <label>Área<input type="text" id="eqArea" /></label>
+          <label class="ws-ancho">Ruta de acceso<input type="text" id="eqRutaAcceso" /></label>
+
+          <h3 class="ws-form-seccion">3 · Estado y contrato</h3>
+          <label>Estado (valor exacto)<input type="text" id="eqEstado" list="listaEstadosEquipo" placeholder="Sin modificar" /></label>
+          <datalist id="listaEstadosEquipo"></datalist>
+          <label>Proveedor<input type="text" id="eqProveedor" /></label>
+          <label>N° Contrato<input type="text" id="eqNumeroContrato" class="ws-mono" /></label>
+          <label>Tipo de Contrato<input type="text" id="eqTipoContrato" /></label>
+          <label>Fecha de Vencimiento Contrato<input type="date" id="eqFechaVencimiento" /></label>
+          <label>Garantía hasta<input type="date" id="eqGarantia" /></label>
           <label>Sistema<select id="eqSistema">
             <option value="">Sin sistema</option>
           </select></label>
-          <label>Sede<input type="text" id="eqSede" /></label>
-          <label>Usuario asignado<input type="text" id="eqUsuario" /></label>
-          <label>Cédula del usuario<input type="text" id="eqCedula" /></label>
-          <label>Garantía hasta<input type="date" id="eqGarantia" /></label>
-          <label class="ws-ancho">Observaciones<textarea id="eqObservaciones" rows="3"></textarea></label>
+
+          <h3 class="ws-form-seccion">4 · Características y bitácora</h3>
+          <label>Procesador<input type="text" id="eqProcesador" /></label>
+          <label>Memoria RAM<input type="text" id="eqMemoriaRam" /></label>
+          <label>Tamaño en Disco<input type="text" id="eqTamanoDisco" /></label>
+          <label class="ws-ancho">Accesorios entregados<textarea id="eqAccesorios" rows="2"></textarea></label>
+          <label class="ws-ancho">Bitácora del Equipo<textarea id="eqBitacora" rows="3"></textarea></label>
+          <label>Creado por<input type="text" id="eqCreadoPor" /></label>
+          <label>Modificado por<input type="text" id="eqModificadoPor" /></label>
+          <label>Modificado<input type="datetime-local" id="eqModificadoFecha" /></label>
+          <label class="ws-ancho">Observaciones<textarea id="eqObservaciones" rows="2"></textarea></label>
+
           <p id="modalEquipoError" class="ws-error" role="alert" hidden></p>
           <div class="ws-modal-pie">
             <button type="button" class="ws-boton" data-cerrar="modalEquipo">Cancelar</button>
@@ -930,6 +1072,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="js/auth.js"></script>
+    <script src="js/registro.js"></script>
     <script src="js/pdf-lib.min.js"></script>
     <script>
       // Respaldo por si el archivo local no está disponible.
@@ -942,6 +1085,7 @@
     <script src="js/firmas.js"></script>
     <script src="js/inventario-storage.js"></script>
     <script src="js/workspace.js"></script>
+    <script src="js/asistente-ti.js"></script>
     <script src="js/pwa.js"></script>
     <script>
       // Alternar visibilidad del campo "Sede Otra" en el formulario.

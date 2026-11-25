@@ -34,7 +34,10 @@ validar la sesión se desmonta con una transición fluida y aparece el workspace
 
 1. En Supabase → **SQL Editor → New query**.
 2. Pega todo `sql/schema.sql` y ejecuta **Run**. Es idempotente.
-3. Crea el usuario en **Authentication → Users → Add user** (correo corporativo).
+3. Ejecuta también `sql/migracion_sharepoint_27.sql` (27 columnas reales de
+   SharePoint, estados exactos y permisos granulares). Está copiado en el
+   portapapeles al finalizar la preparación.
+4. Crea el usuario en **Authentication → Users → Add user** (correo corporativo).
 4. Copia su UUID y regístralo como técnico:
 
 ```sql
@@ -118,6 +121,14 @@ Render ejecuta `npm ci --omit=dev` y `npm start`. El health check es
 | --- | --- | --- |
 | GET | `/api/health` | Salud real contra PostgreSQL |
 | GET | `/api/estado` | `{ ok, modo, totalEquipos, almacenamiento }` |
+| POST | `/api/registro-corporativo` | Alta pública de cuentas `@levapan.com` (rol `tecnico`) |
+| GET | `/api/admin/usuarios` | Lista de perfiles TI (solo admin) |
+| POST | `/api/admin/usuarios` | Crear usuario corporativo (solo admin) |
+| PATCH | `/api/admin/usuarios/:id` | Cambiar rol, sede, sistema, activo y permisos JSONB (solo admin) |
+| DELETE | `/api/admin/usuarios/:id` | Desactivar acceso o `?modo=eliminar` (solo admin) |
+| GET | `/api/admin/config-sync` | URL del webhook y token SharePoint (solo admin) |
+| POST | `/api/sync/sharepoint` | UPSERT por Placa/Serial con header `x-sync-token` |
+| GET | `/api/admin/respaldo-completo` | Respaldo JSON o `?formato=xlsx` (solo admin) |
 | GET | `/api/perfil` | Técnico autenticado |
 | GET | `/api/sistemas` | Sistemas con conteo de placas y documentos |
 | POST / PUT | `/api/sistemas[/:id]` | Alta y edición de sistemas |

@@ -19,7 +19,7 @@ import { supabaseAdmin, configSupabase } from "../server/supabase.js";
 import {
   LOTE_EQUIPOS,
   mapearFila,
-  renombrarEncabezados,
+  mapearFilaSharepoint,
 } from "../server/normalizar.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -90,14 +90,14 @@ async function leerRegistros(ruta) {
   if (extension === ".json") {
     const contenido = JSON.parse(fs.readFileSync(ruta, "utf8"));
     const filas = Array.isArray(contenido) ? contenido : contenido.datos || [];
-    return renombrarEncabezados(filas);
+    return filas;
   }
 
   const libro = XLSX.readFile(ruta, { cellDates: true });
   const hoja = libro.Sheets[libro.SheetNames[0]];
   const filas = XLSX.utils.sheet_to_json(hoja, { defval: "", raw: false });
   console.log(`Hoja leída: ${libro.SheetNames[0]} (${filas.length} filas)`);
-  return renombrarEncabezados(filas);
+  return filas;
 }
 
 /* ------------------------------------------------------------
@@ -123,8 +123,10 @@ async function main() {
   let errores = 0;
 
   for (const fila of filas) {
-    const mapeado = mapearFila(fila);
-    if (!mapeado) {
+    const legado = mapearFila(fila) || {};
+    const sharepoint = mapearFilaSharepoint(fila);
+    const mapeado = { ...legado, ...sharepoint };
+    if (!mapeado.placa && !mapeado.serial) {
       errores += 1;
       continue;
     }
@@ -133,13 +135,19 @@ async function main() {
 
   let procesados = 0;
 
-  for (let inicio = 0; inicio < registros.length; inicio += LOTE_EQUIPOS) {
-    const lote = registros.slice(inicio, inicio + LOTE_EQUIPOS);
+  const grupos = [
+    { clave: "placa", filas: registros.filter((registro) => registro.placa) },
+    { clave: "serial", filas: registros.filter((registro) => !registro.placa && registro.serial) },
+  ];
 
-    const { data, error } = await supabaseAdmin
-      .from("equipos")
-      .upsert(lote, { onConflict: "placa" })
-      .select("id, placa");
+  for (const grupo of grupos) {
+    for (let inicio = 0; inicio < grupo.filas.length; inicio += LOTE_EQUIPOS) {
+      const lote = grupo.filas.slice(inicio, inicio + LOTE_EQUIPOS);
+
+      const { data, error } = await supabaseAdmin
+        .from("equipos")
+        .upsert(lote, { onConflict: grupo.clave })
+        .select("id, placa");
 
     if (error) {
       errores += lote.length;
@@ -169,6 +177,7 @@ async function main() {
     }
 
     console.log(`  Lote ${inicio / LOTE_EQUIPOS + 1}: ${data?.length || 0} equipos`);
+    }
   }
 
   console.log("\nRESUMEN DE MIGRACIÓN");

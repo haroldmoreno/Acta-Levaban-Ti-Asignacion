@@ -70,6 +70,32 @@ export const supabaseAdmin = createClient(
   }
 );
 
+const CLAVES_PERMISO = [
+  "puede_crear_editar_equipos",
+  "puede_emitir_actas",
+  "puede_sincronizar_importar",
+  "puede_gestionar_boveda",
+  "puede_eliminar_registros",
+  "puede_administrar_usuarios",
+];
+
+function normalizarPermisos(valor) {
+  const base = {
+    puede_crear_editar_equipos: true,
+    puede_emitir_actas: true,
+    puede_sincronizar_importar: false,
+    puede_gestionar_boveda: true,
+    puede_eliminar_registros: false,
+    puede_administrar_usuarios: false,
+  };
+  if (valor && typeof valor === "object" && !Array.isArray(valor)) {
+    for (const clave of CLAVES_PERMISO) {
+      if (Object.hasOwn(valor, clave)) base[clave] = Boolean(valor[clave]);
+    }
+  }
+  return base;
+}
+
 /** Comprobación real contra PostgreSQL (la usa /api/health y /api/estado). */
 export async function contarEquipos() {
   const { count, error, status } = await supabaseAdmin
@@ -121,11 +147,20 @@ export async function autenticarToken(token) {
   }
 
   const user = data.user;
-  const { data: perfil, error: errorPerfil } = await supabaseAdmin
+  let respuestaPerfil = await supabaseAdmin
     .from("perfiles_ti")
-    .select("id, nombre_completo, cedula, email, rol, activo")
+    .select("id, nombre_completo, cedula, email, rol, activo, sede_asignada, sistema_asignado, permisos")
     .eq("id", user.id)
     .maybeSingle();
+  if (respuestaPerfil.error && /does not exist/i.test(respuestaPerfil.error.message)) {
+    respuestaPerfil = await supabaseAdmin
+      .from("perfiles_ti")
+      .select("id, nombre_completo, cedula, email, rol, activo")
+      .eq("id", user.id)
+      .maybeSingle();
+  }
+  const perfil = respuestaPerfil.data;
+  const errorPerfil = respuestaPerfil.error;
 
   if (errorPerfil) {
     throw Object.assign(
@@ -158,5 +193,8 @@ export async function autenticarToken(token) {
     nombre_completo: perfil.nombre_completo,
     cedula: perfil.cedula,
     rol: perfil.rol,
+    permisos: normalizarPermisos(perfil.permisos),
+    sede_asignada: perfil.sede_asignada || null,
+    sistema_asignado: perfil.sistema_asignado || null,
   };
 }
