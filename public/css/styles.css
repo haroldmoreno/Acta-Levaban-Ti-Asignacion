@@ -1709,3 +1709,16 @@ details[open] .acordeon-flecha { transform: rotate(90deg) !important; }
   }
 }
 
+/* Fondo del Asistente TI: solo móvil, para cerrar tocando fuera. */
+.fondo-asistente { display: none; }
+@media (max-width: 768px) {
+  .fondo-asistente:not([hidden]) {
+    display: block !important;
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 9998 !important;
+    background: rgba(20, 10, 12, .42) !important;
+    backdrop-filter: blur(2px) !important;
+  }
+}
+

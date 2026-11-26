@@ -424,6 +424,8 @@
     panel.style.display = abrir ? "flex" : "none";
     panel.classList.toggle("open", abrir);
     panel.setAttribute("aria-hidden", String(!abrir));
+    const fondo = byId("fondoAsistente");
+    if (fondo) fondo.hidden = !abrir;
 
     const disparador = byId("btnAsistente");
     if (disparador) {
@@ -450,6 +452,15 @@
     });
 
     document.addEventListener("click", (e) => {
+      if (e.target.closest("#fondoAsistente")) {
+        alternar(false);
+        return;
+      }
+      const panel = byId("panelAsistente");
+      if (panel && !panel.hidden && !e.target.closest("#panelAsistente, #btnAsistente")) {
+        alternar(false);
+        return;
+      }
       const mas = e.target.closest("[data-ver-mas]");
       if (mas) {
         const id = mas.dataset.verMas;
@@ -481,6 +492,8 @@
         procesar(texto);
       }
     });
+
+    window.LevapanAsistente = { alternar, cerrar: () => alternar(false) };
 
     burbuja("¡Hola! Soy tu Asistente Integral TI. Consulta placas, contratos, sedes o pide un resumen ejecutivo.", "asistente");
   }

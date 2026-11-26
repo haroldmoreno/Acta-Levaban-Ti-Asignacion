@@ -1907,6 +1907,7 @@
       const fondo = byId(id);
       if (fondo) fondo.hidden = true;
     });
+    window.LevapanAsistente?.cerrar?.();
   }
 
   async function autocompletarActaDesde(campo, valor) {
