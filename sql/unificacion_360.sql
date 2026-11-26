@@ -45,6 +45,28 @@ create table if not exists public.sync_hp_wxp (
 create unique index if not exists sync_hp_serial_uidx
   on public.sync_hp_wxp (public.normalizar_serial(serial));
 
+-- UPSERT por columna serial (PostgREST necesita restricción única simple).
+do $$
+begin
+  delete from public.sync_entra_dispositivos a using public.sync_entra_dispositivos b
+  where a.ctid < b.ctid and public.normalizar_serial(a.serial) = public.normalizar_serial(b.serial);
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'sync_entra_serial_unico' and conrelid = 'public.sync_entra_dispositivos'::regclass
+  ) then
+    alter table public.sync_entra_dispositivos add constraint sync_entra_serial_unico unique (serial);
+  end if;
+
+  delete from public.sync_hp_wxp a using public.sync_hp_wxp b
+  where a.ctid < b.ctid and public.normalizar_serial(a.serial) = public.normalizar_serial(b.serial);
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'sync_hp_serial_unico' and conrelid = 'public.sync_hp_wxp'::regclass
+  ) then
+    alter table public.sync_hp_wxp add constraint sync_hp_serial_unico unique (serial);
+  end if;
+end $$;
+
 alter table public.sync_entra_dispositivos enable row level security;
 alter table public.sync_hp_wxp enable row level security;
 
@@ -129,6 +151,10 @@ select
 from public.equipos e
 left join public.sync_entra_dispositivos en
   on public.normalizar_serial(en.serial) = public.normalizar_serial(e.serial)
+  or (
+    en.nombre_dispositivo is not null
+    and upper(trim(e.nombre_red)) = upper(trim(en.nombre_dispositivo))
+  )
 left join public.sync_hp_wxp hp
   on public.normalizar_serial(hp.serial) = public.normalizar_serial(e.serial);
 

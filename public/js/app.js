@@ -1069,6 +1069,54 @@
     };
   }
 
+  async function sincronizarEntraAhora(boton) {
+    const aviso = byId("mensajeMigracion");
+    const original = boton?.textContent || "Sincronizar Entra ID ahora";
+    if (aviso) {
+      aviso.textContent = "Sincronizando Microsoft Entra ID e Intune… Esto puede tardar unos segundos.";
+      aviso.className = "mensaje";
+    }
+    if (boton) {
+      boton.disabled = true;
+      boton.textContent = "Sincronizando…";
+    }
+
+    try {
+      const { data, error } = await sb.functions.invoke("sync-telemetria-360");
+      if (error) throw error;
+      if (data?.ok === false) throw new Error(data.error || "La función respondió un error");
+
+      let cruzados = 0;
+      try {
+        const { count } = await sb
+          .from("vista_veredicto_360")
+          .select("id", { count: "exact", head: true })
+          .neq("veredicto_estado", "SOLO_INVENTARIO");
+        cruzados = Number(count) || 0;
+      } catch { /* vista aún no ejecutada */ }
+
+      await Promise.all([cargarEquipos(), cargarSistemas(), cargarBoveda()]);
+      if (aviso) {
+        aviso.textContent =
+          `Entra ID: ${Number(data?.total_entra_leidos || 0).toLocaleString("es-CO")} leídos · ` +
+          `${Number(data?.total_sincronizados || 0).toLocaleString("es-CO")} sincronizados · ` +
+          `${cruzados.toLocaleString("es-CO")} equipos cruzados en la vista 360°. ` +
+          `Usuarios retirados: ${Number(data?.usuarios_retirados_detectados || 0)}.`;
+        aviso.className = "mensaje ok";
+      }
+    } catch (err) {
+      if (aviso) {
+        aviso.textContent = `No se pudo sincronizar: ${err.message}`;
+        aviso.className = "mensaje error";
+      }
+    } finally {
+      if (boton) {
+        boton.disabled = false;
+        boton.textContent = original;
+      }
+    }
+  }
+
   async function exportarRespaldoMaestro() {
     const tablas = ["sistemas", "equipos", "historial_movimientos", "usuarios_corporativos", "boveda_documentos", "sync_entra_dispositivos", "sync_hp_wxp"];
     const datos = {};
@@ -1318,6 +1366,7 @@
       if (accion === "importar" || accion === "migrar") return byId("archivoImportar").click();
       if (accion === "modo-auditoria") return modoAuditoria();
       if (accion === "respaldo-maestro") return exportarRespaldoMaestro();
+      if (accion === "sync-entra") return sincronizarEntraAhora(evento.target.closest("[data-accion]"));
     });
 
     byId("btnEscanear")?.addEventListener("click", abrirEscanner);
