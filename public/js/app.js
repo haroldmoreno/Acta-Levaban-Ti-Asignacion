@@ -336,6 +336,7 @@
       const placas = placasPorSistema[s.id] || 0;
       const docs = equipos.filter((e) => e.sistema_id === s.id).reduce((n, e) => n + (docsPorPlaca[e.placa] || 0), 0);
       return `<article class="tarjeta" data-sistema="${escapar(s.id)}" tabindex="0">
+        <button type="button" class="boton-eliminar" data-accion="eliminar-sistema" data-id="${escapar(s.id)}" data-nombre="${escapar(s.nombre)}" title="Eliminar ecosistema" aria-label="Eliminar ecosistema">🗑</button>
         <span class="codigo">${escapar(s.codigo)} · ${escapar(s.criticidad)}</span>
         <h3>${escapar(s.nombre)}</h3>
         <p>${escapar(s.descripcion || "Sin descripción")}${s.responsable_sistema ? " · " + escapar(s.responsable_sistema) : ""}</p>
@@ -832,14 +833,65 @@
 
   /* ---------------- Placas y QR ---------------- */
 
+  function actualizarBotonPlacas() {
+    const boton = byId("btnTogglePlacas");
+    if (!boton) return;
+    const grupos = ESTADO.placasGrupos || [];
+    const abiertos = grupos.filter((g) => ESTADO.placasAbiertos?.has(g.indice)).length;
+    boton.textContent = grupos.length && abiertos === grupos.length ? "Recoger todo" : "Desplegar todo";
+  }
+
   async function cargarPlacas() {
-    const data = await cargarTodos("equipos", columnasVisibles());
-    ESTADO.placas = data;
-    byId("listaPlacas").innerHTML = `<div class="grid-placas">${(data || []).map((e) => `<button type="button" class="tarjeta placa-item mono" data-placa-ficha="${escapar(e.id)}">
-      <strong>${escapar(e.placa)}</strong>
-      <small>${escapar(e.nombre_red || "Sin nombre en red")} · ${escapar(e.sede || "—")}</small>
-    </button>`).join("")}</div>` || '<p class="vacio">Sin placas registradas.</p>';
-    if (data?.[0]) mostrarFichaPlaca(data[0]);
+    const [data, sistemas] = await Promise.all([
+      cargarTodos("equipos", columnasVisibles()),
+      cargarTodos("sistemas", "id, nombre, codigo"),
+    ]);
+    ESTADO.placas = data || [];
+    const nombreSistema = new Map((sistemas || []).map((s) => [s.id, s.nombre || s.codigo]));
+    const texto = byId("buscarPlaca")?.value.trim().toLocaleLowerCase("es") || "";
+    const filtrados = ESTADO.placas.filter((e) =>
+      !texto || [e.placa, e.serial, e.responsable, e.ceco, e.nombre_red]
+        .some((valor) => String(valor || "").toLocaleLowerCase("es").includes(texto))
+    );
+
+    const mapa = new Map();
+    filtrados.forEach((e) => {
+      const eco = nombreSistema.get(e.sistema_id) || e.sistema || "Sin ecosistema";
+      const sede = e.sede || "Sin sede";
+      const tipo = e.tipo_equipo || "Sin tipo";
+      const clave = `${eco} · ${sede} · ${tipo}`;
+      if (!mapa.has(clave)) mapa.set(clave, { eco, sede, tipo, items: [] });
+      mapa.get(clave).items.push(e);
+    });
+
+    ESTADO.placasGrupos = [...mapa.entries()].map(([clave, grupo], indice) => ({ ...grupo, clave, indice }));
+    if (ESTADO.placasFiltro !== texto) {
+      ESTADO.placasAbiertos = new Set();
+      ESTADO.placasFiltro = texto;
+    }
+    ESTADO.placasAbiertos = ESTADO.placasAbiertos || new Set();
+
+    const html = ESTADO.placasGrupos.map((g) => {
+      const abierto = ESTADO.placasAbiertos.has(g.indice);
+      const tarjetas = g.items.map((e) => `<button type="button" class="tarjeta placa-item mono" data-placa-ficha="${escapar(e.id)}">
+        <strong>${escapar(e.placa)}</strong>
+        <small>${escapar(e.nombre_red || "Sin nombre en red")} · ${escapar(e.sede || "—")}</small>
+      </button>`).join("");
+      return `<section class="acordeon-grupo${abierto ? " abierto" : ""}" data-grupo="${g.indice}">
+        <header class="acordeon-cabecera" data-toggle-grupo="${g.indice}" role="button" tabindex="0" aria-expanded="${abierto}">
+          <span class="acordeon-flecha">${abierto ? "▾" : "▸"}</span>
+          <span class="acordeon-titulo"><strong>${escapar(g.eco)}</strong><small>${escapar(g.sede)} · ${escapar(g.tipo)}</small></span>
+          <span class="acordeon-conteo">${g.items.length} placas</span>
+        </header>
+        <div class="acordeon-cuerpo"><div class="acordeon-inner"><div class="grid-placas">${tarjetas}</div></div></div>
+      </section>`;
+    }).join("");
+
+    byId("listaPlacas").innerHTML = html
+      ? `<div class="acordeon-placas">${html}</div>`
+      : '<p class="vacio">Sin placas registradas.</p>';
+    actualizarBotonPlacas();
+    if (filtrados[0]) mostrarFichaPlaca(filtrados[0]);
   }
 
   function normTexto(valor) {
@@ -1404,6 +1456,7 @@
   async function cargarBoveda() {
     const { data } = await sb.from("boveda_documentos").select("id, titulo, categoria, placa, storage_path, url, created_at").order("created_at", { ascending: false }).limit(200);
     byId("listaBoveda").innerHTML = (data || []).map((d) => `<article class="tarjeta">
+      <button type="button" class="boton-eliminar" data-accion="eliminar-doc" data-id="${escapar(d.id)}" data-path="${escapar(d.storage_path || "")}" data-titulo="${escapar(d.titulo)}" title="Eliminar acta" aria-label="Eliminar acta">🗑</button>
       <span class="codigo">${escapar(d.categoria)} · ${escapar(d.placa || "—")}</span>
       <h3>${escapar(d.titulo)}</h3>
       <p>${fechaHora(d.created_at)}</p>
@@ -1416,6 +1469,27 @@
     if (!data) return;
     const firmada = await sb.storage.from(CFG.bucket).createSignedUrl(data.storage_path, 3600);
     if (firmada.data?.signedUrl) window.open(firmada.data.signedUrl, "_blank");
+  }
+
+  async function eliminarDocumento(boton) {
+    const titulo = boton.dataset.titulo || "esta acta";
+    if (!window.confirm(`¿Eliminar esta acta de la Bóveda PDF?\n\n${titulo}`)) return;
+    const { error } = await sb.from("boveda_documentos").delete().eq("id", boton.dataset.id);
+    if (error) return alert(error.message);
+    const ruta = boton.dataset.path;
+    if (ruta) {
+      const { error: errorStorage } = await sb.storage.from(CFG.bucket).remove([ruta]);
+      if (errorStorage) console.warn("[BÓVEDA] No se pudo borrar el PDF del bucket:", errorStorage.message);
+    }
+    await cargarBoveda();
+  }
+
+  async function eliminarSistema(boton) {
+    const nombre = boton.dataset.nombre || "este ecosistema";
+    if (!window.confirm(`¿Eliminar el ecosistema «${nombre}»?\n\nLas placas quedarán sin ecosistema asignado.`)) return;
+    const { error } = await sb.from("sistemas").delete().eq("id", boton.dataset.id);
+    if (error) return alert(error.message);
+    await cargarSistemas();
   }
 
   /* ---------------- Administración y migración ---------------- */
@@ -1579,21 +1653,19 @@
       setTimeout(posicionarIndicador, 100);
     };
     byId("btnToggleSidebar")?.addEventListener("click", alternarSidebar);
-    if (localStorage.getItem("levapan_sidebar_collapsed") === "1") {
+
+    // En celular la barra arranca compacta (52 px) salvo preferencia explícita del usuario.
+    const preferencia = localStorage.getItem("levapan_sidebar_collapsed");
+    const colapsarPorDefecto = window.innerWidth <= 768 && preferencia === null;
+    if (preferencia === "1" || colapsarPorDefecto) {
       byId("app")?.classList.add("sidebar-collapsed");
+      if (colapsarPorDefecto) localStorage.setItem("levapan_sidebar_collapsed", "1");
       const boton = byId("btnToggleSidebar");
       if (boton) {
         boton.title = "Expandir menú";
         boton.setAttribute("aria-label", boton.title);
       }
     }
-
-    byId("btnMenuMovil")?.addEventListener("click", (evento) => {
-      evento.stopPropagation();
-      byId("sidebar")?.classList.toggle("abierto");
-      byId("drawerFondo").hidden = !byId("sidebar")?.classList.contains("abierto");
-    });
-    byId("drawerFondo")?.addEventListener("click", cerrarDrawer);
     document.querySelectorAll("[data-cerrar]").forEach((b) => b.addEventListener("click", () => { byId(b.dataset.cerrar).hidden = true; }));
 
     byId("formSistema").addEventListener("submit", guardarSistema);
@@ -1740,7 +1812,24 @@
       }
     });
 
-    document.addEventListener("click", (evento) => {
+    document.addEventListener("click", async (evento) => {
+      if (evento.target.closest("[data-accion]")) return;
+
+      const cabecera = evento.target.closest("[data-toggle-grupo]");
+      if (cabecera) {
+        const indice = Number(cabecera.dataset.toggleGrupo);
+        const abiertos = ESTADO.placasAbiertos || (ESTADO.placasAbiertos = new Set());
+        if (abiertos.has(indice)) abiertos.delete(indice);
+        else abiertos.add(indice);
+        const abierto = abiertos.has(indice);
+        cabecera.closest(".acordeon-grupo")?.classList.toggle("abierto", abierto);
+        cabecera.setAttribute("aria-expanded", String(abierto));
+        const flecha = cabecera.querySelector(".acordeon-flecha");
+        if (flecha) flecha.textContent = abierto ? "▾" : "▸";
+        actualizarBotonPlacas();
+        return;
+      }
+
       const ficha = evento.target.closest("[data-placa-ficha]");
       if (ficha) {
         const equipo = (ESTADO.placas || []).find((e) => e.id === ficha.dataset.placaFicha);
@@ -1763,6 +1852,20 @@
     byId("buscarEquipo").addEventListener("input", () => cargarEquipos());
     ["filtroSede", "filtroCeco", "filtroEstado"].forEach((id) => byId(id)?.addEventListener("change", cargarEquipos));
     byId("buscarPlaca").addEventListener("input", () => cargarPlacas());
+    byId("btnTogglePlacas")?.addEventListener("click", () => {
+      const abiertos = ESTADO.placasAbiertos || (ESTADO.placasAbiertos = new Set());
+      const grupos = ESTADO.placasGrupos || [];
+      const todosAbiertos = grupos.length > 0 && grupos.every((g) => abiertos.has(g.indice));
+      grupos.forEach((g) => { if (todosAbiertos) abiertos.delete(g.indice); else abiertos.add(g.indice); });
+      cargarPlacas();
+    });
+    document.addEventListener("keydown", (evento) => {
+      if (!["Enter", " "].includes(evento.key)) return;
+      const cabecera = evento.target.closest?.("[data-toggle-grupo]");
+      if (!cabecera) return;
+      evento.preventDefault();
+      cabecera.click();
+    });
 
     document.addEventListener("click", (evento) => {
       const accion = evento.target.closest("[data-accion]")?.dataset.accion;
@@ -1781,6 +1884,8 @@
       if (accion === "modo-auditoria") return modoAuditoria();
       if (accion === "respaldo-maestro") return exportarRespaldoMaestro();
       if (accion === "sync-entra") return sincronizarEntraAhora(evento.target.closest("[data-accion]"));
+      if (accion === "eliminar-doc") return eliminarDocumento(evento.target.closest("[data-accion]"));
+      if (accion === "eliminar-sistema") return eliminarSistema(evento.target.closest("[data-accion]"));
     });
 
     byId("archivoHpWxp")?.addEventListener("change", async (evento) => {

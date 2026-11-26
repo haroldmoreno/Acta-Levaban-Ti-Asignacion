@@ -39,22 +39,22 @@ button { cursor: pointer; }
 }
 .orbe {
   position: absolute; display: block; border-radius: 50%;
-  filter: blur(85px); will-change: transform;
+  filter: blur(80px); will-change: transform;
   transform: translate3d(0, 0, 0) scale(1);
 }
 .orbe-crema {
   width: 62vmax; height: 62vmax; left: -12vmax; top: -18vmax;
-  background: #f7efe6; opacity: .95;
+  background: #fbf6f0; opacity: .95;
   animation: orbeUno 22s ease-in-out infinite alternate;
 }
 .orbe-arena {
   width: 54vmax; height: 54vmax; right: -14vmax; top: 4vmax;
-  background: #e4c5a8; opacity: .7;
+  background: #edd5bc; opacity: .75;
   animation: orbeDos 26s ease-in-out infinite alternate;
 }
 .orbe-vino {
   width: 48vmax; height: 48vmax; left: 28vmax; bottom: -20vmax;
-  background: rgba(114, 16, 29, 0.16); opacity: .8;
+  background: rgba(128, 18, 32, 0.16); opacity: .8;
   animation: orbeTres 18s ease-in-out infinite alternate;
 }
 @keyframes orbeUno {
@@ -456,43 +456,6 @@ tr:hover td { background: rgba(247,225,199,.3); }
 
 .barra-fila1 { display: flex; align-items: center; gap: 10px; width: 100%; }
 .barra-fila2 { display: none; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; }
-.menu-movil { display: none; }
-.drawer-fondo { position: fixed; inset: 0; z-index: 1199; background: rgba(20,10,12,.45); backdrop-filter: blur(4px); }
-.drawer-fondo[hidden] { display: none; }
-
-@media (max-width: 900px) {
-  .app { display: block; padding: 10px 10px calc(84px + env(safe-area-inset-bottom, 0px)); }
-  .menu-movil { display: inline-flex; min-width: 44px; min-height: 44px; justify-content: center; }
-
-  .sidebar {
-    position: fixed !important;
-    top: 0; left: 0; bottom: 0;
-    z-index: 1200;
-    width: min(300px, 86vw);
-    height: 100dvh !important;
-    padding-top: calc(20px + env(safe-area-inset-top, 0px));
-    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-    border-radius: 0 20px 20px 0;
-    transform: translateX(-105%);
-    transition: transform .35s cubic-bezier(.22,1,.36,1);
-    overflow-y: auto;
-  }
-  .sidebar.abierto { transform: translateX(0); }
-  .nav { flex-direction: column; }
-
-  .barra-superior {
-    top: calc(8px + env(safe-area-inset-top, 0px));
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px) / 3);
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .barra-fila1 { flex-wrap: wrap; }
-  .barra-fila1 h2 { flex: 1 1 auto; font-size: 1.05rem; min-width: 0; }
-  .acciones-top { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
-  .acciones-top .boton { min-height: 44px; }
-  .barra-fila2 { display: flex; }
-  .barra-derecha { display: contents; }
-}
 
 @media (max-width: 768px) {
   input, select, textarea, .input, .boton {
@@ -814,10 +777,6 @@ body[data-sesion="inactiva"] #app { display: none !important; }
 /* ============================================================
    MENÚ VERTICAL IDÉNTICO EN PC, TABLET Y CELULAR
    ============================================================ */
-
-#btnMenuMovil,
-#drawerFondo,
-.menu-movil { display: none !important; }
 
 @media (max-width: 900px) {
   .app {
@@ -1287,5 +1246,158 @@ h1, h2, h3 { font-size: 15px !important; margin-bottom: 8px !important; }
   .acta-bloque > .acta-grid,
   .acta-bloque > .acta-grid-3,
   .acta-bloque > .acta-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+
+/* ============================================================
+   V20 POLISHED RESPONSIVE · ajuste milimétrico final
+   ============================================================ */
+
+*, *::before, *::after { box-sizing: border-box !important; }
+.app, .app > *, .principal, .contenido, .vista, .tarjeta,
+.grid-sistemas > *, .grid-docs > *, .acordeon-grupo,
+.acordeon-cuerpo, .acordeon-inner, .acta-campo { min-width: 0 !important; }
+
+/* Cristal claro y brillante, sin tonos opacos. */
+.tarjeta, .tarjeta-login, .acta-bloque, .acta-cabecera, .barra-superior,
+.tabla-caja, .ficha-grupo, .metrica, .modal-caja, .panel-asistente,
+.asistente-panel, .cabecera-seccion, .acordeon-grupo, .ws-top,
+.ws-seccion-barra {
+  background: rgba(255, 255, 255, 0.78) !important;
+  backdrop-filter: blur(22px) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(190%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.85) !important;
+  box-shadow: 0 10px 28px rgba(114, 16, 29, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+  border-radius: 16px !important;
+}
+
+/* Acentos vinotinto vivos con contraste nítido. */
+.boton.primario, .nav-item.activo, .boton-asistente {
+  background: linear-gradient(135deg, #7a101e, #961627) !important;
+  color: #ffffff !important;
+}
+.sidebar {
+  background: linear-gradient(180deg, rgba(122, 16, 30, 0.94), rgba(96, 15, 26, 0.96)) !important;
+  backdrop-filter: blur(24px) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.16) !important;
+}
+
+/* Un solo ≡ y un único LEVAPAN sin letras cortadas. */
+.marca-sidebar {
+  display: flex !important; flex-direction: row !important; align-items: center !important;
+  gap: 8px !important; padding: 6px 6px 12px !important;
+  min-width: 0 !important; overflow: visible !important;
+}
+.sidebar-toggle { flex: 0 0 auto !important; }
+.marca-texto { flex: 1 1 auto !important; min-width: 0 !important; overflow: visible !important; }
+.marca-texto strong {
+  display: block !important; font-size: 1rem !important; letter-spacing: .06em !important;
+  white-space: normal !important; overflow: visible !important; word-break: keep-all !important;
+  line-height: 1.1 !important;
+}
+.marca-texto span {
+  display: block !important; font-size: .56rem !important; color: var(--crema) !important;
+  white-space: normal !important; overflow: visible !important; word-break: keep-all !important;
+  line-height: 1.2 !important;
+}
+.app.sidebar-collapsed .marca-texto,
+.app.sidebar-collapsed .nav-texto { display: none !important; }
+.app:not(.sidebar-collapsed) .marca-texto,
+.app:not(.sidebar-collapsed) .nav-texto { display: block !important; }
+
+/* Botones de eliminar en Bóveda PDF y Ecosistemas. */
+.grid-sistemas > .tarjeta,
+.grid-docs > .tarjeta { position: relative !important; padding-right: 46px !important; }
+.boton-eliminar {
+  position: absolute !important; top: 10px !important; right: 10px !important; z-index: 3 !important;
+  width: 30px !important; height: 30px !important; min-height: 30px !important; padding: 0 !important;
+  display: grid !important; place-items: center !important;
+  border-radius: 9px !important; border: 1px solid rgba(122, 16, 30, .28) !important;
+  background: rgba(255, 255, 255, .92) !important; color: #7a101e !important;
+  font-size: 14px !important; line-height: 1 !important;
+}
+.boton-eliminar:hover { background: #7a101e !important; color: #ffffff !important; }
+
+/* Acordeón tipo cortina de Placas & QR. */
+.acordeon-placas { display: flex !important; flex-direction: column !important; gap: 10px !important; }
+.acordeon-grupo { overflow: hidden !important; }
+.acordeon-cabecera {
+  display: flex !important; align-items: center !important; gap: 10px !important;
+  padding: 12px 14px !important; cursor: pointer !important;
+}
+.acordeon-cabecera:hover { background: rgba(247, 225, 199, .28) !important; }
+.acordeon-flecha {
+  flex: 0 0 auto !important; width: 22px !important; text-align: center !important;
+  color: #7a101e !important; font-size: 15px !important; font-weight: 900 !important;
+}
+.acordeon-titulo {
+  flex: 1 1 auto !important; min-width: 0 !important;
+  display: flex !important; flex-direction: column !important; gap: 2px !important;
+}
+.acordeon-titulo strong { font-size: 12.5px !important; color: #7a101e !important; white-space: normal !important; }
+.acordeon-titulo small { font-size: 10.5px !important; color: #5c4b45 !important; white-space: normal !important; }
+.acordeon-conteo {
+  flex: 0 0 auto !important; padding: 4px 10px !important; border-radius: 999px !important;
+  background: linear-gradient(135deg, #7a101e, #961627) !important; color: #ffffff !important;
+  font-size: 11px !important; font-weight: 800 !important; white-space: nowrap !important;
+}
+.acordeon-cuerpo {
+  display: grid !important; grid-template-rows: 0fr !important;
+  transition: grid-template-rows .28s ease !important;
+}
+.acordeon-grupo.abierto .acordeon-cuerpo { grid-template-rows: 1fr !important; }
+.acordeon-inner { overflow: hidden !important; min-height: 0 !important; }
+.acordeon-inner .grid-placas { padding: 0 14px 14px !important; }
+
+/* Casilleros del acta: checkbox a la izquierda, texto a la derecha. */
+.acta-grid-4 .check, .acta-grid-4 label, .opciones-grid .check {
+  display: flex !important; align-items: center !important; gap: 8px !important;
+  white-space: nowrap !important; min-width: 0 !important;
+}
+input[type="checkbox"], input[type="radio"] {
+  width: 15px !important; height: 15px !important; min-height: 0 !important;
+  flex: 0 0 auto !important; accent-color: #7a101e !important;
+}
+.acta-opcional { grid-column: 1 / -1 !important; }
+.acta-campo .ayuda { white-space: normal !important; }
+
+/* Celular: sidebar compacta por defecto y contenido en una sola columna. */
+@media (max-width: 768px) {
+  html, body { max-width: 100vw !important; overflow-x: hidden !important; }
+  .app { grid-template-columns: 52px minmax(0, 1fr) !important; gap: 8px !important; padding: 8px !important; }
+  .app:not(.sidebar-collapsed) { grid-template-columns: 152px minmax(0, 1fr) !important; }
+  .app .sidebar { width: 52px !important; padding: 8px 4px !important; }
+  .app:not(.sidebar-collapsed) .sidebar { width: 152px !important; padding: 8px 6px !important; }
+  .app.sidebar-collapsed, .app.sidebar-collapsed .sidebar { width: 52px !important; }
+  .marca-sidebar { justify-content: center !important; }
+  .nav-item { justify-content: center !important; padding: 8px 4px !important; }
+  .contenido, .vista, .cabecera-seccion, .metricas, .grid-sistemas,
+  .grid-docs, .grid-placas, .firmas-bloque,
+  .acta-bloque > .acta-grid, .acta-bloque > .acta-grid-3,
+  .acta-bloque > .acta-grid-4 { grid-template-columns: minmax(0, 1fr) !important; }
+  .barra-superior { position: static !important; padding: 10px 12px !important; }
+  .barra-fila1, .acciones-top, .acciones, .form-pie {
+    flex-direction: column !important; align-items: stretch !important;
+  }
+  .acciones-top .boton, .acciones .boton, .form-pie .boton { width: 100% !important; }
+  .boton-eliminar { width: 28px !important; height: 28px !important; min-height: 28px !important; }
+  .acordeon-conteo { font-size: 10px !important; padding: 3px 8px !important; }
+  .acta-grid-4 .check, .acta-grid-4 label { font-size: 11px !important; }
+}
+
+/* Tablet: grillas adaptativas de 2 columnas. */
+@media (min-width: 769px) and (max-width: 1100px) {
+  .app:not(.sidebar-collapsed) { grid-template-columns: 170px minmax(0, 1fr) !important; }
+  .app:not(.sidebar-collapsed) .sidebar { width: 170px !important; }
+  .grid-sistemas, .grid-docs, .grid-placas,
+  .acta-bloque > .acta-grid, .acta-bloque > .acta-grid-3,
+  .acta-bloque > .acta-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+
+/* Escritorio: grillas simétricas de 3 a 4 columnas. */
+@media (min-width: 1101px) {
+  .grid-sistemas, .grid-docs, .acordeon-inner .grid-placas {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+  .acta-bloque > .acta-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
 }
 
