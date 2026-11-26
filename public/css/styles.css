@@ -1592,3 +1592,83 @@ details[open] .acordeon-flecha { transform: rotate(90deg) !important; }
   .app-shell > .main-content { width: calc(100% - 210px) !important; }
 }
 
+/* ============================================================
+   V23 · CELULAR: riel 46 px, cajón flotante, cámara y firmas
+   El diseño de escritorio permanece intacto.
+   ============================================================ */
+
+#estadoActa,
+.acta-cabecera .pildora {
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  font-size: 11px !important;
+  padding: 5px 10px !important;
+}
+
+.foto-preview {
+  display: block;
+  width: 100%;
+  max-height: 96px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid rgba(162, 125, 84, .35);
+  margin-top: 6px;
+}
+.foto-preview[hidden] { display: none !important; }
+.firma-caja canvas { width: 100% !important; touch-action: none !important; }
+
+.fondo-cajon {
+  position: fixed; inset: 0; z-index: 899;
+  background: rgba(28, 15, 15, .42); backdrop-filter: blur(3px);
+}
+.fondo-cajon[hidden] { display: none !important; }
+
+@media (max-width: 768px) {
+  html, body { width: 100% !important; max-width: 100% !important; overflow-x: hidden !important; }
+
+  .app-shell.app:not(.movil-abierto) > .sidebar,
+  .app-shell.app.sidebar-collapsed > .sidebar {
+    position: relative !important;
+    width: 46px !important;
+    flex: 0 0 46px !important;
+    z-index: auto !important;
+    transform: none !important;
+    overflow: visible !important;
+  }
+  .app-shell.app > .main-content,
+  .app-shell.app.sidebar-collapsed > .main-content,
+  .app-shell.app:not(.sidebar-collapsed) > .main-content {
+    width: calc(100vw - 46px) !important;
+    max-width: calc(100vw - 46px) !important;
+    padding: 10px !important;
+  }
+  .app-shell.app.movil-abierto > .sidebar {
+    position: fixed !important;
+    top: 0; left: 0; bottom: 0;
+    z-index: 900 !important;
+    width: 210px !important;
+    max-width: 86vw !important;
+    height: 100dvh !important;
+    flex: none !important;
+    transform: none !important;
+    overflow-y: auto !important;
+    box-shadow: 0 20px 60px rgba(28, 15, 15, .35) !important;
+  }
+  .app-shell.app.movil-abierto .nav-label,
+  .app-shell.app.movil-abierto .nav-texto,
+  .app-shell.app.movil-abierto .marca-texto { display: block !important; }
+  .app-shell.app.movil-abierto .nav-item { justify-content: flex-start !important; padding-inline: 12px !important; }
+  .app-shell.app:not(.movil-abierto) .nav-label,
+  .app-shell.app:not(.movil-abierto) .nav-texto,
+  .app-shell.app:not(.movil-abierto) .marca-texto { display: none !important; }
+  .app-shell.app:not(.movil-abierto) .nav-item { justify-content: center !important; }
+
+  .acta-form, .acta-bloque, .acta-grid, .acta-grid-3,
+  .firmas-bloque, .acta-cabecera, .contenido, .vista { grid-template-columns: 1fr !important; }
+  .acta-grid-4, .acta-tipo-opciones { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .acta-grid-4 .check, .acta-tipo-opciones .check { font-size: 12px !important; min-height: 40px !important; }
+  .firma-caja canvas { height: 150px !important; }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  select { font-size: 16px !important; height: 42px !important; }
+}
+

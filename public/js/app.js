@@ -311,6 +311,7 @@
     if (vista === "placas") cargarPlacas();
     if (vista === "boveda") cargarBoveda();
     if (vista === "admin") cargarUsuarios();
+    if (vista === "acta") setTimeout(redimensionarFirmas, 60);
   }
 
   /* ---------------- Ecosistemas ---------------- */
@@ -635,6 +636,11 @@
     ["fotoEncendido", "fotoFrontal", "fotoPosterior"].forEach((id) => {
       const campo = byId(id);
       if (campo) campo.value = "";
+      const vistaPrevia = byId(`preview${id.charAt(0).toUpperCase()}${id.slice(1)}`);
+      if (vistaPrevia) {
+        vistaPrevia.removeAttribute("src");
+        vistaPrevia.hidden = true;
+      }
     });
     ["placaSugerencias", "serialSugerencias", "nombreSugerencias"].forEach((id) => {
       const caja = byId(id);
@@ -1348,6 +1354,7 @@
         canvas.dataset.listo = "1";
       }
     });
+    redimensionarFirmas();
   }
 
   function limpiarFirma(id) {
@@ -1361,6 +1368,61 @@
       colaborador: byId("firmaColaborador")?.toDataURL("image/png") || null,
       tecnico: byId("firmaTecnico")?.toDataURL("image/png") || null,
     };
+  }
+
+  const PREVIEWS_FOTO = [
+    ["fotoEncendido", "previewFotoEncendido"],
+    ["fotoFrontal", "previewFotoFrontal"],
+    ["fotoPosterior", "previewFotoPosterior"],
+  ];
+
+  function instalarPreviewsFotos() {
+    PREVIEWS_FOTO.forEach(([inputId, previewId]) => {
+      const input = byId(inputId);
+      if (!input || input.dataset.previewListo) return;
+      input.dataset.previewListo = "1";
+      input.addEventListener("change", () => {
+        const vistaPrevia = byId(previewId);
+        if (!vistaPrevia) return;
+        const archivo = input.files?.[0];
+        if (!archivo) {
+          vistaPrevia.removeAttribute("src");
+          vistaPrevia.hidden = true;
+          return;
+        }
+        const lector = new FileReader();
+        lector.onload = () => {
+          vistaPrevia.src = String(lector.result || "");
+          vistaPrevia.hidden = false;
+        };
+        lector.readAsDataURL(archivo);
+      });
+    });
+  }
+
+  // Recalibra el canvas al ancho visible (rotación, apertura en móvil o resize).
+  function redimensionarFirma(canvas) {
+    if (!canvas) return;
+    const ancho = Math.round(canvas.getBoundingClientRect().width);
+    if (ancho < 10) return;
+    const alto = window.innerWidth <= 768 ? 150 : 110;
+    if (canvas.width === ancho && canvas.height === alto) return;
+    const copia = document.createElement("canvas");
+    copia.width = canvas.width;
+    copia.height = canvas.height;
+    copia.getContext("2d").drawImage(canvas, 0, 0);
+    canvas.width = ancho;
+    canvas.height = alto;
+    const ctx = canvas.getContext("2d");
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#111111";
+    ctx.drawImage(copia, 0, 0, ancho, alto);
+  }
+
+  function redimensionarFirmas() {
+    ["firmaColaborador", "firmaTecnico"].forEach((id) => redimensionarFirma(byId(id)));
   }
 
   async function sincronizarEntraAhora(boton) {
@@ -1715,8 +1777,11 @@
 
   function cerrarDrawer() {
     byId("sidebar")?.classList.remove("abierto");
-    const fondo = byId("drawerFondo");
-    if (fondo) fondo.hidden = true;
+    byId("app")?.classList.remove("movil-abierto");
+    ["drawerFondo", "fondoCajon"].forEach((id) => {
+      const fondo = byId(id);
+      if (fondo) fondo.hidden = true;
+    });
   }
 
   async function autocompletarActaDesde(campo, valor) {
@@ -1776,39 +1841,65 @@
       });
     });
 
+    const actualizarTituloBoton = (abierto) => {
+      const boton = byId("btnToggleSidebar");
+      if (!boton) return;
+      boton.title = abierto ? "Expandir menú" : "Contraer menú";
+      boton.setAttribute("aria-label", boton.title);
+    };
+
     const alternarSidebar = () => {
       const app = byId("app");
+      if (!app) return;
+      // En celular el ≡ abre/cierra un cajón flotante; el riel de 46 px nunca se ensancha.
+      if (window.innerWidth <= 768) {
+        const abierto = app.classList.toggle("movil-abierto");
+        const fondo = byId("fondoCajon");
+        if (fondo) fondo.hidden = !abierto;
+        actualizarTituloBoton(abierto);
+        return;
+      }
+      // En PC se conserva el comportamiento de 210 px / 54 px.
       const colapsado = app.classList.toggle("sidebar-collapsed");
       localStorage.setItem("levapan_sidebar_collapsed", colapsado ? "1" : "0");
-      const boton = byId("btnToggleSidebar");
-      if (boton) {
-        boton.title = colapsado ? "Expandir menú" : "Contraer menú";
-        boton.setAttribute("aria-label", boton.title);
-      }
+      actualizarTituloBoton(!colapsado);
       setTimeout(posicionarIndicador, 100);
+      redimensionarFirmas();
     };
-    // Delegación global: el ≡ funciona siempre, incluso tras recargar la vista.
+
+    // Delegación global: el ≡ funciona siempre y tocar fuera cierra el cajón móvil.
     document.addEventListener("click", (evento) => {
-      if (evento.target.closest("#btnToggleSidebar")) alternarSidebar();
+      if (evento.target.closest("#btnToggleSidebar")) {
+        alternarSidebar();
+        return;
+      }
+      if (evento.target.closest("#fondoCajon")) return cerrarDrawer();
+      if (byId("app")?.classList.contains("movil-abierto") && !evento.target.closest("#sidebar")) cerrarDrawer();
     });
 
-    // En celular la barra arranca compacta (52 px) salvo preferencia explícita del usuario.
-    const preferencia = localStorage.getItem("levapan_sidebar_collapsed");
-    const colapsarPorDefecto = window.innerWidth <= 768 && preferencia === null;
-    if (preferencia === "1" || colapsarPorDefecto) {
-      byId("app")?.classList.add("sidebar-collapsed");
-      if (colapsarPorDefecto) localStorage.setItem("levapan_sidebar_collapsed", "1");
-      const boton = byId("btnToggleSidebar");
-      if (boton) {
-        boton.title = "Expandir menú";
-        boton.setAttribute("aria-label", boton.title);
-      }
+    // En celular la barra SIEMPRE arranca como riel de 46 px.
+    const appShell = byId("app");
+    if (window.innerWidth <= 768) {
+      appShell?.classList.remove("sidebar-collapsed");
+      appShell?.classList.remove("movil-abierto");
+      const fondo = byId("fondoCajon");
+      if (fondo) fondo.hidden = true;
+      actualizarTituloBoton(false);
+    } else if (localStorage.getItem("levapan_sidebar_collapsed") === "1") {
+      appShell?.classList.add("sidebar-collapsed");
+      actualizarTituloBoton(false);
     }
+    window.addEventListener("resize", () => {
+      if (window.innerWidth > 768) cerrarDrawer();
+      redimensionarFirmas();
+    });
+    window.addEventListener("orientationchange", () => setTimeout(redimensionarFirmas, 250));
     document.querySelectorAll("[data-cerrar]").forEach((b) => b.addEventListener("click", () => { byId(b.dataset.cerrar).hidden = true; }));
 
     byId("formSistema").addEventListener("submit", guardarSistema);
     byId("formEquipo").addEventListener("submit", guardarEquipo);
     byId("formActa").addEventListener("submit", guardarActa);
+    instalarPreviewsFotos();
 
     let temporizadorPlacaActa = null;
     let temporizadorNombreActa = null;

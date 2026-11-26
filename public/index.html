@@ -46,6 +46,7 @@
     </section>
 
     <!-- ================= APP ================= -->
+    <div id="fondoCajon" class="fondo-cajon" hidden></div>
     <main id="app" class="app app-shell" hidden>
       <aside id="sidebar" class="sidebar">
         <div class="marca-sidebar">
@@ -267,9 +268,9 @@
               <fieldset class="acta-bloque">
                 <legend>| REGISTRO FOTOGRÁFICO</legend>
                 <div class="acta-grid acta-grid-3">
-                  <label class="acta-campo"><span>Equipo encendido</span><input type="file" id="fotoEncendido" accept="image/png,image/jpeg,image/webp" /></label>
-                  <label class="acta-campo"><span>Frontal</span><input type="file" id="fotoFrontal" accept="image/png,image/jpeg,image/webp" /></label>
-                  <label class="acta-campo"><span>Posterior</span><input type="file" id="fotoPosterior" accept="image/png,image/jpeg,image/webp" /></label>
+                  <label class="acta-campo"><span>Equipo encendido</span><input type="file" id="fotoEncendido" accept="image/*" capture="environment" /><img id="previewFotoEncendido" class="foto-preview" alt="Vista previa del equipo encendido" hidden /></label>
+                  <label class="acta-campo"><span>Frontal</span><input type="file" id="fotoFrontal" accept="image/*" capture="environment" /><img id="previewFotoFrontal" class="foto-preview" alt="Vista previa frontal" hidden /></label>
+                  <label class="acta-campo"><span>Posterior</span><input type="file" id="fotoPosterior" accept="image/*" capture="environment" /><img id="previewFotoPosterior" class="foto-preview" alt="Vista previa posterior" hidden /></label>
                 </div>
               </fieldset>
 
