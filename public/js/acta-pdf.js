@@ -244,11 +244,15 @@
   }
 
   async function generarActaPdf({ datos = {}, fotos = {}, firmas = {} } = {}) {
+    if (!PDFLIB?.PDFDocument) throw new Error("pdf-lib no está disponible");
     const respuesta = await fetch("template.pdf", { cache: "no-store" });
     if (!respuesta.ok) throw new Error("No se pudo cargar template.pdf");
     const plantillaBytes = new Uint8Array(await respuesta.arrayBuffer());
 
     const pdfDoc = await PDFLIB.PDFDocument.load(plantillaBytes, { ignoreEncryption: true });
+    if (pdfDoc.getPageCount() !== 2) {
+      throw new Error("La plantilla oficial CORP-TEC-FR-002 debe tener exactamente 2 páginas");
+    }
     const paginas = pdfDoc.getPages();
     const form = pdfDoc.getForm();
     const fuente = await pdfDoc.embedFont(PDFLIB.StandardFonts.Helvetica);

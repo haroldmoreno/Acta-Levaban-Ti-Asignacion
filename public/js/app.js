@@ -635,7 +635,19 @@
       const campo = byId(id);
       if (campo) campo.value = "";
     });
-    byId("placaSugerencias").hidden = true;
+    ["placaSugerencias", "serialSugerencias", "nombreSugerencias"].forEach((id) => {
+      const caja = byId(id);
+      if (caja) caja.hidden = true;
+    });
+    [["actaOtroAccesorioChk", "actaOtroAccesorio"], ["actaOtroSoftwareChk", "actaOtroSoftware"]].forEach(([checkId, inputId]) => {
+      const casilla = byId(checkId);
+      const campo = byId(inputId);
+      if (casilla) casilla.checked = false;
+      if (campo) {
+        campo.value = "";
+        campo.hidden = true;
+      }
+    });
   }
 
   async function abrirActa(equipo, tipo) {
@@ -695,22 +707,30 @@
       estado: esDevolucion ? "DISPONIBLE" : "ASIGNADO",
       modificado_por: agenteTi || ESTADO.perfil?.nombre_completo || "sistema",
     };
+    // El PDF oficial se genera y descarga ANTES de tocar el inventario:
+    // si falla la emisión, la placa permanece intacta.
+    let url;
+    try {
+      url = await generarYSubirActa(
+        {
+          ...equipo,
+          ...cambios,
+          nombre: responsable,
+          documento: cedula,
+          agenteTi,
+          documentoTi,
+          tipoActa: tipo,
+        },
+        fotos,
+        datosFirmas(),
+        { accesorios, software, observaciones, sede }
+      );
+    } catch (err) {
+      return alert(`No se pudo emitir el acta CORP-TEC-FR-002: ${err.message}`);
+    }
+
     const { data: actualizado, error } = await sb.from("equipos").update(cambios).eq("id", equipo.id).select().single();
     if (error) return alert(error.message);
-
-    const url = await generarYSubirActa(
-      {
-        ...actualizado,
-        nombre: responsable,
-        documento: cedula,
-        agenteTi,
-        documentoTi,
-        tipoActa: tipo,
-      },
-      fotos,
-      datosFirmas(),
-      { accesorios, software, observaciones, sede }
-    );
 
     await registrarHistorial(equipo, tipo.toUpperCase(), `Acta CORP-TEC-FR-002 · ${placa} · ${responsable || "devolución"}`, {
       responsable_anterior: equipo.responsable,
@@ -750,15 +770,29 @@
       firmas,
     });
 
+    if (!pdfBytes || pdfBytes.length < 1000) throw new Error("El PDF oficial quedó vacío");
     const blob = new Blob([pdfBytes], { type: "application/pdf" });
+
+    // Descarga automática del acta oficial (CORP-TEC-FR-002, 2 páginas).
+    const nombreArchivo = `CORP-TEC-FR-002_${String(datos.placa || "acta").replace(/[^\w-]/g, "_")}.pdf`;
+    const urlLocal = URL.createObjectURL(blob);
+    const enlace = document.createElement("a");
+    enlace.href = urlLocal;
+    enlace.download = nombreArchivo;
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+    setTimeout(() => URL.revokeObjectURL(urlLocal), 60000);
+
     const ruta = `actas/${datos.placa}/${Date.now()}.pdf`;
     const subida = await sb.storage.from(CFG.bucket).upload(ruta, blob, { contentType: "application/pdf", upsert: false });
-    if (subida.error) return null;
+    if (subida.error) throw subida.error;
     const firmada = await sb.storage.from(CFG.bucket).createSignedUrl(ruta, 3600);
-    await sb.from("boveda_documentos").insert([{
+    const { error: errorBoveda } = await sb.from("boveda_documentos").insert([{
       titulo: `ACTA ${datos.tipoActa} · ${datos.placa}`, categoria: "Acta", equipo_id: datos.id,
       placa: datos.placa, storage_path: ruta, url: firmada.data?.signedUrl || null, mime_type: "application/pdf",
     }]);
+    if (errorBoveda) console.warn("[ACTA] No se pudo registrar en Bóveda PDF:", errorBoveda.message);
     return firmada.data?.signedUrl || null;
   }
 
@@ -1569,40 +1603,47 @@
     let temporizadorPlacaActa = null;
     let temporizadorNombreActa = null;
 
-    byId("actaPlaca")?.addEventListener("input", (evento) => {
-      clearTimeout(temporizadorPlacaActa);
-      const texto = evento.target.value.trim();
-      const caja = byId("placaSugerencias");
-      if (texto.length < 2) {
-        if (caja) caja.hidden = true;
+    const buscarSugerenciasActa = async (texto, caja) => {
+      const filtros =
+        `placa.ilike.%${texto}%,serial.ilike.%${texto}%,` +
+        `responsable.ilike.%${texto}%,nombre_red.ilike.%${texto}%`;
+      let resultados = [];
+      try {
+        const { data } = await sb.from("vista_veredicto_360").select("*").or(filtros).limit(8);
+        resultados = data || [];
+      } catch {
+        const { data } = await sb.from("equipos").select("*").or(filtros).limit(8);
+        resultados = data || [];
+      }
+      if (!caja) return;
+      if (!resultados.length) {
+        caja.innerHTML = '<button type="button" disabled>Sin coincidencias</button>';
+        caja.hidden = false;
         return;
       }
-      temporizadorPlacaActa = setTimeout(async () => {
-        const filtros = `placa.ilike.%${texto}%,serial.ilike.%${texto}%,responsable.ilike.%${texto}%,nombre_red.ilike.%${texto}%`;
-        let resultados = [];
-        try {
-          const { data } = await sb.from("vista_veredicto_360").select("*").or(filtros).limit(8);
-          resultados = data || [];
-        } catch {
-          const { data } = await sb.from("equipos").select("*").or(filtros).limit(8);
-          resultados = data || [];
-        }
-        if (!caja) return;
-        if (!resultados.length) {
-          caja.innerHTML = '<button type="button" disabled>Sin coincidencias</button>';
-          caja.hidden = false;
+      caja.innerHTML = resultados
+        .map(
+          (e) =>
+            `<button type="button" data-sugerencia-placa="${escapar(e.id)}">` +
+            `<strong>${escapar(e.placa)}</strong> · ${escapar(e.serial || "—")} · ` +
+            `${escapar([e.marca, e.modelo].filter(Boolean).join(" ") || "—")} · ` +
+            `${escapar(e.responsable || e.usuario_asignado || "—")}</button>`
+        )
+        .join("");
+      caja.hidden = false;
+    };
+
+    [["actaPlaca", "placaSugerencias"], ["actaSerial", "serialSugerencias"]].forEach(([campoId, cajaId]) => {
+      byId(campoId)?.addEventListener("input", (evento) => {
+        clearTimeout(temporizadorPlacaActa);
+        const texto = evento.target.value.trim();
+        const caja = byId(cajaId);
+        if (texto.length < 2) {
+          if (caja) caja.hidden = true;
           return;
         }
-        caja.innerHTML = resultados
-          .map(
-            (e) =>
-              `<button type="button" data-sugerencia-placa="${escapar(e.id)}">` +
-              `<strong>${escapar(e.placa)}</strong> · ${escapar(e.serial || "—")} · ` +
-              `${escapar(e.responsable || e.usuario_asignado || "—")} · ${escapar(e.sede || "—")}</button>`
-          )
-          .join("");
-        caja.hidden = false;
-      }, 300);
+        temporizadorPlacaActa = setTimeout(() => buscarSugerenciasActa(texto, caja), 300);
+      });
     });
 
     byId("actaNombre")?.addEventListener("input", (evento) => {
@@ -1643,6 +1684,16 @@
       }, 320);
     });
 
+    [["actaOtroAccesorioChk", "actaOtroAccesorio"], ["actaOtroSoftwareChk", "actaOtroSoftware"]].forEach(([checkId, inputId]) => {
+      byId(checkId)?.addEventListener("change", (evento) => {
+        const campo = byId(inputId);
+        if (!campo) return;
+        campo.hidden = !evento.target.checked;
+        if (evento.target.checked) campo.focus();
+        else campo.value = "";
+      });
+    });
+
     byId("btnLimpiarActa")?.addEventListener("click", () => llenarFormActa(null, "Asignación"));
 
     document.addEventListener("click", async (evento) => {
@@ -1681,9 +1732,11 @@
         }
         return;
       }
-      if (evento.target && !evento.target.closest(".acta-campo-placa")) {
-        const caja = byId("placaSugerencias");
-        if (caja) caja.hidden = true;
+      if (evento.target && !evento.target.closest(".acta-campo-placa, .acta-campo-serial")) {
+        ["placaSugerencias", "serialSugerencias"].forEach((id) => {
+          const caja = byId(id);
+          if (caja) caja.hidden = true;
+        });
       }
     });
 

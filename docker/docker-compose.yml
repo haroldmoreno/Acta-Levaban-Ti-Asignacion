@@ -1,0 +1,110 @@
+# Levapan TI · Despliegue on-premise (Supabase auto-hospedado + PWA estática)
+# Levantar: docker compose up -d
+# La PWA se sirve desde ../public en http://localhost:8080
+# La API (Auth / REST / Storage) queda en http://localhost:8000
+
+services:
+  db:
+    image: supabase/postgres:15.1.1.78
+    container_name: levapan_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en docker/.env}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./volumes/db:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/01-init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  auth:
+    image: supabase/gotrue:v2.151.0
+    container_name: levapan_auth
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GOTRUE_DB_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}
+      GOTRUE_JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET en docker/.env}
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_SITE_URL: ${SITE_URL:-http://localhost:8080}
+      GOTRUE_URI_ALLOW_LIST: ${SITE_URL:-http://localhost:8080}/**
+      GOTRUE_DISABLE_SIGNUP: "true"
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "false"
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      GOTRUE_LOG_LEVEL: INFO
+
+  rest:
+    image: postgrest/postgrest:v12.0.2
+    container_name: levapan_rest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET en docker/.env}
+      PGRST_DB_MAX_ROWS: 2000
+      PGRST_SERVER_HOST: 0.0.0.0
+      PGRST_SERVER_PORT: 3000
+
+  storage:
+    image: supabase/storage-api:v1.0.6
+    container_name: levapan_storage
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET en docker/.env}
+      STORAGE_BACKEND: file
+      FILE_STORAGE_ROOT: /var/lib/storage
+      FILE_SIZE_LIMIT: 52428800
+      TENANT_ID: levapan
+      REGION: local
+      GLOBAL_S3_BUCKET: levapan-boveda
+      PORT: 5000
+    volumes:
+      - ./volumes/storage:/var/lib/storage
+
+  kong:
+    image: kong:2.8.1
+    container_name: levapan_kong
+    restart: unless-stopped
+    depends_on:
+      - auth
+      - rest
+      - storage
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /usr/local/kong/declarative/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./kong.yml:/usr/local/kong/declarative/kong.yml:ro
+
+  web:
+    image: nginx:alpine
+    container_name: levapan_web
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ../public:/usr/share/nginx/html:ro

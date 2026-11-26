@@ -218,10 +218,10 @@
 
   async function consultarMisEquipos() {
     const perfil = window.LevapanApp.ESTADO.perfil || {};
-    let email = "";
+    let email = String(perfil.email || "").toLowerCase();
     try {
       const { data } = await sb.auth.getUser();
-      email = String(data?.user?.email || "").toLowerCase();
+      email = String(data?.user?.email || email).toLowerCase();
     } catch { /* sesión local */ }
 
     const nombre = String(perfil.nombre_completo || "").trim();

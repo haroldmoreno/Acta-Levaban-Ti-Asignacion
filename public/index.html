@@ -18,8 +18,11 @@
     <script src="js/acta-pdf.js"></script>
   </head>
   <body>
-    <video id="videoFondo" class="video-fondo" muted loop playsinline autoplay preload="metadata" poster="assets/fondo.svg" aria-hidden="true"></video>
-    <div class="velo-fondo" aria-hidden="true"></div>
+    <div class="fondo-animado" aria-hidden="true">
+      <span class="orbe orbe-crema"></span>
+      <span class="orbe orbe-arena"></span>
+      <span class="orbe orbe-vino"></span>
+    </div>
 
     <!-- ================= LOGIN ================= -->
     <section id="pantallaLogin" class="pantalla-login">
@@ -198,7 +201,11 @@
                   <label class="acta-campo"><span>Modelo</span><input type="text" id="actaModelo" /></label>
                 </div>
                 <div class="acta-grid acta-grid-3">
-                  <label class="acta-campo"><span>Serial</span><input type="text" id="actaSerial" /></label>
+                  <label class="acta-campo acta-campo-serial">
+                    <span>Serial</span>
+                    <input type="text" id="actaSerial" placeholder="Ej. ML-199865" autocomplete="off" />
+                    <div id="serialSugerencias" class="placa-sugerencias" role="listbox" hidden></div>
+                  </label>
                   <label class="acta-campo acta-campo-placa">
                     <span>Placa</span>
                     <input type="text" id="actaPlaca" placeholder="Ej. 199865 o ML-199865" autocomplete="off" />
@@ -229,7 +236,7 @@
                   <label class="check"><input type="checkbox" data-accesorio="Base" /> Base</label>
                   <label class="check"><input type="checkbox" data-accesorio="Guaya" /> Guaya</label>
                   <label class="check"><input type="checkbox" data-accesorio="Otro" id="actaOtroAccesorioChk" /> Otro</label>
-                  <input type="text" id="actaOtroAccesorio" class="ancho" placeholder="¿Cuál otro accesorio?" />
+                  <input type="text" id="actaOtroAccesorio" class="ancho acta-opcional" placeholder="¿Cuál otro accesorio?" hidden />
                 </div>
               </fieldset>
 
@@ -251,7 +258,7 @@
                   <label class="check"><input type="checkbox" data-software="Google Chrome" checked /> Google Chrome</label>
                   <label class="check"><input type="checkbox" data-software="Adobe Creative Cloud" checked /> Adobe Creative Cloud</label>
                   <label class="check"><input type="checkbox" data-software="Otro" id="actaOtroSoftwareChk" /> Otro</label>
-                  <input type="text" id="actaOtroSoftware" class="ancho" placeholder="¿Cuál otro programa?" />
+                  <input type="text" id="actaOtroSoftware" class="ancho acta-opcional" placeholder="¿Cuál otro programa?" hidden />
                 </div>
               </fieldset>
 
