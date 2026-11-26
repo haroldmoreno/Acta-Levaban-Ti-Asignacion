@@ -833,12 +833,35 @@
 
   /* ---------------- Placas y QR ---------------- */
 
-  function actualizarBotonPlacas() {
-    const boton = byId("btnTogglePlacas");
+  function acordeonSet(clave) {
+    ESTADO.acordeones = ESTADO.acordeones || {};
+    return ESTADO.acordeones[clave] || (ESTADO.acordeones[clave] = new Set());
+  }
+
+  function actualizarBotonAcordeon(idBoton, clave, grupos, setsExtra = []) {
+    const boton = byId(idBoton);
     if (!boton) return;
-    const grupos = ESTADO.placasGrupos || [];
-    const abiertos = grupos.filter((g) => ESTADO.placasAbiertos?.has(g.indice)).length;
-    boton.textContent = grupos.length && abiertos === grupos.length ? "Recoger todo" : "Desplegar todo";
+    const abiertos = acordeonSet(clave);
+    const extras = setsExtra.map((s) => ({ clave: s.clave, grupos: s.grupos || [], set: acordeonSet(s.clave) }));
+    const total = grupos.length + extras.reduce((n, s) => n + s.grupos.length, 0);
+    const abiertas = grupos.filter((g) => abiertos.has(g.indice)).length +
+      extras.reduce((n, s) => n + s.grupos.filter((g) => s.set.has(g.indice)).length, 0);
+    boton.textContent = total > 0 && abiertas === total ? "Recoger todo" : "Desplegar todo";
+  }
+
+  function actualizarBotonPlacas() {
+    actualizarBotonAcordeon("btnTogglePlacas", "placas", ESTADO.placasGrupos || []);
+  }
+
+  function alternarTodoAcordeon(clave, grupos, recargar, setsExtra = []) {
+    const abiertos = acordeonSet(clave);
+    const extras = setsExtra.map((s) => ({ clave: s.clave, grupos: s.grupos || [], set: acordeonSet(s.clave) }));
+    const todos = grupos.length > 0 &&
+      grupos.every((g) => abiertos.has(g.indice)) &&
+      extras.every((s) => s.grupos.every((g) => s.set.has(g.indice)));
+    grupos.forEach((g) => { if (todos) abiertos.delete(g.indice); else abiertos.add(g.indice); });
+    extras.forEach((s) => s.grupos.forEach((g) => { if (todos) s.set.delete(g.indice); else s.set.add(g.indice); }));
+    recargar();
   }
 
   async function cargarPlacas() {
@@ -865,20 +888,20 @@
     });
 
     ESTADO.placasGrupos = [...mapa.entries()].map(([clave, grupo], indice) => ({ ...grupo, clave, indice }));
+    const abiertos = acordeonSet("placas");
     if (ESTADO.placasFiltro !== texto) {
-      ESTADO.placasAbiertos = new Set();
+      abiertos.clear();
       ESTADO.placasFiltro = texto;
     }
-    ESTADO.placasAbiertos = ESTADO.placasAbiertos || new Set();
 
     const html = ESTADO.placasGrupos.map((g) => {
-      const abierto = ESTADO.placasAbiertos.has(g.indice);
+      const abierto = abiertos.has(g.indice);
       const tarjetas = g.items.map((e) => `<button type="button" class="tarjeta placa-item mono" data-placa-ficha="${escapar(e.id)}">
         <strong>${escapar(e.placa)}</strong>
         <small>${escapar(e.nombre_red || "Sin nombre en red")} · ${escapar(e.sede || "—")}</small>
       </button>`).join("");
       return `<section class="acordeon-grupo${abierto ? " abierto" : ""}" data-grupo="${g.indice}">
-        <header class="acordeon-cabecera" data-toggle-grupo="${g.indice}" role="button" tabindex="0" aria-expanded="${abierto}">
+        <header class="acordeon-cabecera" data-toggle-grupo data-acordeon="placas" data-indice="${g.indice}" role="button" tabindex="0" aria-expanded="${abierto}">
           <span class="acordeon-flecha">${abierto ? "▾" : "▸"}</span>
           <span class="acordeon-titulo"><strong>${escapar(g.eco)}</strong><small>${escapar(g.sede)} · ${escapar(g.tipo)}</small></span>
           <span class="acordeon-conteo">${g.items.length} placas</span>
@@ -1004,6 +1027,12 @@
     return { texto: `Vigente (${dias} d)`, clase: "verde" };
   }
 
+  function actualizarBotonContratos() {
+    actualizarBotonAcordeon("btnToggleContratos", "contratos", ESTADO.contratosGrupos || [], [
+      { clave: "contratos-sub", grupos: ESTADO.contratosSubgrupos || [] },
+    ]);
+  }
+
   async function cargarContratos() {
     const activos = await cargarTodos("equipos", "*");
     const llenar = (id, campo) => {
@@ -1041,21 +1070,78 @@
       })
       .sort((a, b) => a.dias - b.dias);
 
-    byId("listaContratos").innerHTML = `<table class="tabla-inventario">
-      <thead><tr><th>Placa</th><th>Equipo</th><th>Proveedor</th><th>N° Contrato</th><th>Tipo</th><th>Vencimiento</th><th>Semáforo</th><th></th></tr></thead>
-      <tbody>${filas.map((e) => {
-        const semaforo = clasificarVencimiento(e.dias);
-        return `<tr>
-          <td class="mono">${escapar(e.placa)}</td>
-          <td>${escapar(e.nombre_red || [e.marca, e.modelo].filter(Boolean).join(" ") || "—")}</td>
-          <td>${escapar(e.proveedor || "—")}</td>
-          <td class="mono">${escapar(e.num_contrato || "—")}</td>
-          <td>${escapar(e.tipo_contrato || "—")}</td>
-          <td>${escapar(e.fecha_vencimiento_contrato)}</td>
-          <td><span class="semaforo ${semaforo.clase}">${escapar(semaforo.texto)}</span></td>
-          <td><button class="boton mini" data-equipo="hoja" data-id="${escapar(e.id)}">Hoja</button></td>
-        </tr>`;
-      }).join("")}</tbody></table>` || '<p class="vacio">Sin contratos con esos filtros.</p>';
+    const firmaFiltros = JSON.stringify(filtros);
+    if (ESTADO.contratosFirma !== firmaFiltros) {
+      acordeonSet("contratos").clear();
+      acordeonSet("contratos-sub").clear();
+      ESTADO.contratosFirma = firmaFiltros;
+    }
+
+    const filaContrato = (e) => {
+      const semaforo = clasificarVencimiento(e.dias);
+      return `<tr>
+        <td class="mono">${escapar(e.placa)}</td>
+        <td>${escapar(e.nombre_red || [e.marca, e.modelo].filter(Boolean).join(" ") || "—")}</td>
+        <td>${escapar(e.proveedor || "—")}</td>
+        <td class="mono">${escapar(e.num_contrato || "—")}</td>
+        <td>${escapar(e.tipo_contrato || "—")}</td>
+        <td>${escapar(e.fecha_vencimiento_contrato)}</td>
+        <td><span class="semaforo ${semaforo.clase}">${escapar(semaforo.texto)}</span></td>
+        <td><button class="boton mini" data-equipo="hoja" data-id="${escapar(e.id)}">Hoja</button></td>
+      </tr>`;
+    };
+    const cabeceraTabla = `<thead><tr><th>Placa</th><th>Equipo</th><th>Proveedor</th><th>N° Contrato</th><th>Tipo</th><th>Vencimiento</th><th>Semáforo</th><th></th></tr></thead>`;
+
+    const porProveedor = new Map();
+    filas.forEach((e) => {
+      const proveedor = e.proveedor || "Sin proveedor";
+      const sub = `${e.sede || "Sin sede"} · ${e.tipo_contrato || "Sin tipo"}`;
+      if (!porProveedor.has(proveedor)) porProveedor.set(proveedor, new Map());
+      const subMapa = porProveedor.get(proveedor);
+      if (!subMapa.has(sub)) subMapa.set(sub, []);
+      subMapa.get(sub).push(e);
+    });
+
+    ESTADO.contratosGrupos = [];
+    ESTADO.contratosSubgrupos = [];
+    let indice = 0;
+    const html = [...porProveedor.entries()].map(([proveedor, subMapa]) => {
+      const i = indice;
+      indice += 1;
+      const proveedorAbierto = acordeonSet("contratos").has(i);
+      const total = [...subMapa.values()].reduce((n, lista) => n + lista.length, 0);
+      ESTADO.contratosGrupos.push({ indice: i, count: total });
+
+      const subHtml = [...subMapa.entries()].map(([sub, lista], j) => {
+        const claveSub = `${i}-${j}`;
+        const subAbierto = acordeonSet("contratos-sub").has(claveSub);
+        ESTADO.contratosSubgrupos.push({ indice: claveSub, count: lista.length });
+        return `<section class="acordeon-grupo acordeon-sub${subAbierto ? " abierto" : ""}">
+          <header class="acordeon-cabecera" data-toggle-subgrupo data-acordeon="contratos-sub" data-indice="${claveSub}" role="button" tabindex="0" aria-expanded="${subAbierto}">
+            <span class="acordeon-flecha">${subAbierto ? "▾" : "▸"}</span>
+            <span class="acordeon-titulo"><strong>${escapar(sub)}</strong></span>
+            <span class="acordeon-conteo">${lista.length} contratos</span>
+          </header>
+          <div class="acordeon-cuerpo"><div class="acordeon-inner"><table class="tabla-inventario">
+            ${cabeceraTabla}<tbody>${lista.map(filaContrato).join("")}</tbody>
+          </table></div></div>
+        </section>`;
+      }).join("");
+
+      return `<section class="acordeon-grupo${proveedorAbierto ? " abierto" : ""}">
+        <header class="acordeon-cabecera" data-toggle-grupo data-acordeon="contratos" data-indice="${i}" role="button" tabindex="0" aria-expanded="${proveedorAbierto}">
+          <span class="acordeon-flecha">${proveedorAbierto ? "▾" : "▸"}</span>
+          <span class="acordeon-titulo"><strong>${escapar(proveedor)}</strong><small>Vencimientos y garantías</small></span>
+          <span class="acordeon-conteo">${total} contratos</span>
+        </header>
+        <div class="acordeon-cuerpo"><div class="acordeon-inner"><div class="acordeon-subgrupos">${subHtml}</div></div></div>
+      </section>`;
+    }).join("");
+
+    byId("listaContratos").innerHTML = html
+      ? `<div class="acordeon-placas">${html}</div>`
+      : '<p class="vacio">Sin contratos con esos filtros.</p>';
+    actualizarBotonContratos();
   }
 
   async function exportarContratos() {
@@ -1815,10 +1901,12 @@
     document.addEventListener("click", async (evento) => {
       if (evento.target.closest("[data-accion]")) return;
 
-      const cabecera = evento.target.closest("[data-toggle-grupo]");
+      const cabecera = evento.target.closest("[data-toggle-grupo], [data-toggle-subgrupo]");
       if (cabecera) {
-        const indice = Number(cabecera.dataset.toggleGrupo);
-        const abiertos = ESTADO.placasAbiertos || (ESTADO.placasAbiertos = new Set());
+        const clave = cabecera.dataset.acordeon || "placas";
+        const indiceBruto = cabecera.dataset.indice;
+        const indice = /^\d+$/.test(indiceBruto) ? Number(indiceBruto) : indiceBruto;
+        const abiertos = acordeonSet(clave);
         if (abiertos.has(indice)) abiertos.delete(indice);
         else abiertos.add(indice);
         const abierto = abiertos.has(indice);
@@ -1826,7 +1914,8 @@
         cabecera.setAttribute("aria-expanded", String(abierto));
         const flecha = cabecera.querySelector(".acordeon-flecha");
         if (flecha) flecha.textContent = abierto ? "▾" : "▸";
-        actualizarBotonPlacas();
+        if (clave.startsWith("contratos")) actualizarBotonContratos();
+        else actualizarBotonPlacas();
         return;
       }
 
@@ -1852,16 +1941,15 @@
     byId("buscarEquipo").addEventListener("input", () => cargarEquipos());
     ["filtroSede", "filtroCeco", "filtroEstado"].forEach((id) => byId(id)?.addEventListener("change", cargarEquipos));
     byId("buscarPlaca").addEventListener("input", () => cargarPlacas());
-    byId("btnTogglePlacas")?.addEventListener("click", () => {
-      const abiertos = ESTADO.placasAbiertos || (ESTADO.placasAbiertos = new Set());
-      const grupos = ESTADO.placasGrupos || [];
-      const todosAbiertos = grupos.length > 0 && grupos.every((g) => abiertos.has(g.indice));
-      grupos.forEach((g) => { if (todosAbiertos) abiertos.delete(g.indice); else abiertos.add(g.indice); });
-      cargarPlacas();
-    });
+    byId("btnTogglePlacas")?.addEventListener("click", () =>
+      alternarTodoAcordeon("placas", ESTADO.placasGrupos || [], cargarPlacas));
+    byId("btnToggleContratos")?.addEventListener("click", () =>
+      alternarTodoAcordeon("contratos", ESTADO.contratosGrupos || [], cargarContratos, [
+        { clave: "contratos-sub", grupos: ESTADO.contratosSubgrupos || [] },
+      ]));
     document.addEventListener("keydown", (evento) => {
       if (!["Enter", " "].includes(evento.key)) return;
-      const cabecera = evento.target.closest?.("[data-toggle-grupo]");
+      const cabecera = evento.target.closest?.("[data-toggle-grupo], [data-toggle-subgrupo]");
       if (!cabecera) return;
       evento.preventDefault();
       cabecera.click();

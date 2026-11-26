@@ -46,7 +46,7 @@
     </section>
 
     <!-- ================= APP ================= -->
-    <main id="app" class="app" hidden>
+    <main id="app" class="app app-shell" hidden>
       <aside id="sidebar" class="sidebar">
         <div class="marca-sidebar">
           <button id="btnToggleSidebar" class="sidebar-toggle" type="button" title="Contraer menú" aria-label="Contraer menú">≡</button>
@@ -69,7 +69,7 @@
         </div>
       </aside>
 
-      <div class="principal">
+      <div class="principal main-content">
         <header class="barra-superior">
           <div class="barra-fila1">
             <h2 id="tituloVista">Ecosistemas de TI</h2>
@@ -99,11 +99,11 @@
           <section id="vista-placas" class="vista" hidden>
             <div class="cabecera-seccion">
               <input id="buscarPlaca" class="input" placeholder="Buscar placa, serial, responsable o CECO…" />
-              <button id="btnTogglePlacas" class="boton" aria-label="Recoger o desplegar todos los grupos">Desplegar todo</button>
+              <button id="btnTogglePlacas" class="boton primario" aria-label="Recoger o desplegar todos los grupos">Desplegar todo</button>
               <button id="btnImprimirQR" class="boton">Imprimir hoja QR</button>
             </div>
             <div id="fichaPlaca" class="ficha-placa"></div>
-            <div id="listaPlacas" class="tabla-caja"></div>
+            <div id="listaPlacas" class="lista-acordeon"></div>
           </section>
 
           <!-- EQUIPOS -->
@@ -130,6 +130,7 @@
           <section id="vista-contratos" class="vista" hidden>
             <div class="cabecera-seccion">
               <p>Radar proactivo de contratos y garantías con semáforo de vencimiento.</p>
+              <button id="btnToggleContratos" class="boton primario" aria-label="Recoger o desplegar todas las cortinas de contratos">Desplegar todo</button>
               <button class="boton" data-accion="exportar-contratos">Exportar renovaciones</button>
             </div>
             <div class="cabecera-seccion filtros">
@@ -145,7 +146,7 @@
                 <option value="vigente">Vigentes</option>
               </select>
             </div>
-            <div id="listaContratos" class="tabla-caja"></div>
+            <div id="listaContratos" class="lista-acordeon"></div>
           </section>
 
           <!-- ACTA DE TECNOLOGÍA -->
@@ -215,8 +216,10 @@
                 </div>
                 <div class="acta-tipo">
                   <span>TIPO DE ACTA</span>
-                  <label class="check"><input type="radio" name="tipoActa" value="Asignación" checked /> Asignación</label>
-                  <label class="check"><input type="radio" name="tipoActa" value="Devolución" /> Devolución</label>
+                  <div class="acta-tipo-opciones">
+                    <label class="check"><input type="radio" name="tipoActa" value="Asignación" checked /> Asignación</label>
+                    <label class="check"><input type="radio" name="tipoActa" value="Devolución" /> Devolución</label>
+                  </div>
                 </div>
               </fieldset>
 

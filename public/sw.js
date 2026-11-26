@@ -1,5 +1,5 @@
 /* Levapan TI PWA — Network-First para estáticos, Network-Only para Supabase/Auth. */
-const CACHE = "levapan-ti-v20-polished-responsive";
+const CACHE = "levapan-ti-v21-fullwidth-boxes-accordion";
 const SHELL = ["./", "./index.html", "./css/styles.css", "./js/config.js", "./js/app.js", "./js/asistente-ti.js", "./js/acta-pdf.js", "./template.pdf", "./manifest.json", "./assets/icon.svg", "./assets/logo.svg", "./assets/fondo.svg"];
 
 self.addEventListener("install", (event) => {
