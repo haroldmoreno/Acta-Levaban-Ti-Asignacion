@@ -88,15 +88,20 @@
 
   async function cargarActivos() {
     if (MEMORIA.activos.length) return MEMORIA.activos;
-    MEMORIA.activos = await APP.cargarTodos("equipos", "*");
+    try {
+      MEMORIA.activos = await APP.cargarTodos("vista_veredicto_360", "*");
+    } catch {
+      MEMORIA.activos = await APP.cargarTodos("equipos", "*");
+    }
     return MEMORIA.activos;
   }
 
   function coincide(equipo, terminos) {
     const texto = norm([
       equipo.placa, equipo.serial, equipo.nombre_red, equipo.responsable, equipo.cedula,
-      equipo.empresa, equipo.sede, equipo.ceco, equipo.area, equipo.marca, equipo.modelo,
-      equipo.proveedor, equipo.num_contrato, equipo.estado, equipo.tipo_equipo,
+      equipo.empresa, equipo.sede, equipo.ceco, equipo.area, equipo.marca,
+      equipo.modelo, equipo.proveedor, equipo.num_contrato, equipo.estado, equipo.tipo_equipo,
+      equipo.veredicto_estado, equipo.veredicto_detalle, equipo.upn_usuario, equipo.device_name,
     ].join(" "));
     return terminos.every((t) => texto.includes(t));
   }
@@ -191,6 +196,17 @@
     const espera = typing();
 
     try {
+      if (/discrepancia|microsoft 365|entra|veredicto|telemetria|telemetría/.test(q)) {
+        espera.remove();
+        const activos = await cargarActivos();
+        const filas = activos.filter((e) => {
+          const v = norm(e.veredicto_estado || "");
+          return /discrepancia|retirado|sin_reporte|solo_inventario/.test(v);
+        }).slice(0, 20);
+        if (!filas.length) return burbuja("No hay activos con discrepancias de identidad o telemetría en este momento.", "asistente");
+        return burbuja(`Discrepancias 360° (${filas.length}):\n` + filas.map((e) => `• ${e.placa} · ${e.veredicto_estado} · ${e.veredicto_detalle || ""}`).join("\n"), "asistente");
+      }
+
       if (/resumen|cuantos|cuántos|estadistica|estadística|sin responsable|sin serial|por sede/.test(q)) {
         espera.remove();
         return burbuja(await resumenGeneral(texto), "asistente");

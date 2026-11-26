@@ -163,7 +163,7 @@
   async function iniciarMicrosoft() {
     const { error } = await sb.auth.signInWithOAuth({
       provider: "azure",
-      options: { scopes: "email profile openid", redirectTo: location.origin + "/" },
+      options: { scopes: "openid profile email User.Read", redirectTo: window.location.origin },
     });
     if (error) throw error;
   }
@@ -670,9 +670,35 @@
     if (data?.[0]) mostrarFichaPlaca(data[0]);
   }
 
-  function mostrarFichaPlaca(equipo) {
+  function normTexto(valor) {
+    return String(valor ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
+  }
+
+  function veredictoDe(fila) {
+    if (fila.usuario_activo_m365 === false) return { estado: "USUARIO_RETIRADO_M365", detalle: "Usuario deshabilitado en Microsoft 365", color: "rojo" };
+    if (!fila.device_id && !fila.device_name) return { estado: "SOLO_INVENTARIO", detalle: "Sin reporte de Entra ID ni HP WXP", color: "ambar" };
+    if (fila.ultima_actividad && (Date.now() - new Date(fila.ultima_actividad).getTime()) / 86400000 > 30) {
+      return { estado: "SIN_REPORTE_TELEMETRIA", detalle: "Sin actividad de telemetría en más de 30 días", color: "rojo" };
+    }
+    if (fila.upn_usuario && fila.responsable && normTexto(fila.upn_usuario) !== normTexto(fila.responsable)) {
+      return { estado: "DISCREPANCIA_USUARIO", detalle: "El usuario activo en M365 difiere del responsable registrado en el acta", color: "ambar" };
+    }
+    return { estado: "VERIFICADO", detalle: fila.veredicto_detalle || "Inventario, identidad y telemetría coincidentes", color: "verde" };
+  }
+
+  async function mostrarFichaPlaca(equipo) {
     const contenedor = byId("fichaPlaca");
     if (!contenedor || !equipo) return;
+
+    let cruce = null;
+    try {
+      const { data } = await sb.from("vista_veredicto_360").select("*").eq("placa", equipo.placa).maybeSingle();
+      cruce = data || null;
+    } catch {
+      cruce = null;
+    }
+    const vista = { ...equipo, ...(cruce || {}) };
+    const veredicto = veredictoDe(vista);
     const sistema = ESTADO.sistemas.find((s) => s.id === equipo.sistema_id);
     const grupos = [
       ["Identificación y Red", [["Placa", "placa"], ["Nombre equipo en Red", "nombre_red"], ["Serial del equipo", "serial"], ["Estado", "estado"], ["Ecosistema", null]]],
@@ -681,6 +707,22 @@
       ["Hardware", [["Tipo de Equipo", "tipo_equipo"], ["Marca", "marca"], ["Modelo", "modelo"], ["Procesador", "procesador"], ["Memoria RAM", "ram"], ["Tamaño en Disco", "disco"], ["Tipo de elemento", "tipo_elemento"]]],
       ["Contrato y Proveedor", [["Proveedor", "proveedor"], ["N° Contrato", "num_contrato"], ["Tipo de Contrato", "tipo_contrato"], ["Fecha de Vencimiento Contrato", "fecha_vencimiento_contrato"]]],
       ["Trazabilidad", [["Accesorios entregados", "accesorios"], ["Bitacora del Equipo", "bitacora"], ["Creado por", "creado_por"], ["Modificado por", "modificado_por"], ["Modificado", "updated_at"]]],
+    ];
+    const filas = (campos) => campos.map(([etiqueta, columna]) => {
+      const valor = columna ? (vista[columna] ?? "—") : (sistema?.codigo || "—");
+      return `<div><dt>${escapar(etiqueta)}</dt><dd class="${["Placa", "Serial del equipo", "N° Contrato", "CECO"].includes(etiqueta) ? "mono" : ""}">${escapar(valor)}</dd></div>`;
+    }).join("");
+
+    const entra = [
+      ["Usuario en red", "upn_usuario"], ["Nombre Entra", "nombre_usuario_entra"],
+      ["Cuenta M365", "usuario_activo_m365"], ["Sistema operativo", "sistema_operativo"],
+      ["Versión OS", "version_os"], ["Última actividad", "ultima_actividad"], ["Cumplimiento", "cumplimiento"],
+    ];
+    const hp = [
+      ["Dispositivo HP", "device_name"], ["Modelo HP", "modelo_hp"], ["BIOS", "bios_version"],
+      ["Salud batería %", "salud_bateria_pct"], ["Estado disco", "estado_disco"],
+      ["Estado conexión", "estado_conexion"], ["Último usuario HP", "ultimo_usuario_hp"],
+      ["Última conexión HP", "ultima_conexion_hp"],
     ];
 
     contenedor.innerHTML = `<article class="tarjeta ficha-completa">
@@ -692,14 +734,25 @@
           <button class="boton mini" data-equipo="hoja" data-id="${escapar(equipo.id)}">Hoja</button>
         </div>
       </header>
-      <div class="ficha-grupos">
-        ${grupos.map(([titulo, campos]) => `<section class="ficha-grupo">
-          <h4>${titulo}</h4>
-          <dl>${campos.map(([etiqueta, columna]) => {
-            const valor = columna ? (equipo[columna] ?? "—") : (sistema?.codigo || "—");
-            return `<div><dt>${escapar(etiqueta)}</dt><dd class="${["Placa","Serial del equipo","N° Contrato","CECO"].includes(etiqueta) ? "mono" : ""}">${escapar(valor)}</dd></div>`;
-          }).join("")}</dl>
-        </section>`).join("")}
+
+      <div class="veredicto-banner ${veredicto.color}">
+        <div><strong>Veredicto Cruzado 360°</strong><span>${escapar(veredicto.estado)}</span></div>
+        <p>${escapar(veredicto.detalle)}</p>
+      </div>
+
+      <div class="bloques-360">
+        <section class="bloque-360">
+          <h4>Bloque 1 · Datos Maestros Levapan (27 campos)</h4>
+          <div class="ficha-grupos">${grupos.map(([titulo, campos]) => `<section class="ficha-grupo"><h5>${titulo}</h5><dl>${filas(campos)}</dl></section>`).join("")}</div>
+        </section>
+        <section class="bloque-360">
+          <h4>Bloque 2 · Identidad Microsoft Entra ID</h4>
+          <div class="ficha-grupo"><dl>${filas(entra)}</dl></div>
+        </section>
+        <section class="bloque-360">
+          <h4>Bloque 3 · Telemetría HP WXP</h4>
+          <div class="ficha-grupo"><dl>${filas(hp)}</dl></div>
+        </section>
       </div>
     </article>`;
   }
@@ -951,6 +1004,35 @@
     };
   }
 
+  async function exportarRespaldoMaestro() {
+    const tablas = ["sistemas", "equipos", "historial_movimientos", "usuarios_corporativos", "boveda_documentos", "sync_entra_dispositivos", "sync_hp_wxp"];
+    const datos = {};
+    for (const tabla of tablas) {
+      try {
+        datos[tabla] = await cargarTodos(tabla, "*");
+      } catch {
+        datos[tabla] = [];
+      }
+    }
+    const fecha = new Date().toISOString();
+    const json = JSON.stringify({ aplicacion: "Levapan TI 360°", generadoEn: fecha, datos }, null, 2);
+    const urlBlob = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+    const enlace = document.createElement("a");
+    enlace.href = urlBlob;
+    enlace.download = `Levapan_Respaldo_360_${fecha.slice(0, 10)}.json`;
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+    setTimeout(() => URL.revokeObjectURL(urlBlob), 5000);
+
+    const libro = window.XLSX.utils.book_new();
+    for (const [tabla, filas] of Object.entries(datos)) {
+      const hoja = window.XLSX.utils.json_to_sheet(filas.length ? filas : [{}]);
+      window.XLSX.utils.book_append_sheet(libro, hoja, tabla.slice(0, 31));
+    }
+    window.XLSX.writeFile(libro, `Levapan_Respaldo_360_${fecha.slice(0, 10)}.xlsx`);
+  }
+
   /* ---------------- Bóveda ---------------- */
 
   async function cargarBoveda() {
@@ -1170,6 +1252,7 @@
       if (accion === "exportar-contratos") return exportarContratos();
       if (accion === "importar" || accion === "migrar") return byId("archivoImportar").click();
       if (accion === "modo-auditoria") return modoAuditoria();
+      if (accion === "respaldo-maestro") return exportarRespaldoMaestro();
     });
 
     byId("btnEscanear")?.addEventListener("click", abrirEscanner);
