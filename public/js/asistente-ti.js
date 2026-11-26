@@ -42,6 +42,13 @@
     return Math.ceil((fecha.getTime() - Date.now()) / 86400000);
   }
 
+  function autoScroll() {
+    requestAnimationFrame(() => {
+      const area = byId("chatMensajes");
+      if (area) area.scrollTop = area.scrollHeight;
+    });
+  }
+
   function burbuja(texto, quien, clase) {
     const area = byId("chatMensajes");
     if (!area) return null;
@@ -49,7 +56,44 @@
     el.className = "burbuja-ai " + quien + (clase ? " " + clase : "");
     el.innerHTML = String(texto).replace(/\n/g, "<br>");
     area.appendChild(el);
-    area.scrollTop = area.scrollHeight;
+    autoScroll();
+    return el;
+  }
+
+  const LISTAS = {};
+  let contadorListas = 0;
+
+  function burbujaLista(titulo, filas) {
+    const el = burbuja("", "asistente");
+    const id = `lista-ai-${++contadorListas}`;
+    LISTAS[id] = { filas, indice: 8 };
+
+    const dibujar = () => {
+      const lista = LISTAS[id];
+      if (!lista) return;
+      const visibles = lista.filas.slice(0, lista.indice).map((f) => `<div class="fila-lista">${f}</div>`).join("");
+      el.innerHTML =
+        `<strong>${escapar(titulo)}</strong>` +
+        `<div class="lista-meta">${lista.filas.length} resultado(s) · mostrando ${Math.min(lista.indice, lista.filas.length)}</div>` +
+        `<div class="filas-lista">${visibles}</div>`;
+
+      if (lista.indice < lista.filas.length) {
+        const boton = document.createElement("button");
+        boton.type = "button";
+        boton.className = "boton mini ver-mas";
+        boton.dataset.verMas = id;
+        boton.textContent = "Ver 10 más";
+        el.appendChild(boton);
+      } else if (lista.filas.length > 8) {
+        const nota = document.createElement("div");
+        nota.className = "lista-meta";
+        nota.textContent = "Mostrando todos. Filtra por placa o sede para reducir la lista.";
+        el.appendChild(nota);
+      }
+      autoScroll();
+    };
+
+    dibujar();
     return el;
   }
 
@@ -140,11 +184,12 @@
       .filter((e) => e.fecha_vencimiento_contrato)
       .map((e) => ({ ...e, dias: diasHasta(e.fecha_vencimiento_contrato) }))
       .filter((e) => e.dias != null && e.dias <= horizonte)
-      .sort((a, b) => a.dias - b.dias)
-      .slice(0, 20);
-    if (!filas.length) return `No hay contratos que venzan en los próximos ${horizonte} días.`;
-    return `Contratos que vencen en ≤ ${horizonte} días (${filas.length}):\n` +
-      filas.map((e) => `• ${e.placa} · ${e.num_contrato || "—"} · ${e.proveedor || "—"} · ${e.fecha_vencimiento_contrato} (${e.dias} d)`).join("\n");
+      .sort((a, b) => a.dias - b.dias);
+    if (!filas.length) return { titulo: "Contratos por vencer", filas: [] };
+    return {
+      titulo: `Contratos que vencen en ≤ ${horizonte} días`,
+      filas: filas.map((e) => `${escapar(e.placa)} · ${escapar(e.num_contrato || "—")} · ${escapar(e.proveedor || "—")} · ${escapar(e.fecha_vencimiento_contrato)} (${e.dias} d)`),
+    };
   }
 
   async function resumenGeneral(pregunta) {
@@ -202,19 +247,36 @@
         const filas = activos.filter((e) => {
           const v = norm(e.veredicto_estado || "");
           return /discrepancia|retirado|sin_reporte|solo_inventario/.test(v);
-        }).slice(0, 20);
+        });
         if (!filas.length) return burbuja("No hay activos con discrepancias de identidad o telemetría en este momento.", "asistente");
-        return burbuja(`Discrepancias 360° (${filas.length}):\n` + filas.map((e) => `• ${e.placa} · ${e.veredicto_estado} · ${e.veredicto_detalle || ""}`).join("\n"), "asistente");
+        return burbujaLista(
+          "Discrepancias Microsoft 365 / telemetría",
+          filas.map((e) => `${escapar(e.placa)} · ${escapar(e.veredicto_estado)} · ${escapar(e.veredicto_detalle || "")}`)
+        );
       }
 
-      if (/resumen|cuantos|cuántos|estadistica|estadística|sin responsable|sin serial|por sede/.test(q)) {
+      if (/sin serial|sin responsable/.test(q)) {
+        espera.remove();
+        const activos = await cargarActivos();
+        const faltaSerial = /sin serial/.test(q);
+        const filas = activos.filter((e) => (faltaSerial ? !e.serial : !e.responsable));
+        if (!filas.length) return burbuja(`No hay equipos ${faltaSerial ? "sin serial" : "sin responsable"}.`, "asistente");
+        return burbujaLista(
+          faltaSerial ? "Equipos sin serial" : "Equipos sin responsable",
+          filas.map((e) => `${escapar(e.placa)} · ${escapar(e.nombre_red || "—")} · ${escapar(e.sede || "—")}`)
+        );
+      }
+
+      if (/resumen|cuantos|cuántos|estadistica|estadística|por sede/.test(q)) {
         espera.remove();
         return burbuja(await resumenGeneral(texto), "asistente");
       }
 
       if (/venc|contrato|renovac/.test(q)) {
         espera.remove();
-        return burbuja(await consultarContratos(texto), "asistente");
+        const resultado = await consultarContratos(texto);
+        if (!resultado.filas.length) return burbuja(`No hay contratos que venzan en los próximos ${norm(texto).match(/(\d{1,3})/)?.[1] || 30} días.`, "asistente");
+        return burbujaLista(resultado.titulo, resultado.filas);
       }
 
       const contexto = responderContexto(texto);
@@ -234,7 +296,10 @@
       recordar(equipo);
 
       if (resultados.length > 1) {
-        burbuja(`Encontré ${resultados.length} equipos. Muestro el primero; el contexto queda fijado en ${equipo.placa}.`, "asistente");
+        burbujaLista(
+          `Equipos encontrados`,
+          resultados.map((e) => `${escapar(e.placa)} · ${escapar(e.nombre_red || "—")} · ${escapar(e.sede || "—")} · ${escapar(e.estado || "—")}`)
+        );
       }
 
       const botones = [
@@ -316,7 +381,25 @@
     });
 
     document.addEventListener("click", (e) => {
-      const boton = e.target.closest("[data-ai-accion]");
+      const mas = e.target.closest("[data-ver-mas]");
+      if (mas) {
+        const id = mas.dataset.verMas;
+        const lista = LISTAS[id];
+        if (lista) {
+          lista.indice += 10;
+          const burbujaPadre = mas.closest(".burbuja-ai");
+          if (burbujaPadre) {
+            const visibles = lista.filas.slice(0, lista.indice).map((f) => `<div class="fila-lista">${f}</div>`).join("");
+            burbujaPadre.querySelector(".filas-lista").innerHTML = visibles;
+            burbujaPadre.querySelector(".lista-meta").textContent =
+              `${lista.filas.length} resultado(s) · mostrando ${Math.min(lista.indice, lista.filas.length)}`;
+            if (lista.indice >= lista.filas.length) mas.remove();
+            autoScroll();
+          }
+        }
+        return;
+      }
+     const boton = e.target.closest("[data-ai-accion]");
       if (boton) {
         e.stopPropagation();
         ejecutarAccion(boton);

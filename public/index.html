@@ -335,23 +335,30 @@
       <button id="btnAsistente" class="boton-asistente" aria-label="Abrir Asistente TI">
         <span class="punto"></span><span>✦</span> Asistente TI
       </button>
-      <section id="panelAsistente" class="panel-asistente" hidden>
-        <header>
-          <div><strong>Asistente Integral TI</strong><small>Conectado a Sistemas, Equipos y Bóveda</small></div>
+      <section id="panelAsistente" class="panel-asistente asistente-panel" hidden aria-label="Asistente TI">
+        <header class="chat-header">
+          <div>
+            <strong>Asistente TI</strong>
+            <small><span class="chat-estado-punto"></span> Veredicto 360° activo · Entra ID + HP WXP</small>
+          </div>
           <div class="chat-cab-acciones">
             <button id="btnLimpiarChat" class="boton mini" title="Limpiar conversación">Limpiar</button>
             <button id="cerrarAsistente" class="cerrar" aria-label="Cerrar">×</button>
           </div>
         </header>
-        <div class="chat-chips">
+
+        <div id="chatMensajes" class="chat-mensajes" role="log" aria-live="polite"></div>
+
+        <div class="chat-chips" aria-label="Sugerencias rápidas">
           <button type="button" data-ai-chip="Contratos por vencer en 60 días">Contratos por vencer</button>
           <button type="button" data-ai-chip="Equipos disponibles">Equipos disponibles</button>
-          <button type="button" data-ai-chip="Auditar sede Calle 72">Auditar sede</button>
+          <button type="button" data-ai-chip="Discrepancias Microsoft 365">Discrepancias 365</button>
+          <button type="button" data-ai-chip="Equipos sin serial">Sin serial</button>
           <button type="button" data-ai-chip="Resumen ejecutivo">Resumen ejecutivo</button>
         </div>
-        <div id="chatMensajes" class="chat-mensajes"></div>
-        <form id="formChat" class="chat-form">
-          <input id="chatInput" placeholder="Pregunta u orden…" autocomplete="off" />
+
+        <form id="formChat" class="chat-form" autocomplete="off">
+          <input id="chatInput" type="text" placeholder="Pregunta u orden…" aria-label="Mensaje para el Asistente TI" />
           <button class="boton primario" type="submit">Enviar</button>
         </form>
       </section>

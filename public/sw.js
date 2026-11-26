@@ -1,5 +1,5 @@
 /* Levapan TI PWA — Network-First para estáticos, Network-Only para Supabase/Auth. */
-const CACHE = "levapan-ti-v6-entra-sync";
+const CACHE = "levapan-ti-v7-asistente-fix";
 const SHELL = ["./", "./index.html", "./css/styles.css", "./js/config.js", "./js/app.js", "./js/asistente-ti.js", "./manifest.json", "./assets/icon.svg", "./assets/logo.svg", "./assets/fondo.svg"];
 
 self.addEventListener("install", (event) => {
