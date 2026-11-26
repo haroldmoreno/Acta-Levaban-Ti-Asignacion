@@ -212,6 +212,40 @@
     return `Resumen real (${activos.length} activos)\nEstados: ${ordenar(porEstado)}\nSedes: ${ordenar(porSede)}\nSin responsable: ${sinResponsable} · Sin serial: ${sinSerial}`;
   }
 
+  function esPrimeraPersona(texto) {
+    return /que equipo tengo|que equipos tengo|mis equipos|mi computador|mi pc|cual es mi placa|cuál es mi placa|asignado a mi|mi equipo|yo tengo/.test(norm(texto));
+  }
+
+  async function consultarMisEquipos() {
+    const perfil = window.LevapanApp.ESTADO.perfil || {};
+    let email = "";
+    try {
+      const { data } = await sb.auth.getUser();
+      email = String(data?.user?.email || "").toLowerCase();
+    } catch { /* sesión local */ }
+
+    const nombre = String(perfil.nombre_completo || "").trim();
+    const referencias = [email, nombre].filter(Boolean).map(norm);
+    if (!referencias.length) return { titulo: "Mis equipos", filas: [] };
+
+    const activos = await cargarActivos();
+    const filas = activos.filter((e) => {
+      const valores = [e.responsable, e.correo, e.upn_usuario, e.nombre_usuario_entra, e.ultimo_usuario_hp]
+        .filter(Boolean)
+        .map(norm);
+      return referencias.some((referencia) =>
+        valores.some((valor) => valor.includes(referencia) || referencia.includes(valor))
+      );
+    });
+
+    return {
+      titulo: `Equipos asignados a ${nombre || email}`,
+      filas: filas.map((e) =>
+        `${escapar(e.placa)} · ${escapar(e.tipo_equipo || "—")} · ${escapar([e.marca, e.modelo].filter(Boolean).join(" ") || "—")} · ${escapar(e.serial || "—")} · ${escapar(e.sede || "—")}`
+      ),
+    };
+  }
+
   function esSaludo(q) {
     return /^(hola|buenos dias|buenas tardes|buenas noches|que tal|hey|saludos|gracias|muchas gracias|excelente|listo|quien eres|que puedes hacer|ayuda)/.test(q);
   }
@@ -242,6 +276,15 @@
     const espera = typing();
 
     try {
+      if (esPrimeraPersona(texto)) {
+        espera.remove();
+        const resultado = await consultarMisEquipos();
+        if (!resultado.filas.length) {
+          return burbuja(`No encontré equipos asignados a tu usuario (${window.LevapanApp.ESTADO.perfil?.nombre_completo || "sesión actual"}).`, "asistente");
+        }
+        return burbujaLista(resultado.titulo, resultado.filas);
+      }
+
       if (/discrepancia|microsoft 365|entra|veredicto|telemetria|telemetría/.test(q)) {
         espera.remove();
         const activos = await cargarActivos();
