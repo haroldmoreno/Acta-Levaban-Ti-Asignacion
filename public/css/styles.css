@@ -1026,3 +1026,128 @@ textarea { height: auto !important; }
 .marca-login span { display: none !important; }
 .acta-cabecera .eyebrow { color: #5c4b45; }
 
+/* ============================================================
+   COMPACTACIÓN EJECUTIVA · LIQUID GLASS ALTA DENSIDAD (v15)
+   ============================================================ */
+
+.app {
+  padding: 12px 16px !important;
+  gap: 12px !important;
+}
+
+.tarjeta,
+.acta-bloque,
+.barra-superior,
+.tabla-caja,
+.ficha-grupo,
+.metrica,
+.modal-caja,
+.panel-asistente,
+.acta-cabecera,
+.ws-top,
+.ws-seccion-barra {
+  padding: 14px 16px !important;
+  border-radius: 16px !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+}
+
+input,
+select {
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 6px 10px !important;
+  font-size: 13.5px !important;
+  border-radius: 10px !important;
+}
+textarea {
+  padding: 6px 10px !important;
+  font-size: 13.5px !important;
+  border-radius: 10px !important;
+}
+
+h1, h2, h3, .titulo-seccion, .cabecera-seccion h1, .cabecera-seccion h2 {
+  font-size: 15px !important;
+  margin-bottom: 8px !important;
+}
+
+label,
+.acta-campo > span:first-child,
+.form-seccion label,
+.ws-form label {
+  font-size: 10.5px !important;
+  margin-bottom: 3px !important;
+}
+
+.tabla-inventario th,
+.tabla-inventario td,
+.tabla th,
+.tabla td,
+.tabla-caja td,
+.tabla-caja th {
+  padding: 7px 10px !important;
+  font-size: 12.5px !important;
+  font-variant-numeric: tabular-nums !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* Sidebar compacta y desplegable */
+.app:not(.sidebar-collapsed) { grid-template-columns: 195px minmax(0, 1fr) !important; }
+.app:not(.sidebar-collapsed) .sidebar { width: 195px !important; }
+.app.sidebar-collapsed,
+.app.sidebar-collapsed .sidebar { width: 50px !important; }
+.app.sidebar-collapsed { grid-template-columns: 50px minmax(0, 1fr) !important; }
+.nav-item {
+  padding: 8px 10px !important;
+  font-size: 12.5px !important;
+  gap: 8px !important;
+}
+.nav-icono { font-size: 14px !important; }
+
+/* Acta compacta */
+.acta-form { gap: 10px !important; }
+.acta-bloque { gap: 10px !important; }
+.acta-bloque > .acta-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 10px !important; }
+.acta-bloque > .acta-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; gap: 6px !important; }
+.acta-grid-4 .check,
+.acta-grid-4 label { font-size: 12px !important; }
+
+/* Asistente compacto */
+.asistente-panel,
+#panelAsistente.asistente-panel {
+  width: min(380px, 92vw) !important;
+  height: min(520px, 74dvh) !important;
+  max-height: 74dvh !important;
+}
+.asistente-panel #chatMensajes,
+.asistente-panel .asistente-mensajes {
+  padding: 12px !important;
+  gap: 10px !important;
+  overflow-y: auto !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+.asistente-panel .burbuja-ai { margin-top: 0 !important; transform: none !important; }
+.asistente-panel.open ~ #btnAsistente,
+#asistente:has(.asistente-panel.open) #btnAsistente { display: none !important; }
+.asistente-panel #cerrarAsistente,
+.asistente-panel .chat-header .cerrar { color: #ffffff !important; }
+
+@media (max-width: 768px) {
+  .app:not(.sidebar-collapsed) { grid-template-columns: 150px minmax(0, 1fr) !important; }
+  .app:not(.sidebar-collapsed) .sidebar { width: 150px !important; }
+  .app.sidebar-collapsed,
+  .app.sidebar-collapsed .sidebar { width: 50px !important; }
+  .app.sidebar-collapsed { grid-template-columns: 50px minmax(0, 1fr) !important; }
+  input:focus,
+  select:focus,
+  textarea:focus { font-size: 16px !important; }
+  .app { padding: 8px !important; gap: 8px !important; }
+  .acta-bloque > .acta-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .acta-bloque > .acta-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+
