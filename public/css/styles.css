@@ -838,3 +838,88 @@ body[data-sesion="inactiva"] #app { display: none !important; }
   .sidebar-pie .boton { font-size: 10px !important; padding: 8px 6px !important; }
   .principal { flex: 1 1 auto !important; min-width: 0 !important; }
 }
+
+/* ============================================================
+   MICROSOFT 365 · SIDEBAR COLAPSABLE · ACTA DE TECNOLOGÍA
+   ============================================================ */
+
+.ms-logo { width: 18px; height: 18px; flex-shrink: 0; }
+.boton.microsoft { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+
+.sidebar-toggle {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px solid rgba(247,225,199,.45);
+  background: rgba(255,255,255,.12);
+  color: var(--blanco);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .3s ease, transform .3s ease;
+}
+.sidebar-toggle:hover { background: rgba(255,255,255,.25); transform: translateY(-2px); }
+.marca-sidebar { flex-direction: row; align-items: center; gap: 8px; }
+
+#app.sidebar-collapsed {
+  grid-template-columns: 58px minmax(0, 1fr) !important;
+}
+#app.sidebar-collapsed .sidebar {
+  width: 58px !important;
+  padding: 10px 6px !important;
+  align-items: center;
+}
+#app.sidebar-collapsed .marca-texto,
+#app.sidebar-collapsed .nav-texto,
+#app.sidebar-collapsed .sidebar-pie .boton { display: none !important; }
+#app.sidebar-collapsed .marca-sidebar { justify-content: center; padding: 4px 0 10px !important; }
+#app.sidebar-collapsed .nav-item { justify-content: center; padding: 10px 6px !important; }
+#app.sidebar-collapsed .nav-icono { font-size: 1.05rem !important; }
+#app.sidebar-collapsed .sidebar-toggle { transform: rotate(180deg); }
+
+.acta-cabecera {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 16px 20px; border-radius: 18px; border: 1px solid var(--borde);
+  background: rgba(255,255,255,.86); backdrop-filter: blur(18px); box-shadow: var(--sombra);
+}
+.acta-cabecera h1 { color: var(--vino); font-size: 1.45rem; margin: 4px 0 2px; }
+.acta-cabecera p { margin: 0; color: var(--gris); font-size: .82rem; }
+.acta-form { display: flex; flex-direction: column; gap: 14px; }
+.acta-bloque {
+  margin: 0; padding: 16px 18px; border-radius: 18px;
+  border: 1px solid rgba(162,125,84,.28);
+  background: rgba(255,255,255,.82); backdrop-filter: blur(18px) saturate(150%);
+  box-shadow: var(--sombra);
+}
+.acta-bloque > legend {
+  padding: 0 10px; font-weight: 800; font-size: .74rem; letter-spacing: .12em;
+  color: var(--vino); text-transform: uppercase;
+}
+.acta-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+.acta-grid-3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+.acta-grid-4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
+.acta-campo { display: flex; flex-direction: column; gap: 5px; min-width: 0; position: relative; }
+.acta-campo > span:first-child { font-size: .68rem; font-weight: 700; color: var(--gris); text-transform: uppercase; letter-spacing: .05em; }
+.acta-campo .ayuda { font-size: .66rem; color: #6b6b6b; }
+.acta-campo .ancho { grid-column: 1 / -1; }
+.estado-pill { display: inline-flex; align-items: center; min-height: 42px; padding: 8px 12px; border-radius: 11px; background: rgba(247,225,199,.5); border: 1px solid rgba(162,125,84,.3); font-weight: 800; font-size: .82rem; }
+.acta-tipo { display: flex; align-items: center; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
+.acta-tipo > span { font-size: .7rem; font-weight: 800; letter-spacing: .1em; color: var(--vino); }
+.placa-sugerencias {
+  position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px);
+  max-height: 240px; overflow-y: auto; border-radius: 12px;
+  border: 1px solid rgba(162,125,84,.4); background: #fff;
+  box-shadow: 0 16px 40px rgba(0,0,0,.18);
+}
+.placa-sugerencias[hidden] { display: none !important; }
+.placa-sugerencias button {
+  display: block; width: 100%; padding: 9px 12px; border: 0; border-bottom: 1px solid rgba(162,125,84,.15);
+  background: transparent; color: var(--tinta); text-align: left; font: inherit; font-size: .78rem; cursor: pointer;
+}
+.placa-sugerencias button:hover { background: rgba(139,30,36,.08); }
+@media (max-width: 768px) {
+  .acta-grid, .acta-grid-3, .acta-grid-4 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}

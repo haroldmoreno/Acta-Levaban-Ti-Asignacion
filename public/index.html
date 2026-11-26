@@ -46,6 +46,12 @@
         <p id="loginError" class="error" role="alert" hidden></p>
         <button id="btnLogin" type="submit" class="boton primario">Ingresar</button>
         <button id="btnMicrosoft" type="button" class="boton microsoft">
+          <svg class="ms-logo" viewBox="0 0 23 23" aria-hidden="true" focusable="false">
+            <rect x="1" y="1" width="10" height="10" fill="#F25022" />
+            <rect x="12" y="1" width="10" height="10" fill="#7FBA00" />
+            <rect x="1" y="12" width="10" height="10" fill="#00A4EF" />
+            <rect x="12" y="12" width="10" height="10" fill="#FFB900" />
+          </svg>
           Continuar con Microsoft 365 (@levapan.com)
         </button>
         <p class="nota">Solo personal autorizado de Tecnología e Infraestructura.</p>
@@ -84,19 +90,20 @@
     <main id="app" class="app" hidden>
       <aside id="sidebar" class="sidebar">
         <div class="marca-sidebar">
-          <div>
+          <button id="btnToggleSidebar" class="sidebar-toggle" type="button" title="Contraer menú" aria-label="Contraer menú">≡</button>
+          <div class="marca-texto">
             <strong>LEVAPAN</strong>
             <span>Arquitectura Inversa de TI</span>
           </div>
         </div>
         <nav class="nav" aria-label="Módulos">
-          <button class="nav-item activo" data-vista="sistemas"><span>◈</span> Ecosistemas de TI</button>
-          <button class="nav-item" data-vista="placas"><span>⬡</span> Placas & QR</button>
-          <button class="nav-item" data-vista="equipos"><span>▤</span> Equipos</button>
-          <button class="nav-item" data-vista="contratos"><span>◷</span> Contratos y Garantías</button>
-          <button class="nav-item" data-vista="acta"><span>▣</span> Acta de Asignación</button>
-          <button class="nav-item" data-vista="boveda"><span>◫</span> Bóveda PDF</button>
-          <button class="nav-item" data-vista="admin" data-admin hidden><span>⚙</span> Administración TI</button>
+          <button class="nav-item activo" data-vista="sistemas"><span class="nav-icono">◈</span><span class="nav-texto">Ecosistemas de TI</span></button>
+          <button class="nav-item" data-vista="placas"><span class="nav-icono">⬡</span><span class="nav-texto">Placas & QR</span></button>
+          <button class="nav-item" data-vista="equipos"><span class="nav-icono">▤</span><span class="nav-texto">Equipos</span></button>
+          <button class="nav-item" data-vista="contratos"><span class="nav-icono">◷</span><span class="nav-texto">Contratos y Garantías</span></button>
+          <button class="nav-item" data-vista="acta"><span class="nav-icono">▣</span><span class="nav-texto">Acta de Asignación</span></button>
+          <button class="nav-item" data-vista="boveda"><span class="nav-icono">◫</span><span class="nav-texto">Bóveda PDF</span></button>
+          <button class="nav-item" data-vista="admin" data-admin hidden><span class="nav-icono">⚙</span><span class="nav-texto">Administración TI</span></button>
         </nav>
         <div class="sidebar-pie">
           <button id="btnInstalar" class="boton instalar" hidden>Instalar App en Equipo</button>
@@ -179,6 +186,152 @@
               </select>
             </div>
             <div id="listaContratos" class="tabla-caja"></div>
+          </section>
+
+          <!-- ACTA DE TECNOLOGÍA -->
+          <section id="vista-acta" class="vista" hidden>
+            <div class="acta-cabecera">
+              <div>
+                <span class="eyebrow">LEVAPAN · GESTIÓN DE ACTIVOS DE TI</span>
+                <h1>Acta de Tecnología</h1>
+                <p>Registro oficial de entrega, devolución y préstamo de equipos de tecnología.</p>
+              </div>
+              <span id="estadoActa" class="pildora">SUPABASE EN VIVO</span>
+            </div>
+
+            <form id="formActa" class="acta-form">
+              <input type="hidden" id="documentoTiAutofill" />
+              <input type="hidden" id="actaEquipoId" />
+
+              <fieldset class="acta-bloque">
+                <legend>| DATOS PERSONALES</legend>
+                <div class="acta-grid">
+                  <label class="acta-campo">
+                    <span>Nombre completo</span>
+                    <input type="text" id="actaNombre" list="listaNombresActa" placeholder="Nombre y apellidos" autocomplete="off" />
+                    <datalist id="listaNombresActa"></datalist>
+                  </label>
+                  <label class="acta-campo">
+                    <span>CC / TI</span>
+                    <input type="text" id="actaDocumento" placeholder="Número de documento" inputmode="numeric" />
+                  </label>
+                  <label class="acta-campo">
+                    <span>Nombre del Agente TI</span>
+                    <input type="text" id="actaAgenteTi" list="listaAgentesTi" placeholder="Harold Adrián Hurtado Moreno" autocomplete="off" />
+                    <datalist id="listaAgentesTi"></datalist>
+                  </label>
+                  <label class="acta-campo">
+                    <span>Cédula TI</span>
+                    <input type="text" id="actaDocumentoTi" inputmode="numeric" placeholder="Número de cédula del Agente TI" />
+                    <small class="ayuda">Se recuerda para la próxima acta de este Agente TI.</small>
+                  </label>
+                  <label class="acta-campo">
+                    <span>Ciudad / Sede</span>
+                    <input type="text" id="actaSede" placeholder="Sede para la constancia de firma" />
+                  </label>
+                </div>
+              </fieldset>
+
+              <fieldset class="acta-bloque">
+                <legend>| CARACTERÍSTICAS DEL EQUIPO</legend>
+                <div class="acta-grid acta-grid-3">
+                  <label class="acta-campo"><span>Tipo</span><input type="text" id="actaTipoEquipo" /></label>
+                  <label class="acta-campo"><span>Marca</span><input type="text" id="actaMarca" /></label>
+                  <label class="acta-campo"><span>Modelo</span><input type="text" id="actaModelo" /></label>
+                </div>
+                <div class="acta-grid acta-grid-3">
+                  <label class="acta-campo"><span>Serial</span><input type="text" id="actaSerial" /></label>
+                  <label class="acta-campo acta-campo-placa">
+                    <span>Placa</span>
+                    <input type="text" id="actaPlaca" placeholder="Ej. 199865 o ML-199865" autocomplete="off" />
+                    <div id="placaSugerencias" class="placa-sugerencias" role="listbox" hidden></div>
+                    <small class="ayuda">Escribe al menos 2 caracteres (ej. 199865 o ML-199865) para buscar en el inventario.</small>
+                  </label>
+                  <label class="acta-campo"><span>Estado</span><span id="actaEstadoPill" class="estado-pill">—</span></label>
+                </div>
+                <div class="acta-tipo">
+                  <span>TIPO DE ACTA</span>
+                  <label class="check"><input type="radio" name="tipoActa" value="Asignación" checked /> Asignación</label>
+                  <label class="check"><input type="radio" name="tipoActa" value="Devolución" /> Devolución</label>
+                </div>
+              </fieldset>
+
+              <fieldset class="acta-bloque">
+                <legend>| ACCESORIOS</legend>
+                <div class="acta-grid acta-grid-4">
+                  <label class="check"><input type="checkbox" data-accesorio="Cargador" checked /> Cargador</label>
+                  <label class="check"><input type="checkbox" data-accesorio="Forro" /> Forro</label>
+                  <label class="check"><input type="checkbox" data-accesorio="Mouse" /> Mouse</label>
+                  <label class="check"><input type="checkbox" data-accesorio="Base Refrigerante" /> Base Refrigerante</label>
+                  <label class="check"><input type="checkbox" data-accesorio="Teclado" /> Teclado</label>
+                  <label class="check"><input type="checkbox" data-accesorio="Base Soporte" /> Base Soporte</label>
+                  <label class="check"><input type="checkbox" data-accesorio="Morral" /> Morral</label>
+                  <label class="check"><input type="checkbox" data-accesorio="Multipuerto USB" /> Multipuerto USB</label>
+                  <label class="check"><input type="checkbox" data-accesorio="Adaptador" /> Adaptador</label>
+                  <label class="check"><input type="checkbox" data-accesorio="Base" /> Base</label>
+                  <label class="check"><input type="checkbox" data-accesorio="Guaya" /> Guaya</label>
+                  <label class="check"><input type="checkbox" data-accesorio="Otro" id="actaOtroAccesorioChk" /> Otro</label>
+                  <input type="text" id="actaOtroAccesorio" class="ancho" placeholder="¿Cuál otro accesorio?" />
+                </div>
+              </fieldset>
+
+              <fieldset class="acta-bloque">
+                <legend>| SOFTWARE INSTALADO</legend>
+                <div class="acta-grid acta-grid-4">
+                  <label class="check"><input type="checkbox" data-software="Microsoft Office" checked /> Microsoft Office</label>
+                  <label class="check"><input type="checkbox" data-software="WinRAR" checked /> WinRAR</label>
+                  <label class="check"><input type="checkbox" data-software="7zip" checked /> 7zip</label>
+                  <label class="check"><input type="checkbox" data-software="Antivirus" checked /> Antivirus</label>
+                  <label class="check"><input type="checkbox" data-software="Adobe Reader" checked /> Adobe Reader</label>
+                  <label class="check"><input type="checkbox" data-software="VPN" /> VPN</label>
+                  <label class="check"><input type="checkbox" data-software="Impresora" checked /> Impresora</label>
+                  <label class="check"><input type="checkbox" data-software="Foxit Reader" /> Foxit Reader</label>
+                  <label class="check"><input type="checkbox" data-software="Team Viewer" checked /> Team Viewer</label>
+                  <label class="check"><input type="checkbox" data-software="Softphone" /> Softphone</label>
+                  <label class="check"><input type="checkbox" data-software="SAP GUI" checked /> SAP GUI</label>
+                  <label class="check"><input type="checkbox" data-software="Sofsin" /> Sofsin</label>
+                  <label class="check"><input type="checkbox" data-software="Google Chrome" checked /> Google Chrome</label>
+                  <label class="check"><input type="checkbox" data-software="Adobe Creative Cloud" checked /> Adobe Creative Cloud</label>
+                  <label class="check"><input type="checkbox" data-software="Otro" id="actaOtroSoftwareChk" /> Otro</label>
+                  <input type="text" id="actaOtroSoftware" class="ancho" placeholder="¿Cuál otro programa?" />
+                </div>
+              </fieldset>
+
+              <fieldset class="acta-bloque">
+                <legend>| REGISTRO FOTOGRÁFICO</legend>
+                <div class="acta-grid acta-grid-3">
+                  <label class="acta-campo"><span>Equipo encendido</span><input type="file" id="fotoEncendido" accept="image/png,image/jpeg,image/webp" /></label>
+                  <label class="acta-campo"><span>Frontal</span><input type="file" id="fotoFrontal" accept="image/png,image/jpeg,image/webp" /></label>
+                  <label class="acta-campo"><span>Posterior</span><input type="file" id="fotoPosterior" accept="image/png,image/jpeg,image/webp" /></label>
+                </div>
+              </fieldset>
+
+              <fieldset class="acta-bloque">
+                <legend>| OBSERVACIONES</legend>
+                <textarea id="actaObs" rows="4" placeholder="Comentarios finales sobre el equipo, el estado o la entrega..."></textarea>
+              </fieldset>
+
+              <fieldset class="acta-bloque">
+                <legend>| FIRMAS</legend>
+                <div class="firmas-bloque">
+                  <div class="firma-caja">
+                    <span>COLABORADOR</span>
+                    <canvas id="firmaColaborador" width="900" height="260"></canvas>
+                    <button type="button" class="boton mini" data-limpiar-firma="firmaColaborador">Limpiar firma</button>
+                  </div>
+                  <div class="firma-caja">
+                    <span>AGENTE TI · <b id="firmaTecnicoNombre"></b></span>
+                    <canvas id="firmaTecnico" width="900" height="260"></canvas>
+                    <button type="button" class="boton mini" data-limpiar-firma="firmaTecnico">Limpiar firma</button>
+                  </div>
+                </div>
+              </fieldset>
+
+              <div class="form-pie">
+                <button type="submit" class="boton primario">Generar acta PDF CORP-TEC-FR-002</button>
+                <button type="button" class="boton" id="btnLimpiarActa">Limpiar</button>
+              </div>
+            </form>
           </section>
 
           <!-- BÓVEDA -->
@@ -296,85 +449,6 @@
           <div class="form-pie">
             <button type="button" class="boton" data-cerrar="modalSistema">Cancelar</button>
             <button type="submit" class="boton primario">Guardar</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- MODAL ACTA -->
-    <div id="modalActa" class="modal" hidden>
-      <div class="modal-caja">
-        <header><h2>Acta CORP-TEC-FR-002</h2><button class="cerrar" data-cerrar="modalActa">×</button></header>
-        <form id="formActa" class="formulario">
-          <input type="hidden" id="documentoTiAutofill" />
-          <label>Placa *<input id="actaPlaca" required /></label>
-          <label>Colaborador *<input id="actaColaborador" required /></label>
-          <label>Cédula *<input id="actaCedula" required /></label>
-          <label>Sede<input id="actaSede" /></label>
-          <label>Tipo<select id="actaTipo"><option>ASIGNACIÓN</option><option>DEVOLUCIÓN</option></select></label>
-          <label class="ancho">Observaciones<textarea id="actaObs" rows="3"></textarea></label>
-
-          <fieldset class="acta-opciones">
-            <legend>Accesorios entregados</legend>
-            <div class="opciones-grid">
-              <label class="check"><input type="checkbox" data-accesorio="Cargador" checked /> Cargador</label>
-              <label class="check"><input type="checkbox" data-accesorio="Mouse" /> Mouse</label>
-              <label class="check"><input type="checkbox" data-accesorio="Teclado" /> Teclado</label>
-              <label class="check"><input type="checkbox" data-accesorio="Morral" /> Morral</label>
-              <label class="check"><input type="checkbox" data-accesorio="Forro" /> Forro</label>
-              <label class="check"><input type="checkbox" data-accesorio="Base Refrigerante" /> Base Refrigerante</label>
-              <label class="check"><input type="checkbox" data-accesorio="Base Soporte" /> Base Soporte</label>
-              <label class="check"><input type="checkbox" data-accesorio="Multipuerto USB" /> Multipuerto USB</label>
-              <label class="check ancho"><input type="checkbox" data-accesorio="Otro" /> Otro (detallar)<input type="text" id="actaOtroAccesorio" placeholder="¿Cuál otro accesorio?" /></label>
-            </div>
-          </fieldset>
-
-          <fieldset class="acta-opciones">
-            <legend>Software instalado</legend>
-            <div class="opciones-grid">
-              <label class="check"><input type="checkbox" data-software="Microsoft Office" checked /> Microsoft Office</label>
-              <label class="check"><input type="checkbox" data-software="Antivirus" checked /> Antivirus</label>
-              <label class="check"><input type="checkbox" data-software="Google Chrome" checked /> Google Chrome</label>
-              <label class="check"><input type="checkbox" data-software="VPN" checked /> VPN</label>
-              <label class="check"><input type="checkbox" data-software="Adobe Reader" checked /> Adobe Reader</label>
-              <label class="check"><input type="checkbox" data-software="WinRAR" checked /> WinRAR</label>
-              <label class="check"><input type="checkbox" data-software="7zip" checked /> 7zip</label>
-              <label class="check"><input type="checkbox" data-software="Impresora" checked /> Impresora</label>
-              <label class="check"><input type="checkbox" data-software="Team Viewer" checked /> Team Viewer</label>
-              <label class="check"><input type="checkbox" data-software="SAP GUI" checked /> SAP GUI</label>
-              <label class="check"><input type="checkbox" data-software="Adobe Creative Cloud" checked /> Adobe Creative Cloud</label>
-              <label class="check"><input type="checkbox" data-software="Softphone" /> Softphone</label>
-              <label class="check"><input type="checkbox" data-software="Foxit Reader" /> Foxit Reader</label>
-              <label class="check"><input type="checkbox" data-software="Sofsin" /> Sofsin</label>
-              <label class="check ancho"><input type="checkbox" data-software="Otro" /> Otro (detallar)<input type="text" id="actaOtroSoftware" placeholder="¿Cuál otro programa?" /></label>
-            </div>
-          </fieldset>
-
-          <fieldset class="acta-opciones">
-            <legend>Registro fotográfico (página 2)</legend>
-            <div class="opciones-grid">
-              <label>Equipo encendido<input type="file" id="fotoEncendido" accept="image/png,image/jpeg,image/webp" /></label>
-              <label>Frontal<input type="file" id="fotoFrontal" accept="image/png,image/jpeg,image/webp" /></label>
-              <label>Posterior<input type="file" id="fotoPosterior" accept="image/png,image/jpeg,image/webp" /></label>
-            </div>
-          </fieldset>
-
-          <fieldset class="firmas-bloque">
-            <legend>Firmas digitales (táctil o mouse)</legend>
-            <div class="firma-caja">
-              <span>Firma del colaborador / responsable</span>
-              <canvas id="firmaColaborador" width="900" height="260"></canvas>
-              <button type="button" class="boton mini" data-limpiar-firma="firmaColaborador">Limpiar firma</button>
-            </div>
-            <div class="firma-caja">
-              <span>Firma del técnico TI · <b id="firmaTecnicoNombre"></b></span>
-              <canvas id="firmaTecnico" width="900" height="260"></canvas>
-              <button type="button" class="boton mini" data-limpiar-firma="firmaTecnico">Limpiar firma</button>
-            </div>
-          </fieldset>
-          <div class="form-pie">
-            <button type="button" class="boton" data-cerrar="modalActa">Cancelar</button>
-            <button type="submit" class="boton primario">Generar y subir PDF</button>
           </div>
         </form>
       </div>

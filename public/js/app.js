@@ -361,7 +361,6 @@
     if (vista === "placas") cargarPlacas();
     if (vista === "boveda") cargarBoveda();
     if (vista === "admin") cargarUsuarios();
-    if (vista === "acta") abrirActa(null, "ASIGNACIÓN");
   }
 
   /* ---------------- Ecosistemas ---------------- */
@@ -648,20 +647,37 @@
     });
   }
 
-  async function abrirActa(equipo, tipo) {
-    const ficha = equipo || (await datosActaPorPlaca(byId("actaPlaca")?.value));
-    byId("actaPlaca").value = ficha?.placa || "";
-    byId("actaColaborador").value = ficha?.responsable || ficha?.usuario_asignado || "";
-    byId("actaCedula").value = ficha?.cedula || ficha?.usuario_cedula || "";
-    byId("actaSede").value = ficha?.sede || "";
-    byId("actaTipo").value = tipo || "ASIGNACIÓN";
-    byId("actaObs").value = ficha?.bitacora || "";
+  async function llenarFormActa(ficha, tipo) {
+    const poner = (id, valor) => {
+      const campo = byId(id);
+      if (campo) campo.value = valor ?? "";
+    };
+    poner("actaEquipoId", ficha?.id);
+    poner("actaPlaca", ficha?.placa);
+    poner("actaNombre", ficha?.responsable || ficha?.usuario_asignado || "");
+    poner("actaDocumento", ficha?.cedula || ficha?.usuario_cedula || "");
+    poner("actaSede", ficha?.sede || "");
+    poner("actaTipoEquipo", ficha?.tipo_equipo || ficha?.tipo);
+    poner("actaMarca", ficha?.marca);
+    poner("actaModelo", ficha?.modelo);
+    poner("actaSerial", ficha?.serial);
+    poner("actaObs", ficha?.bitacora || "");
+
+    const pill = byId("actaEstadoPill");
+    if (pill) pill.textContent = ficha?.estado || "—";
+
+    const tipoActa = (tipo || "Asignación").toLowerCase().startsWith("dev") ? "Devolución" : "Asignación";
+    document.querySelectorAll('input[name="tipoActa"]').forEach((radio) => {
+      radio.checked = radio.value === tipoActa;
+    });
+
+    const agente = ESTADO.perfil?.nombre_completo || localStorage.getItem("levapan_agente_ti_nombre") || "";
+    poner("actaAgenteTi", agente);
+    const cedulaTi = await documentoAgenteTi();
+    poner("actaDocumentoTi", cedulaTi || localStorage.getItem("levapan_agente_ti_cedula") || "");
 
     const tecnico = byId("firmaTecnicoNombre");
-    if (tecnico) tecnico.textContent = ESTADO.perfil?.nombre_completo || "Técnico TI";
-    const documento = byId("documentoTiAutofill");
-    if (documento) documento.value = await documentoAgenteTi();
-
+    if (tecnico) tecnico.textContent = agente || "Agente TI";
     instalarFirmas();
     limpiarFirma("firmaColaborador");
     limpiarFirma("firmaTecnico");
@@ -669,20 +685,40 @@
       const campo = byId(id);
       if (campo) campo.value = "";
     });
-    byId("modalActa").hidden = false;
+    byId("placaSugerencias").hidden = true;
+  }
+
+  async function abrirActa(equipo, tipo) {
+    const ficha = equipo || (await datosActaPorPlaca(byId("actaPlaca")?.value));
+    ESTADO.actaEquipo = ficha || null;
+    ESTADO.actaTipo = tipo || "Asignación";
+    await llenarFormActa(ficha, ESTADO.actaTipo);
+    irAVista("acta");
   }
 
   async function guardarActa(evento) {
     evento.preventDefault();
     const placa = byId("actaPlaca").value.trim();
-    const { data: equipo } = await sb.from("equipos").select("*").eq("placa", placa).maybeSingle();
+    if (!placa) return alert("Indica la placa del equipo");
+
+    let equipo = ESTADO.actaEquipo;
+    if (!equipo || equipo.placa !== placa) {
+      const { data } = await sb.from("equipos").select("*").eq("placa", placa).maybeSingle();
+      equipo = data;
+    }
     if (!equipo) return alert("No se encontró la placa");
 
-    const tipo = byId("actaTipo").value;
-    const responsable = byId("actaColaborador").value.trim();
-    const cedula = byId("actaCedula").value.trim();
+    const tipo = document.querySelector('input[name="tipoActa"]:checked')?.value || "Asignación";
+    const esDevolucion = tipo.toLowerCase().startsWith("dev");
+    const responsable = byId("actaNombre").value.trim();
+    const cedula = byId("actaDocumento").value.trim();
     const sede = byId("actaSede").value.trim();
     const observaciones = byId("actaObs").value.trim();
+    const agenteTi = byId("actaAgenteTi").value.trim();
+    const documentoTi = byId("actaDocumentoTi").value.trim();
+
+    if (documentoTi) localStorage.setItem("levapan_agente_ti_cedula", documentoTi);
+    if (agenteTi) localStorage.setItem("levapan_agente_ti_nombre", agenteTi);
 
     const accesorios = [...document.querySelectorAll("[data-accesorio]")]
       .filter((casilla) => casilla.checked)
@@ -703,28 +739,38 @@
     };
 
     const cambios = {
-      responsable: tipo === "DEVOLUCIÓN" ? null : responsable,
-      cedula: tipo === "DEVOLUCIÓN" ? null : cedula,
+      responsable: esDevolucion ? null : responsable,
+      cedula: esDevolucion ? null : cedula,
       sede: sede || null,
-      estado: tipo === "DEVOLUCIÓN" ? "DISPONIBLE" : "ASIGNADO",
-      modificado_por: ESTADO.perfil?.nombre_completo || "sistema",
+      estado: esDevolucion ? "DISPONIBLE" : "ASIGNADO",
+      modificado_por: agenteTi || ESTADO.perfil?.nombre_completo || "sistema",
     };
     const { data: actualizado, error } = await sb.from("equipos").update(cambios).eq("id", equipo.id).select().single();
     if (error) return alert(error.message);
 
     const url = await generarYSubirActa(
-      { ...actualizado, nombre: responsable, documento: cedula, agenteTi: ESTADO.perfil?.nombre_completo, documentoTi: byId("documentoTiAutofill")?.value, tipoActa: tipo },
+      {
+        ...actualizado,
+        nombre: responsable,
+        documento: cedula,
+        agenteTi,
+        documentoTi,
+        tipoActa: tipo,
+      },
       fotos,
       datosFirmas(),
       { accesorios, software, observaciones, sede }
     );
-    await registrarHistorial(equipo, tipo, `Acta CORP-TEC-FR-002 · ${placa} · ${responsable || "devolución"}`, {
+
+    await registrarHistorial(equipo, tipo.toUpperCase(), `Acta CORP-TEC-FR-002 · ${placa} · ${responsable || "devolución"}`, {
       responsable_anterior: equipo.responsable,
       responsable_nuevo: cambios.responsable,
       sede_nueva: sede,
       acta_pdf_url: url,
     });
-    byId("modalActa").hidden = true;
+
+    ESTADO.actaEquipo = actualizado;
+    alert("Acta CORP-TEC-FR-002 generada y archivada en la Bóveda PDF.");
     cargarEquipos();
   }
 
@@ -1560,10 +1606,34 @@
 
     byId("btnSalir").addEventListener("click", cerrarSesion);
 
-    document.querySelectorAll(".nav-item").forEach((b) => b.addEventListener("click", () => {
-      irAVista(b.dataset.vista);
-      cerrarDrawer();
-    }));
+    document.querySelectorAll(".nav-item").forEach((b) => {
+      b.title = b.querySelector(".nav-texto")?.textContent?.trim() || b.textContent.trim();
+      b.addEventListener("click", () => {
+        irAVista(b.dataset.vista);
+        cerrarDrawer();
+      });
+    });
+
+    const alternarSidebar = () => {
+      const app = byId("app");
+      const colapsado = app.classList.toggle("sidebar-collapsed");
+      localStorage.setItem("levapan_sidebar_collapsed", colapsado ? "1" : "0");
+      const boton = byId("btnToggleSidebar");
+      if (boton) {
+        boton.title = colapsado ? "Expandir menú" : "Contraer menú";
+        boton.setAttribute("aria-label", boton.title);
+      }
+      setTimeout(posicionarIndicador, 100);
+    };
+    byId("btnToggleSidebar")?.addEventListener("click", alternarSidebar);
+    if (localStorage.getItem("levapan_sidebar_collapsed") === "1") {
+      byId("app")?.classList.add("sidebar-collapsed");
+      const boton = byId("btnToggleSidebar");
+      if (boton) {
+        boton.title = "Expandir menú";
+        boton.setAttribute("aria-label", boton.title);
+      }
+    }
 
     byId("btnMenuMovil")?.addEventListener("click", (evento) => {
       evento.stopPropagation();
@@ -1577,14 +1647,97 @@
     byId("formEquipo").addEventListener("submit", guardarEquipo);
     byId("formActa").addEventListener("submit", guardarActa);
 
-    let temporizadorActa = null;
-    ["actaPlaca", "actaColaborador"].forEach((id) => {
-      byId(id)?.addEventListener("input", (evento) => {
-        clearTimeout(temporizadorActa);
-        const campo = id;
-        const valor = evento.target.value;
-        temporizadorActa = setTimeout(() => autocompletarActaDesde(campo, valor), 350);
-      });
+    let temporizadorPlacaActa = null;
+    let temporizadorNombreActa = null;
+
+    byId("actaPlaca")?.addEventListener("input", (evento) => {
+      clearTimeout(temporizadorPlacaActa);
+      const texto = evento.target.value.trim();
+      const caja = byId("placaSugerencias");
+      if (texto.length < 2) {
+        if (caja) caja.hidden = true;
+        return;
+      }
+      temporizadorPlacaActa = setTimeout(async () => {
+        const filtros = `placa.ilike.%${texto}%,serial.ilike.%${texto}%,responsable.ilike.%${texto}%,nombre_red.ilike.%${texto}%`;
+        let resultados = [];
+        try {
+          const { data } = await sb.from("vista_veredicto_360").select("*").or(filtros).limit(8);
+          resultados = data || [];
+        } catch {
+          const { data } = await sb.from("equipos").select("*").or(filtros).limit(8);
+          resultados = data || [];
+        }
+        if (!caja) return;
+        if (!resultados.length) {
+          caja.innerHTML = '<button type="button" disabled>Sin coincidencias</button>';
+          caja.hidden = false;
+          return;
+        }
+        caja.innerHTML = resultados
+          .map(
+            (e) =>
+              `<button type="button" data-sugerencia-placa="${escapar(e.id)}">` +
+              `<strong>${escapar(e.placa)}</strong> · ${escapar(e.serial || "—")} · ` +
+              `${escapar(e.responsable || e.usuario_asignado || "—")} · ${escapar(e.sede || "—")}</button>`
+          )
+          .join("");
+        caja.hidden = false;
+      }, 300);
+    });
+
+    byId("actaNombre")?.addEventListener("input", (evento) => {
+      clearTimeout(temporizadorNombreActa);
+      const texto = evento.target.value.trim();
+      if (texto.length < 2) return;
+      temporizadorNombreActa = setTimeout(async () => {
+        const lista = byId("listaNombresActa");
+        if (!lista) return;
+        try {
+          const { data } = await sb
+            .from("vista_veredicto_360")
+            .select("responsable")
+            .ilike("responsable", `%${texto}%`)
+            .limit(8);
+          const nombres = [...new Set((data || []).map((f) => f.responsable).filter(Boolean))];
+          const { data: usuarios } = await sb
+            .from("usuarios_corporativos")
+            .select("nombre_completo, email")
+            .or(`nombre_completo.ilike.%${texto}%,email.ilike.%${texto}%`)
+            .limit(8);
+          const extras = (usuarios || []).map((u) => u.nombre_completo).filter(Boolean);
+          const todos = [...new Set([...nombres, ...extras])];
+          lista.innerHTML = todos.map((nombre) => `<option value="${escapar(nombre)}"></option>`).join("");
+        } catch {
+          /* sin sugerencias */
+        }
+      }, 320);
+    });
+
+    byId("btnLimpiarActa")?.addEventListener("click", () => llenarFormActa(null, "Asignación"));
+
+    document.addEventListener("click", async (evento) => {
+      const sugerencia = evento.target.closest("[data-sugerencia-placa]");
+      if (sugerencia) {
+        const id = sugerencia.dataset.sugerenciaPlaca;
+        let ficha = null;
+        try {
+          const { data } = await sb.from("vista_veredicto_360").select("*").eq("id", id).maybeSingle();
+          ficha = data;
+        } catch {
+          const { data } = await sb.from("equipos").select("*").eq("id", id).maybeSingle();
+          ficha = data;
+        }
+        if (ficha) {
+          ESTADO.actaEquipo = ficha;
+          await llenarFormActa(ficha, "Asignación");
+        }
+        return;
+      }
+      if (evento.target && !evento.target.closest(".acta-campo-placa")) {
+        const caja = byId("placaSugerencias");
+        if (caja) caja.hidden = true;
+      }
     });
 
     document.addEventListener("click", (evento) => {
