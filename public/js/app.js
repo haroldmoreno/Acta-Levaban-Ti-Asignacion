@@ -5,7 +5,12 @@
   const CFG = window.LEVAPAN_CONFIG;
   const byId = (id) => document.getElementById(id);
   const sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+    auth: {
+      flowType: "pkce",
+      detectSessionInUrl: true,
+      persistSession: true,
+      autoRefreshToken: true,
+    },
   });
 
   const ESTADO = {
@@ -21,6 +26,7 @@
     placas: "Placas & QR",
     equipos: "Equipos",
     contratos: "Contratos y Garantías",
+    acta: "Acta de Asignación",
     boveda: "Bóveda PDF",
     admin: "Administración TI",
   };
@@ -163,7 +169,7 @@
   async function iniciarMicrosoft() {
     const { error } = await sb.auth.signInWithOAuth({
       provider: "azure",
-      options: { scopes: "openid profile email User.Read", redirectTo: window.location.origin },
+      options: { scopes: "openid profile email", redirectTo: window.location.origin + "/" },
     });
     if (error) throw error;
   }
@@ -355,6 +361,7 @@
     if (vista === "placas") cargarPlacas();
     if (vista === "boveda") cargarBoveda();
     if (vista === "admin") cargarUsuarios();
+    if (vista === "acta") abrirActa(null, "ASIGNACIÓN");
   }
 
   /* ---------------- Ecosistemas ---------------- */
@@ -1675,12 +1682,17 @@
 
   async function iniciar() {
     instalarEventos();
-    try { await cargarSesion(); }
-    catch (err) {
-      const error = byId("loginError");
-      error.textContent = err.message;
-      error.hidden = false;
+
+    const parametros = new URLSearchParams(window.location.search);
+    const errorEntra = parametros.get("error_description") || parametros.get("error");
+    if (errorEntra) {
+      const aviso = byId("loginError");
+      if (aviso) {
+        aviso.textContent = `Microsoft 365: ${decodeURIComponent(errorEntra)}`;
+        aviso.hidden = false;
+      }
     }
+
     sb.auth.onAuthStateChange((evento, sesion) => {
       if (sesion?.user && ["SIGNED_IN", "INITIAL_SESSION", "TOKEN_REFRESHED"].includes(evento)) {
         ocultarLogin();
@@ -1699,6 +1711,35 @@
         if (evento === "SIGNED_OUT") mostrarLogin();
       });
     });
+
+    const vieneDeOAuth =
+      parametros.has("code") ||
+      window.location.hash.includes("access_token") ||
+      Boolean(errorEntra);
+
+    if (vieneDeOAuth) {
+      for (let intento = 0; intento < 40; intento += 1) {
+        const { data } = await sb.auth.getSession();
+        if (data?.session?.user) {
+          await cargarSesion(data.session, "SIGNED_IN");
+          limpiarParametrosOAuth();
+          return;
+        }
+        await new Promise((resolver) => setTimeout(resolver, 250));
+      }
+      mostrarLogin();
+      return;
+    }
+
+    try {
+      await cargarSesion();
+    } catch (err) {
+      const error = byId("loginError");
+      if (error) {
+        error.textContent = err.message;
+        error.hidden = false;
+      }
+    }
   }
 
   window.LevapanApp = { sb, ESTADO, cargarTodos, irAVista, abrirModalEquipo, mostrarFichaPlaca, abrirActa, generarYSubirActa, registrarHistorial, ORDEN_MAESTRO };

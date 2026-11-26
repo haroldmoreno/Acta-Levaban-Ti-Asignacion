@@ -1,5 +1,5 @@
 /* Levapan TI PWA — Network-First para estáticos, Network-Only para Supabase/Auth. */
-const CACHE = "levapan-ti-v11-acta-oficial";
+const CACHE = "levapan-ti-v11-m365-vertical";
 const SHELL = ["./", "./index.html", "./css/styles.css", "./js/config.js", "./js/app.js", "./js/asistente-ti.js", "./js/acta-pdf.js", "./template.pdf", "./manifest.json", "./assets/icon.svg", "./assets/logo.svg", "./assets/fondo.svg"];
 
 self.addEventListener("install", (event) => {
@@ -17,8 +17,18 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
 
-  // Nunca cachear Supabase ni autenticación.
-  if (url.hostname.endsWith("supabase.co") || url.pathname.includes("/auth/") || url.pathname.startsWith("/api/")) return;
+  // OAuth / Supabase / Microsoft: jamás se interceptan ni se sirven desde caché.
+  if (
+    url.searchParams.has("code") ||
+    url.searchParams.has("error") ||
+    url.hash.includes("access_token") ||
+    url.hostname.endsWith("supabase.co") ||
+    url.hostname.endsWith("login.microsoftonline.com") ||
+    url.pathname.includes("/auth/") ||
+    url.pathname.startsWith("/api/")
+  ) {
+    return;
+  }
 
   if (url.origin === self.location.origin) {
     event.respondWith(
