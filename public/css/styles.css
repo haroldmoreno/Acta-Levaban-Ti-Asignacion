@@ -674,3 +674,89 @@ body[data-sesion="inactiva"] #app { display: none !important; }
   }
   .asistente-panel .tarjeta-ai dl { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   ASISTENTE TI — anclaje, contraste y márgenes de burbujas
+   ============================================================ */
+
+.asistente-panel,
+#panelAsistente.asistente-panel {
+  position: fixed !important;
+  right: 20px !important;
+  bottom: 20px !important;
+  z-index: 9999 !important;
+}
+
+#asistente:has(.asistente-panel.open) #btnAsistente,
+#asistente:has(.asistente-panel[aria-hidden="false"]) #btnAsistente {
+  display: none !important;
+}
+#btnAsistente[hidden] { display: none !important; }
+
+.asistente-panel .chat-header .cerrar,
+.asistente-panel #cerrarAsistente {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  border-radius: 999px !important;
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  min-height: 30px !important;
+  display: grid !important;
+  place-items: center !important;
+  font-size: 1rem !important;
+  line-height: 1 !important;
+}
+.asistente-panel .chat-header .cerrar:hover { background: rgba(255, 255, 255, 0.3) !important; }
+
+.asistente-panel .asistente-mensajes,
+.asistente-panel #chatMensajes {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 16px 14px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  background: #f8f5f1 !important;
+}
+
+.asistente-panel .msg-user,
+.asistente-panel .burbuja-ai.usuario {
+  align-self: flex-end !important;
+  max-width: 82% !important;
+  margin: 0 !important;
+  padding: 10px 14px !important;
+  border-radius: 16px 16px 4px 16px !important;
+}
+.asistente-panel .msg-bot,
+.asistente-panel .msg-assistant,
+.asistente-panel .burbuja-ai.asistente {
+  align-self: flex-start !important;
+  max-width: 88% !important;
+  margin: 0 !important;
+  padding: 12px 14px !important;
+  border-radius: 16px 16px 16px 4px !important;
+  background: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
+}
+
+.asistente-panel .chat-chips {
+  padding: 8px 14px !important;
+  display: flex !important;
+  gap: 8px !important;
+  overflow-x: auto !important;
+  scrollbar-width: none !important;
+}
+.asistente-panel .chat-chips::-webkit-scrollbar { display: none; }
+.asistente-panel .chat-chips button { flex: 0 0 auto; }
+
+@media (max-width: 768px) {
+  .asistente-panel,
+  #panelAsistente.asistente-panel {
+    right: 12px !important;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}

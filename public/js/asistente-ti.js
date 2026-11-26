@@ -53,7 +53,8 @@
     const area = byId("chatMensajes");
     if (!area) return null;
     const el = document.createElement("div");
-    el.className = "burbuja-ai " + quien + (clase ? " " + clase : "");
+    const claseRol = quien === "usuario" ? "msg-user" : quien === "asistente" ? "msg-bot msg-assistant" : "";
+    el.className = `burbuja-ai ${claseRol} ${quien}`.trim() + (clase ? ` ${clase}` : "");
     el.innerHTML = String(texto).replace(/\n/g, "<br>");
     area.appendChild(el);
     autoScroll();
@@ -267,6 +268,22 @@
         );
       }
 
+      if (/disponible|en stock|en bodega|libres|sin asignar/.test(q)) {
+        espera.remove();
+        const activos = await cargarActivos();
+        const filas = activos.filter((e) => {
+          const estado = norm(e.estado || "");
+          return /DISPONIBLE|STOCK|BODEGA/.test(estado) || !e.responsable;
+        });
+        if (!filas.length) return burbuja("No hay equipos disponibles o sin asignar en el inventario.", "asistente");
+        return burbujaLista(
+          "Equipos disponibles / en bodega",
+          filas.map((e) =>
+            `${escapar(e.placa)} · ${escapar(e.tipo_equipo || "—")} · ${escapar([e.marca, e.modelo].filter(Boolean).join(" ") || "—")} · ${escapar(e.serial || "—")} · ${escapar(e.sede || "—")}`
+          )
+        );
+      }
+
       if (/resumen|cuantos|cuántos|estadistica|estadística|por sede/.test(q)) {
         espera.remove();
         return burbuja(await resumenGeneral(texto), "asistente");
@@ -362,6 +379,15 @@
     }
     panel.hidden = !abrir;
     panel.style.display = abrir ? "flex" : "none";
+    panel.classList.toggle("open", abrir);
+    panel.setAttribute("aria-hidden", String(!abrir));
+
+    const disparador = byId("btnAsistente");
+    if (disparador) {
+      disparador.hidden = abrir;
+      disparador.style.display = abrir ? "none" : "inline-flex";
+    }
+
     if (abrir) byId("chatInput")?.focus();
   }
 
