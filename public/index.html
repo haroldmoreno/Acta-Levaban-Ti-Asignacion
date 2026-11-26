@@ -90,6 +90,7 @@
           <button class="nav-item activo" data-vista="sistemas"><span>◈</span> Ecosistemas de TI</button>
           <button class="nav-item" data-vista="placas"><span>⬡</span> Placas & QR</button>
           <button class="nav-item" data-vista="equipos"><span>▤</span> Equipos</button>
+          <button class="nav-item" data-vista="contratos"><span>◷</span> Contratos y Garantías</button>
           <button class="nav-item" data-vista="boveda"><span>◫</span> Bóveda PDF</button>
           <button class="nav-item" data-vista="admin" data-admin hidden><span>⚙</span> Administración TI</button>
         </nav>
@@ -102,6 +103,7 @@
         <header class="barra-superior">
           <h2 id="tituloVista">Ecosistemas de TI</h2>
           <div class="barra-derecha">
+            <button id="btnEscanear" class="boton mini" title="Escanear QR o código de barras">▣ Escanear QR / Placa</button>
             <span id="estadoConexion" class="pildora">Supabase en vivo</span>
             <span id="usuarioNombre" class="usuario"></span>
             <span id="usuarioRol" class="pildora rol"></span>
@@ -149,6 +151,28 @@
             <div id="tablaEquipos" class="tabla-caja"></div>
           </section>
 
+          <!-- CONTRATOS -->
+          <section id="vista-contratos" class="vista" hidden>
+            <div class="cabecera-seccion">
+              <p>Radar proactivo de contratos y garantías con semáforo de vencimiento.</p>
+              <button class="boton" data-accion="exportar-contratos">Exportar renovaciones</button>
+            </div>
+            <div class="cabecera-seccion filtros">
+              <select id="filtroProveedor" class="input"><option value="">Todos los proveedores</option></select>
+              <select id="filtroSedeContrato" class="input"><option value="">Todas las sedes</option></select>
+              <select id="filtroCecoContrato" class="input"><option value="">Todos los CECO</option></select>
+              <select id="filtroSemacoro" class="input">
+                <option value="">Todos los estados</option>
+                <option value="vencido">Vencidos</option>
+                <option value="30">≤ 30 días</option>
+                <option value="60">31–60 días</option>
+                <option value="90">61–90 días</option>
+                <option value="vigente">Vigentes</option>
+              </select>
+            </div>
+            <div id="listaContratos" class="tabla-caja"></div>
+          </section>
+
           <!-- BÓVEDA -->
           <section id="vista-boveda" class="vista" hidden>
             <div class="cabecera-seccion">
@@ -165,6 +189,7 @@
               <div class="acciones">
                 <button class="boton" data-accion="exportar">Exportar Excel</button>
                 <button class="boton" data-accion="importar">Importar Excel</button>
+                <button class="boton" data-accion="modo-auditoria">Modo Auditoría Física</button>
                 <input id="archivoImportar" type="file" accept=".csv,.xlsx,.xls,.ods" hidden />
               </div>
             </div>
@@ -275,6 +300,19 @@
           <label>Sede<input id="actaSede" /></label>
           <label>Tipo<select id="actaTipo"><option>ASIGNACIÓN</option><option>DEVOLUCIÓN</option></select></label>
           <label class="ancho">Observaciones<textarea id="actaObs" rows="3"></textarea></label>
+          <fieldset class="firmas-bloque">
+            <legend>Firmas digitales (táctil o mouse)</legend>
+            <div class="firma-caja">
+              <span>Firma del colaborador / responsable</span>
+              <canvas id="firmaColaborador" width="900" height="260"></canvas>
+              <button type="button" class="boton mini" data-limpiar-firma="firmaColaborador">Limpiar firma</button>
+            </div>
+            <div class="firma-caja">
+              <span>Firma del técnico TI · <b id="firmaTecnicoNombre"></b></span>
+              <canvas id="firmaTecnico" width="900" height="260"></canvas>
+              <button type="button" class="boton mini" data-limpiar-firma="firmaTecnico">Limpiar firma</button>
+            </div>
+          </fieldset>
           <div class="form-pie">
             <button type="button" class="boton" data-cerrar="modalActa">Cancelar</button>
             <button type="submit" class="boton primario">Generar y subir PDF</button>
@@ -290,9 +328,18 @@
       </button>
       <section id="panelAsistente" class="panel-asistente" hidden>
         <header>
-          <div><strong>Asistente Integral TI</strong><small>Conectado a la nube Levapan</small></div>
-          <button id="cerrarAsistente" class="cerrar">×</button>
+          <div><strong>Asistente Integral TI</strong><small>Conectado a Sistemas, Equipos y Bóveda</small></div>
+          <div class="chat-cab-acciones">
+            <button id="btnLimpiarChat" class="boton mini" title="Limpiar conversación">Limpiar</button>
+            <button id="cerrarAsistente" class="cerrar" aria-label="Cerrar">×</button>
+          </div>
         </header>
+        <div class="chat-chips">
+          <button type="button" data-ai-chip="Contratos por vencer en 60 días">Contratos por vencer</button>
+          <button type="button" data-ai-chip="Equipos disponibles">Equipos disponibles</button>
+          <button type="button" data-ai-chip="Auditar sede Calle 72">Auditar sede</button>
+          <button type="button" data-ai-chip="Resumen ejecutivo">Resumen ejecutivo</button>
+        </div>
         <div id="chatMensajes" class="chat-mensajes"></div>
         <form id="formChat" class="chat-form">
           <input id="chatInput" placeholder="Pregunta u orden…" autocomplete="off" />
@@ -302,5 +349,6 @@
     </div>
 
     <script src="js/app.js"></script>
+    <script src="js/asistente-ti.js"></script>
   </body>
 </html>

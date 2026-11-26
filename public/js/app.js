@@ -20,6 +20,7 @@
     sistemas: "Ecosistemas de TI",
     placas: "Placas & QR",
     equipos: "Equipos",
+    contratos: "Contratos y Garantías",
     boveda: "Bóveda PDF",
     admin: "Administración TI",
   };
@@ -269,6 +270,7 @@
     if (!ESTADO.perfil) return;
     if (ESTADO.vista === "sistemas") await cargarSistemas();
     if (ESTADO.vista === "equipos") await cargarEquipos();
+    if (ESTADO.vista === "contratos") await cargarContratos();
     if (ESTADO.vista === "placas") await cargarPlacas();
     if (ESTADO.vista === "boveda") await cargarBoveda();
     if (ESTADO.vista === "admin") await cargarUsuarios();
@@ -283,6 +285,7 @@
     byId("tituloVista").textContent = TITULOS[vista] || "";
     if (vista === "sistemas") cargarSistemas();
     if (vista === "equipos") cargarEquipos();
+    if (vista === "contratos") cargarContratos();
     if (vista === "placas") cargarPlacas();
     if (vista === "boveda") cargarBoveda();
     if (vista === "admin") cargarUsuarios();
@@ -417,25 +420,25 @@
       <tbody>${ESTADO.equipos.map((e) => {
         const sistema = sistemasPorId[e.sistema_id];
         return `<tr>
-          <td><span class="placa-badge mono">${escapar(e.placa)}</span></td>
-          <td class="celda-doble">
+          <td data-etiqueta="Placa"><span class="placa-badge mono">${escapar(e.placa)}</span></td>
+          <td class="celda-doble" data-etiqueta="Equipo y Red">
             <span class="principal">${escapar([e.tipo_equipo, e.marca, e.modelo].filter(Boolean).join(" · ") || "—")}</span>
             <span class="secundario mono">${escapar(e.serial || "S/N —")} · ${escapar(e.nombre_red || "Sin nombre en red")}${sistema ? ` · ${escapar(sistema.codigo)}` : ""}</span>
           </td>
-          <td class="celda-doble">
+          <td class="celda-doble" data-etiqueta="Responsable">
             <span class="principal">${escapar(e.responsable || "—")}</span>
             <span class="secundario">${escapar(e.cedula || "—")} · ${escapar(e.empresa || "—")}</span>
           </td>
-          <td class="celda-doble">
+          <td class="celda-doble" data-etiqueta="Ubicación">
             <span class="principal">${escapar(e.sede || "—")}</span>
             <span class="secundario">${escapar(e.ceco || "—")} · ${escapar(e.area || "—")}</span>
           </td>
-          <td class="celda-doble">
+          <td class="celda-doble" data-etiqueta="Contrato">
             <span class="principal">${escapar(e.proveedor || "—")} · ${escapar(e.num_contrato || "—")}</span>
             <span class="secundario">${escapar(e.tipo_contrato || "—")} · ${escapar(e.fecha_vencimiento_contrato || "—")}</span>
           </td>
-          <td>${estadoBadge(e.estado)}</td>
-          <td class="acciones-col">
+          <td data-etiqueta="Estado">${estadoBadge(e.estado)}</td>
+          <td class="acciones-col" data-etiqueta="Acciones">
             <div class="acciones-fila">
               <button class="boton mini" data-equipo="editar" data-id="${escapar(e.id)}" title="Editar ficha técnica">Editar</button>
               <button class="boton mini" data-equipo="hoja" data-id="${escapar(e.id)}" title="Hoja de vida y acta PDF">Hoja</button>
@@ -542,6 +545,12 @@
     byId("actaCedula").value = equipo?.cedula || "";
     byId("actaSede").value = equipo?.sede || "";
     byId("actaTipo").value = tipo;
+    byId("actaObs").value = "";
+    const tecnico = byId("firmaTecnicoNombre");
+    if (tecnico) tecnico.textContent = ESTADO.perfil?.nombre_completo || "Técnico TI";
+    instalarFirmas();
+    limpiarFirma("firmaColaborador");
+    limpiarFirma("firmaTecnico");
     byId("modalActa").hidden = false;
   }
 
@@ -567,7 +576,7 @@
     const { data: actualizado, error } = await sb.from("equipos").update(cambios).eq("id", equipo.id).select().single();
     if (error) return alert(error.message);
 
-    const url = await generarYSubirActa(actualizado, tipo, responsable, cedula, sede, observaciones);
+    const url = await generarYSubirActa(actualizado, tipo, responsable, cedula, sede, observaciones, datosFirmas());
     await registrarHistorial(actualizado, tipo, `Acta CORP-TEC-FR-002 · ${placa} · ${responsable || "devolución"}`, {
       responsable_anterior: equipo.responsable,
       responsable_nuevo: cambios.responsable,
@@ -578,7 +587,7 @@
     cargarEquipos();
   }
 
-  async function generarYSubirActa(equipo, tipo, responsable, cedula, sede, observaciones) {
+  async function generarYSubirActa(equipo, tipo, responsable, cedula, sede, observaciones, firmas) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     doc.setFontSize(16); doc.setTextColor(139, 30, 36);
@@ -596,6 +605,12 @@
       "Firma colaborador                 Firma Tecnología e Infraestructura",
     ];
     lineas.forEach((linea, i) => doc.text(linea, 18, 44 + i * 6.5));
+
+    const yFirmas = Math.min(262, 48 + lineas.length * 6.5);
+    if (firmas?.colaborador) doc.addImage(firmas.colaborador, "PNG", 18, yFirmas, 72, 22);
+    if (firmas?.tecnico) doc.addImage(firmas.tecnico, "PNG", 110, yFirmas, 72, 22);
+    doc.setFontSize(8);
+    doc.text(`Emitida por: ${ESTADO.perfil?.nombre_completo || "sistema"} · ${fechaHora(new Date())}`, 18, yFirmas + 30);
     const blob = doc.output("blob");
     const ruta = `actas/${equipo.placa}/${Date.now()}.pdf`;
     const subida = await sb.storage.from(CFG.bucket).upload(ruta, blob, { contentType: "application/pdf", upsert: false });
@@ -700,6 +715,241 @@
     ventana.document.write(`<title>QR · ${equipo.placa}</title><body style="text-align:center;font-family:Arial;padding:30px"><h2>${equipo.placa}</h2><img src="${src}" width="280"/><p>${escapar(equipo.nombre_red || "")}</p><button onclick="window.print()">Imprimir etiqueta</button></body>`);
   }
 
+  /* ---------------- Contratos y Garantías ---------------- */
+
+  function clasificarVencimiento(dias) {
+    if (dias == null) return { texto: "Sin fecha", clase: "verde" };
+    if (dias < 0) return { texto: `Vencido (${Math.abs(dias)} d)`, clase: "vencido" };
+    if (dias <= 30) return { texto: `≤ 30 días (${dias} d)`, clase: "rojo" };
+    if (dias <= 60) return { texto: `31–60 días (${dias} d)`, clase: "ambar" };
+    if (dias <= 90) return { texto: `61–90 días (${dias} d)`, clase: "azul" };
+    return { texto: `Vigente (${dias} d)`, clase: "verde" };
+  }
+
+  async function cargarContratos() {
+    const activos = await cargarTodos("equipos", "*");
+    const llenar = (id, campo) => {
+      const select = byId(id);
+      if (!select) return;
+      const actual = select.value;
+      const valores = [...new Set(activos.map((e) => e[campo]).filter(Boolean))].sort();
+      select.innerHTML = `<option value="">${id.includes("Proveedor") ? "Todos los proveedores" : id.includes("Sede") ? "Todas las sedes" : "Todos los CECO"}</option>` +
+        valores.map((v) => `<option value="${escapar(v)}">${escapar(v)}</option>`).join("");
+      select.value = actual;
+    };
+    llenar("filtroProveedor", "proveedor");
+    llenar("filtroSedeContrato", "sede");
+    llenar("filtroCecoContrato", "ceco");
+
+    const filtros = {
+      proveedor: byId("filtroProveedor")?.value,
+      sede: byId("filtroSedeContrato")?.value,
+      ceco: byId("filtroCecoContrato")?.value,
+      semaforo: byId("filtroSemacoro")?.value,
+    };
+
+    const filas = activos
+      .filter((e) => e.fecha_vencimiento_contrato)
+      .map((e) => ({ ...e, dias: Math.ceil((new Date(e.fecha_vencimiento_contrato).getTime() - Date.now()) / 86400000) }))
+      .filter((e) => !filtros.proveedor || e.proveedor === filtros.proveedor)
+      .filter((e) => !filtros.sede || e.sede === filtros.sede)
+      .filter((e) => !filtros.ceco || e.ceco === filtros.ceco)
+      .filter((e) => {
+        if (!filtros.semaforo) return true;
+        if (filtros.semaforo === "vencido") return e.dias < 0;
+        if (filtros.semaforo === "vigente") return e.dias > 90;
+        const limite = Number(filtros.semaforo);
+        return e.dias >= 0 && e.dias <= limite;
+      })
+      .sort((a, b) => a.dias - b.dias);
+
+    byId("listaContratos").innerHTML = `<table class="tabla-inventario">
+      <thead><tr><th>Placa</th><th>Equipo</th><th>Proveedor</th><th>N° Contrato</th><th>Tipo</th><th>Vencimiento</th><th>Semáforo</th><th></th></tr></thead>
+      <tbody>${filas.map((e) => {
+        const semaforo = clasificarVencimiento(e.dias);
+        return `<tr>
+          <td class="mono">${escapar(e.placa)}</td>
+          <td>${escapar(e.nombre_red || [e.marca, e.modelo].filter(Boolean).join(" ") || "—")}</td>
+          <td>${escapar(e.proveedor || "—")}</td>
+          <td class="mono">${escapar(e.num_contrato || "—")}</td>
+          <td>${escapar(e.tipo_contrato || "—")}</td>
+          <td>${escapar(e.fecha_vencimiento_contrato)}</td>
+          <td><span class="semaforo ${semaforo.clase}">${escapar(semaforo.texto)}</span></td>
+          <td><button class="boton mini" data-equipo="hoja" data-id="${escapar(e.id)}">Hoja</button></td>
+        </tr>`;
+      }).join("")}</tbody></table>` || '<p class="vacio">Sin contratos con esos filtros.</p>';
+  }
+
+  async function exportarContratos() {
+    const activos = await cargarTodos("equipos", "*");
+    const cabeceras = ["Placa", "Nombre equipo en Red", "Proveedor", "N° Contrato", "Tipo de Contrato", "Sede", "CECO", "Fecha Vencimiento", "Días", "Semáforo"];
+    const filas = activos.filter((e) => e.fecha_vencimiento_contrato).map((e) => {
+      const dias = Math.ceil((new Date(e.fecha_vencimiento_contrato).getTime() - Date.now()) / 86400000);
+      return [e.placa, e.nombre_red, e.proveedor, e.num_contrato, e.tipo_contrato, e.sede, e.ceco, e.fecha_vencimiento_contrato, dias, clasificarVencimiento(dias).texto];
+    });
+    const hoja = window.XLSX.utils.aoa_to_sheet([cabeceras, ...filas]);
+    const libro = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(libro, hoja, "Renovaciones");
+    window.XLSX.writeFile(libro, `Levapan_Renovaciones_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
+  /* ---------------- Escáner QR / código de barras ---------------- */
+
+  function abrirEscanner() {
+    const capa = document.createElement("div");
+    capa.className = "modal";
+    capa.id = "modalEscanner";
+    capa.innerHTML = `<div class="modal-caja pequeno">
+      <header><h2>Escanear QR / Placa</h2><button class="cerrar" data-cerrar="modalEscanner">×</button></header>
+      <div style="padding:14px">
+        <div id="lectorQR" style="width:100%;min-height:260px"></div>
+        <p class="mensaje" id="mensajeScanner">Apunta la cámara a la etiqueta del activo…</p>
+      </div>
+    </div>`;
+    document.body.appendChild(capa);
+
+    const resolver = async (texto) => {
+      const placa = String(texto || "").trim();
+      capa.remove();
+      let equipo = null;
+      try {
+        const { data } = await sb.from("equipos").select("*").or(`placa.ilike.%${placa}%,serial.ilike.%${placa}%`).limit(1);
+        equipo = data?.[0];
+      } catch { /* ignore */ }
+      if (equipo) {
+        irAVista("placas");
+        mostrarFichaPlaca(equipo);
+      } else {
+        alert(`No se encontró un activo para «${placa}»`);
+      }
+    };
+
+    if ("BarcodeDetector" in window) {
+      const detector = new window.BarcodeDetector({ formats: ["qr_code", "code_128", "code_39", "ean_13", "upc_a"] });
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then((stream) => {
+        const video = document.createElement("video");
+        video.srcObject = stream;
+        video.play();
+        capa.querySelector("#lectorQR").appendChild(video);
+        const bucle = async () => {
+          if (!capa.isConnected) { stream.getTracks().forEach((t) => t.stop()); return; }
+          try {
+            const codigos = await detector.detect(video);
+            if (codigos?.[0]?.rawValue) return resolver(codigos[0].rawValue);
+          } catch { /* sigue */ }
+          setTimeout(bucle, 350);
+        };
+        bucle();
+      }).catch(() => cargarHtml5Qrcode());
+    } else {
+      cargarHtml5Qrcode();
+    }
+
+    function cargarHtml5Qrcode() {
+      if (window.Html5Qrcode) return iniciarHtml5();
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
+      script.onload = iniciarHtml5;
+      script.onerror = () => { byId("mensajeScanner").textContent = "No se pudo cargar el lector. Verifica la conexión."; };
+      document.head.appendChild(script);
+    }
+
+    function iniciarHtml5() {
+      try {
+        const escanner = new window.Html5Qrcode("lectorQR");
+        window.__lectorActivo = escanner;
+        escanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 260 }, resolver, () => {});
+      } catch (err) {
+        byId("mensajeScanner").textContent = err.message;
+      }
+    }
+  }
+
+  /* ---------------- Modo Auditoría Física ---------------- */
+
+  async function modoAuditoria() {
+    let panel = byId("panelAuditoria");
+    if (!panel) {
+      const admin = byId("vista-admin");
+      panel = document.createElement("div");
+      panel.id = "panelAuditoria";
+      panel.className = "modo-auditoria";
+      admin.insertBefore(panel, admin.firstChild);
+    }
+    const activos = await cargarTodos("equipos", "id, placa, nombre_red, sede, estado, bitacora");
+    const verificados = activos.filter((e) => /verificado/i.test(e.estado || ""));
+    panel.innerHTML = `<strong>Modo Auditoría Física activo</strong>
+      <p>${verificados.length} de ${activos.length} activos verificados. Usa el botón «Marcar verificado» del copiloto o escanea etiquetas con «Escanear QR / Placa».</p>
+      <div class="acciones-fila">
+        <button class="boton mini" id="btnConciliar">Exportar acta de conciliación</button>
+        <button class="boton mini" id="btnSalirAuditoria">Salir del modo</button>
+      </div>`;
+    byId("btnConciliar").addEventListener("click", () => {
+      const cabeceras = ["Placa", "Nombre en Red", "Sede", "Estado", "Resultado"];
+      const filas = activos.map((e) => [e.placa, e.nombre_red, e.sede, e.estado, /verificado/i.test(e.estado || "") ? "VERIFICADO" : "PENDIENTE"]);
+      const hoja = window.XLSX.utils.aoa_to_sheet([cabeceras, ...filas]);
+      const libro = window.XLSX.utils.book_new();
+      window.XLSX.utils.book_append_sheet(libro, hoja, "Conciliacion");
+      window.XLSX.writeFile(libro, `Acta_Conciliacion_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    });
+    byId("btnSalirAuditoria").addEventListener("click", () => panel.remove());
+  }
+
+  /* ---------------- Firmas táctiles ---------------- */
+
+  function installFirma(canvas) {
+    const ctx = canvas.getContext("2d");
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#111111";
+    let activo = false;
+    const punto = (evento) => {
+      const rect = canvas.getBoundingClientRect();
+      const escalaX = canvas.width / rect.width;
+      const escalaY = canvas.height / rect.height;
+      return { x: (evento.clientX - rect.left) * escalaX, y: (evento.clientY - rect.top) * escalaY };
+    };
+    canvas.addEventListener("pointerdown", (e) => {
+      activo = true;
+      canvas.setPointerCapture(e.pointerId);
+      const p = punto(e);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+    });
+    canvas.addEventListener("pointermove", (e) => {
+      if (!activo) return;
+      e.preventDefault();
+      const p = punto(e);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    });
+    ["pointerup", "pointercancel", "pointerleave"].forEach((evt) => canvas.addEventListener(evt, () => { activo = false; }));
+  }
+
+  function instalarFirmas() {
+    ["firmaColaborador", "firmaTecnico"].forEach((id) => {
+      const canvas = byId(id);
+      if (canvas && !canvas.dataset.listo) {
+        installFirma(canvas);
+        canvas.dataset.listo = "1";
+      }
+    });
+  }
+
+  function limpiarFirma(id) {
+    const canvas = byId(id);
+    if (!canvas) return;
+    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  function datosFirmas() {
+    return {
+      colaborador: byId("firmaColaborador")?.toDataURL("image/png") || null,
+      tecnico: byId("firmaTecnico")?.toDataURL("image/png") || null,
+    };
+  }
+
   /* ---------------- Bóveda ---------------- */
 
   async function cargarBoveda() {
@@ -795,81 +1045,6 @@
     const libro = window.XLSX.utils.book_new();
     window.XLSX.utils.book_append_sheet(libro, hoja, "Inventario");
     window.XLSX.writeFile(libro, `Levapan_Inventario_${new Date().toISOString().slice(0, 10)}.xlsx`);
-  }
-
-  /* ---------------- Asistente TI ---------------- */
-
-  function burbuja(texto, quien, clase) {
-    const el = document.createElement("div");
-    el.className = "burbuja " + quien + (clase ? " " + clase : "");
-    el.textContent = texto;
-    byId("chatMensajes").appendChild(el);
-    byId("chatMensajes").scrollTop = byId("chatMensajes").scrollHeight;
-    return el;
-  }
-
-  function extraerTermino(mensaje) {
-    const numerico = mensaje.match(/(?:ML-?)?\d{3,}/i);
-    if (numerico) return numerico[0];
-    const stop = new Set(["busca", "buscar", "muestra", "dame", "equipos", "de", "del", "la", "el", "los", "en", "con", "que", "tiene", "por", "para", "cuándo", "cuando", "vence", "contrato"]);
-    return mensaje.toLowerCase().replace(/[?¿.,!]/g, " ").split(/\s+/).filter((p) => p.length >= 3 && !stop.has(p)).slice(-3).join(" ") || mensaje;
-  }
-
-  async function buscarEquipo(termino) {
-    let consulta = sb.from("equipos").select(columnasVisibles());
-    const t = extraerTermino(termino);
-    consulta = consulta.or(`placa.ilike.%${t}%,serial.ilike.%${t}%,responsable.ilike.%${t}%,cedula.ilike.%${t}%,ceco.ilike.%${t}%,sede.ilike.%${t}%,nombre_red.ilike.%${t}%,num_contrato.ilike.%${t}%`);
-    const { data } = await consulta.limit(5);
-    return data?.[0] || null;
-  }
-
-  async function responderChat(texto) {
-    const mensaje = texto.trim();
-    const bajo = mensaje.toLowerCase();
-    const nombre = (ESTADO.perfil?.nombre_completo || "colega").split(" ")[0];
-
-    if (/^(hola|buenos días|buenas tardes|buenas noches|qué tal|hey|saludos|gracias|ayuda|quién eres)/.test(bajo)) {
-      if (/gracias/.test(bajo)) return burbuja(`Con gusto, ${nombre}.`, "asistente");
-      if (/ayuda|quién eres/.test(bajo)) return burbuja(`${saludo()}, ${nombre}. Soy el Asistente Integral TI. Puedo buscar placas, asignar equipos, ver contratos próximos a vencer, mostrar la hoja de vida y generar actas. Ejemplo: «muéstrame la hoja de vida de 01882».`, "asistente");
-      return burbuja(`${saludo()}, ${nombre}! ¿Qué activo revisamos?`, "asistente");
-    }
-
-    const usaContexto = /su |suyo|lo tiene|historial|cuándo vence|cuando vence|vincúlalo|vinculalo/.test(bajo);
-    const termino = usaContexto && ESTADO.ultimaPlaca ? ESTADO.ultimaPlaca : mensaje;
-    const equipo = await buscarEquipo(termino);
-
-    if (!equipo) return burbuja(`No encontré un equipo con «${extraerTermino(termino)}». Prueba con una placa, serial o cédula.`, "asistente");
-
-    ESTADO.ultimaPlaca = equipo.placa;
-
-    if (/historial|qué se le ha hecho|que se le ha hecho/.test(bajo)) {
-      const { data } = await sb.from("historial_movimientos").select("*").eq("equipo_id", equipo.id).order("fecha_colombia", { ascending: false }).limit(8);
-      const lineas = (data || []).map((m) => `• ${fechaHora(m.fecha_colombia)} · ${m.tipo_movimiento}: ${m.observaciones || "—"}`).join("\n");
-      return burbuja(`Hoja de vida de ${equipo.placa}:\n${lineas || "Sin movimientos"}`, "asistente");
-    }
-
-    if (/quién lo tiene|quien lo tiene|responsable/.test(bajo)) {
-      return burbuja(`El equipo ${equipo.placa} está a cargo de ${equipo.responsable || "sin responsable"}${equipo.sede ? ` en ${equipo.sede}` : ""}.`, "asistente");
-    }
-
-    if (/vence|contrato/.test(bajo)) {
-      return burbuja(`${equipo.placa} · Contrato ${equipo.num_contrato || "—"} (${equipo.tipo_contrato || "—"}), vence ${equipo.fecha_vencimiento_contrato || "sin fecha"}.`, "asistente");
-    }
-
-    if (/cambia el estado|cámbiale el estado|cambiale el estado|pon .*en/.test(bajo)) {
-      const valor = mensaje.match(/\ba\s+([A-Za-zÁÉÍÓÚÑ\s]+)$/i)?.[1]?.trim() || (bajo.includes("disponible") ? "DISPONIBLE" : null);
-      if (!valor) return burbuja("Indica el estado nuevo, por ejemplo: «cambia el estado de 01882 a DISPONIBLE».", "asistente");
-      await sb.from("equipos").update({ estado: valor.toUpperCase() }).eq("id", equipo.id);
-      await registrarHistorial(equipo, "EDICIÓN", `Asistente TI: estado → ${valor}`, {});
-      return burbuja(`Listo, ${nombre}. Actualicé ${equipo.placa} a ${valor.toUpperCase()}.`, "asistente");
-    }
-
-    const escribiendo = burbuja("", "asistente", "typing");
-    escribiendo.innerHTML = "<span></span><span></span><span></span>";
-    setTimeout(() => {
-      escribiendo.className = "burbuja asistente";
-      escribiendo.textContent = `${equipo.placa} · ${equipo.nombre_red || "sin nombre"} · ${equipo.responsable || "sin responsable"} · ${equipo.sede || "sin sede"} · CECO ${equipo.ceco || "—"} · Estado ${equipo.estado || "—"}`;
-    }, 500);
   }
 
   /* ---------------- Eventos ---------------- */
@@ -975,24 +1150,36 @@
         return abrirActa(equipo || null, "ASIGNACIÓN");
       }
       if (accion === "exportar") return exportarExcel();
+      if (accion === "exportar-contratos") return exportarContratos();
       if (accion === "importar" || accion === "migrar") return byId("archivoImportar").click();
+      if (accion === "modo-auditoria") return modoAuditoria();
+    });
+
+    byId("btnEscanear")?.addEventListener("click", abrirEscanner);
+    ["filtroProveedor", "filtroSedeContrato", "filtroCecoContrato", "filtroSemacoro"].forEach((id) => {
+      byId(id)?.addEventListener("change", cargarContratos);
+    });
+
+    document.addEventListener("click", (evento) => {
+      const limpiar = evento.target.closest("[data-limpiar-firma]");
+      if (limpiar) limpiarFirma(limpiar.dataset.limpiarFirma);
+      const cerrarScanner = evento.target.closest('[data-cerrar="modalEscanner"]');
+      if (cerrarScanner) {
+        byId("modalEscanner")?.remove();
+        window.__lectorActivo?.stop?.().catch(() => {});
+        window.__lectorActivo = null;
+      }
+    });
+
+    byId("btnLimpiarChat")?.addEventListener("click", () => {
+      const area = byId("chatMensajes");
+      if (area) area.innerHTML = "";
     });
 
     byId("archivoImportar").addEventListener("change", async (evento) => {
       const archivo = evento.target.files?.[0];
       if (archivo) await migrarArchivo(archivo);
       evento.target.value = "";
-    });
-
-    byId("btnAsistente").addEventListener("click", () => alternarAsistente(byId("panelAsistente").hidden));
-    byId("cerrarAsistente").addEventListener("click", () => alternarAsistente(false));
-    byId("formChat").addEventListener("submit", async (evento) => {
-      evento.preventDefault();
-      const texto = byId("chatInput").value;
-      byId("chatInput").value = "";
-      if (!texto.trim()) return;
-      burbuja(texto, "usuario");
-      try { await responderChat(texto); } catch (err) { burbuja("Error: " + err.message, "asistente", "error"); }
     });
 
     let installPrompt = null;
@@ -1022,6 +1209,8 @@
     }
     sb.auth.onAuthStateChange((_evento) => cargarSesion());
   }
+
+  window.LevapanApp = { sb, ESTADO, cargarTodos, irAVista, abrirModalEquipo, mostrarFichaPlaca, abrirActa, generarYSubirActa, registrarHistorial, ORDEN_MAESTRO };
 
   iniciar();
 })();
