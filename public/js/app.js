@@ -166,44 +166,6 @@
     await cargarSesion();
   }
 
-  async function iniciarMicrosoft() {
-    const { error } = await sb.auth.signInWithOAuth({
-      provider: "azure",
-      options: { scopes: "openid profile email", redirectTo: window.location.origin + "/" },
-    });
-    if (error) throw error;
-  }
-
-  async function registrarCuenta(nombre, cedula, correo, clave) {
-    const email = correo.trim().toLowerCase();
-    if (!email.endsWith("@levapan.com")) throw new Error("Solo se permiten correos corporativos @levapan.com");
-    if (!nombre.trim() || !cedula.trim()) throw new Error("Nombre completo y cédula son obligatorios");
-    if (clave.length < 6) throw new Error("La contraseña debe tener al menos 6 caracteres");
-
-    const { data, error } = await sb.auth.signUp({
-      email,
-      password: clave,
-      options: { data: { nombre_completo: nombre.trim(), cedula: cedula.trim() } },
-    });
-    if (error) throw error;
-
-    const usuario = data?.user;
-    if (usuario) {
-      await sb.from("usuarios_corporativos").upsert([{
-        id: usuario.id,
-        email,
-        nombre_completo: nombre.trim(),
-        rol: "TECNICO_TI",
-        activo: true,
-      }], { onConflict: "id" });
-    }
-
-    if (!data?.session) {
-      throw new Error("Cuenta creada. Confirma tu correo corporativo e ingresa con tu contraseña.");
-    }
-    await cargarSesion();
-  }
-
   function ocultarLogin() {
     const modal = byId("pantallaLogin");
     if (modal) {
@@ -224,13 +186,6 @@
     }
     byId("app").hidden = true;
     document.body.dataset.sesion = "inactiva";
-  }
-
-  function limpiarParametrosOAuth() {
-    const url = window.location.href;
-    if (/[?#](?:code|access_token|error_description|state)=/.test(url)) {
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
   }
 
   async function sincronizarPerfil(sesion) {
@@ -283,14 +238,9 @@
       return;
     }
 
-    // Cierre inmediato del overlay en cuanto hay sesión válida (OAuth incluido).
+    // Cierre inmediato del overlay en cuanto hay sesión válida.
     ocultarLogin();
-    limpiarParametrosOAuth();
     document.body.dataset.sesion = "activa";
-
-    if (["SIGNED_IN", "INITIAL_SESSION", "TOKEN_REFRESHED"].includes(evento)) {
-      ocultarLogin();
-    }
 
     const perfil = await sincronizarPerfil(sesion);
     ESTADO.perfil = perfil;
@@ -1573,45 +1523,6 @@
         error.hidden = false;
       }
     });
-    byId("btnMicrosoft").addEventListener("click", async () => {
-      try { await iniciarMicrosoft(); } catch (err) { alert(err.message); }
-    });
-
-    byId("tabLogin").addEventListener("click", () => {
-      byId("formLogin").hidden = false;
-      byId("formRegistro").hidden = true;
-      byId("tabLogin").classList.add("activa");
-      byId("tabRegistro").classList.remove("activa");
-      byId("tabLogin").setAttribute("aria-selected", "true");
-      byId("tabRegistro").setAttribute("aria-selected", "false");
-    });
-
-    byId("tabRegistro").addEventListener("click", () => {
-      byId("formRegistro").hidden = false;
-      byId("formLogin").hidden = true;
-      byId("tabRegistro").classList.add("activa");
-      byId("tabLogin").classList.remove("activa");
-      byId("tabRegistro").setAttribute("aria-selected", "true");
-      byId("tabLogin").setAttribute("aria-selected", "false");
-    });
-
-    byId("formRegistro").addEventListener("submit", async (evento) => {
-      evento.preventDefault();
-      const error = byId("registroError");
-      error.hidden = true;
-      try {
-        await registrarCuenta(
-          byId("regNombre").value,
-          byId("regCedula").value,
-          byId("regCorreo").value,
-          byId("regClave").value
-        );
-      } catch (err) {
-        error.textContent = err.message || "No se pudo crear la cuenta";
-        error.hidden = false;
-      }
-    });
-
     byId("btnSalir").addEventListener("click", cerrarSesion);
 
     document.querySelectorAll(".nav-item").forEach((b) => {
@@ -1872,20 +1783,9 @@
   async function iniciar() {
     instalarEventos();
 
-    const parametros = new URLSearchParams(window.location.search);
-    const errorEntra = parametros.get("error_description") || parametros.get("error");
-    if (errorEntra) {
-      const aviso = byId("loginError");
-      if (aviso) {
-        aviso.textContent = `Microsoft 365: ${decodeURIComponent(errorEntra)}`;
-        aviso.hidden = false;
-      }
-    }
-
     sb.auth.onAuthStateChange((evento, sesion) => {
       if (sesion?.user && ["SIGNED_IN", "INITIAL_SESSION", "TOKEN_REFRESHED"].includes(evento)) {
         ocultarLogin();
-        limpiarParametrosOAuth();
       }
       if (evento === "SIGNED_OUT") {
         ocultarLogin();
@@ -1900,25 +1800,6 @@
         if (evento === "SIGNED_OUT") mostrarLogin();
       });
     });
-
-    const vieneDeOAuth =
-      parametros.has("code") ||
-      window.location.hash.includes("access_token") ||
-      Boolean(errorEntra);
-
-    if (vieneDeOAuth) {
-      for (let intento = 0; intento < 40; intento += 1) {
-        const { data } = await sb.auth.getSession();
-        if (data?.session?.user) {
-          await cargarSesion(data.session, "SIGNED_IN");
-          limpiarParametrosOAuth();
-          return;
-        }
-        await new Promise((resolver) => setTimeout(resolver, 250));
-      }
-      mostrarLogin();
-      return;
-    }
 
     try {
       await cargarSesion();
