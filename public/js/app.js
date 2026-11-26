@@ -198,43 +198,108 @@
     await cargarSesion();
   }
 
-  async function cargarSesion() {
-    const { data } = await sb.auth.getSession();
-    const sesion = data?.session;
-    if (!sesion) {
-      byId("pantallaLogin").hidden = false;
-      byId("app").hidden = true;
-      return;
+  function ocultarLogin() {
+    const modal = byId("pantallaLogin");
+    if (modal) {
+      modal.hidden = true;
+      modal.style.display = "none";
+      modal.classList.remove("activo", "visible", "abierto");
+      modal.setAttribute("aria-hidden", "true");
     }
+  }
 
+  function mostrarLogin() {
+    const modal = byId("pantallaLogin");
+    if (modal) {
+      modal.hidden = false;
+      modal.style.display = "grid";
+      modal.classList.remove("activo", "visible", "abierto");
+      modal.setAttribute("aria-hidden", "false");
+    }
+    byId("app").hidden = true;
+    document.body.dataset.sesion = "inactiva";
+  }
+
+  function limpiarParametrosOAuth() {
+    const url = window.location.href;
+    if (/[?#](?:code|access_token|error_description|state)=/.test(url)) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }
+
+  async function sincronizarPerfil(sesion) {
     const email = String(sesion.user.email || "").toLowerCase();
     if (!email.endsWith("@levapan.com")) {
       await sb.auth.signOut();
       throw new Error("Solo se permiten correos corporativos @levapan.com");
     }
 
-    let { data: perfil } = await sb.from("usuarios_corporativos").select("*").eq("id", sesion.user.id).maybeSingle();
+    const id = sesion.user.id;
+    let { data: perfil } = await sb.from("usuarios_corporativos").select("*").eq("id", id).maybeSingle();
+
     if (!perfil) {
       const rol = email === "admin@levapan.com" ? "ADMINISTRADOR_TI" : "TECNICO_TI";
+      const nombre = sesion.user.user_metadata?.nombre_completo || sesion.user.user_metadata?.full_name || email.split("@")[0];
       const respuesta = await sb.from("usuarios_corporativos").insert([
-        { id: sesion.user.id, email, nombre_completo: sesion.user.user_metadata?.nombre_completo || email.split("@")[0], rol, activo: true },
+        { id, email, nombre_completo: nombre, rol, activo: true },
       ]).select().maybeSingle();
       perfil = respuesta.data;
+    } else {
+      // Nunca degradamos un perfil ADMINISTRADOR_TI existente.
+      const cambios = { email, activo: true };
+      if (sesion.user.user_metadata?.nombre_completo || sesion.user.user_metadata?.full_name) {
+        cambios.nombre_completo = sesion.user.user_metadata.nombre_completo || sesion.user.user_metadata.full_name;
+      }
+      const respuesta = await sb.from("usuarios_corporativos").update(cambios).eq("id", id).select().maybeSingle();
+      perfil = respuesta.data || { ...perfil, ...cambios };
     }
+
     if (!perfil?.activo) {
       await sb.auth.signOut();
       throw new Error("Tu cuenta TI está inactiva");
     }
+    return perfil;
+  }
 
+  async function cargarSesion(sesionParam, evento) {
+    let sesion = sesionParam;
+    if (sesion === undefined) {
+      const { data } = await sb.auth.getSession();
+      sesion = data?.session;
+    }
+
+    if (!sesion?.user) {
+      if (evento === "SIGNED_OUT") {
+        ESTADO.perfil = null;
+        window.__ultimoUsuarioCargado = null;
+      }
+      mostrarLogin();
+      return;
+    }
+
+    // Cierre inmediato del overlay en cuanto hay sesión válida (OAuth incluido).
+    ocultarLogin();
+    limpiarParametrosOAuth();
+    document.body.dataset.sesion = "activa";
+
+    if (["SIGNED_IN", "INITIAL_SESSION", "TOKEN_REFRESHED"].includes(evento)) {
+      ocultarLogin();
+    }
+
+    const perfil = await sincronizarPerfil(sesion);
     ESTADO.perfil = perfil;
-    byId("pantallaLogin").hidden = true;
     byId("app").hidden = false;
-    byId("usuarioNombre").textContent = perfil.nombre_completo || email;
+    byId("usuarioNombre").textContent = perfil.nombre_completo || sesion.user.email;
     byId("usuarioRol").textContent = perfil.rol === "ADMINISTRADOR_TI" ? "ADMINISTRADOR TI" : "TECNICO TI";
+    document.querySelectorAll("[data-admin]").forEach((el) => { el.hidden = perfil.rol !== "ADMINISTRADOR_TI"; });
+
     const conteo = await sb.from("equipos").select("id", { count: "exact", head: true });
     const total = Number(conteo.count || 0).toLocaleString("es-CO");
-    byId("estadoConexion").textContent = `Nube Supabase activa · ${total} equipos`;
-    document.querySelectorAll("[data-admin]").forEach((el) => { el.hidden = perfil.rol !== "ADMINISTRADOR_TI"; });
+    byId("estadoConexion").textContent = `Supabase en vivo · ${total} equipos`;
+
+    // En un refresh de token no recargamos toda la interfaz innecesariamente.
+    if (evento === "TOKEN_REFRESHED" && window.__ultimoUsuarioCargado === sesion.user.id) return;
+    window.__ultimoUsuarioCargado = sesion.user.id;
 
     await cargarSistemas();
     await Promise.all([cargarEquipos(), cargarBoveda(), cargarUsuarios()]);
@@ -245,8 +310,8 @@
   async function cerrarSesion() {
     await sb.auth.signOut();
     ESTADO.perfil = null;
-    byId("app").hidden = true;
-    byId("pantallaLogin").hidden = false;
+    window.__ultimoUsuarioCargado = null;
+    mostrarLogin();
   }
 
   /* ---------------- Realtime ---------------- */
@@ -1307,7 +1372,24 @@
       error.textContent = err.message;
       error.hidden = false;
     }
-    sb.auth.onAuthStateChange((_evento) => cargarSesion());
+    sb.auth.onAuthStateChange((evento, sesion) => {
+      if (sesion?.user && ["SIGNED_IN", "INITIAL_SESSION", "TOKEN_REFRESHED"].includes(evento)) {
+        ocultarLogin();
+        limpiarParametrosOAuth();
+      }
+      if (evento === "SIGNED_OUT") {
+        ocultarLogin();
+        window.__ultimoUsuarioCargado = null;
+      }
+      cargarSesion(sesion, evento).catch((err) => {
+        const error = byId("loginError");
+        if (error) {
+          error.textContent = err.message || "No se pudo iniciar sesión";
+          error.hidden = false;
+        }
+        if (evento === "SIGNED_OUT") mostrarLogin();
+      });
+    });
   }
 
   window.LevapanApp = { sb, ESTADO, cargarTodos, irAVista, abrirModalEquipo, mostrarFichaPlaca, abrirActa, generarYSubirActa, registrarHistorial, ORDEN_MAESTRO };

@@ -562,3 +562,8 @@ tr:hover td { background: rgba(247,225,199,.3); }
 .bloque-360 h5 { margin: 8px 0 6px; font-size: .68rem; color: var(--bronce); text-transform: uppercase; letter-spacing: .08em; }
 .bloque-360 .ficha-grupo { border: 0; background: transparent; padding: 0; }
 @media (max-width: 1100px) { .bloques-360 { grid-template-columns: 1fr; } }
+
+/* Estado de sesión: nunca duplicar botones de invitado sobre el dashboard. */
+body[data-sesion="activa"] .tarjeta-login,
+body[data-sesion="activa"] .login-tabs { display: none !important; }
+body[data-sesion="inactiva"] #app { display: none !important; }
