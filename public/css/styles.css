@@ -923,3 +923,106 @@ body[data-sesion="inactiva"] #app { display: none !important; }
 @media (max-width: 768px) {
   .acta-grid, .acta-grid-3, .acta-grid-4 { grid-template-columns: repeat(2, minmax(0,1fr)); }
 }
+
+/* ============================================================
+   LIQUID GLASS MASTER · Levapan TI (v14)
+   ============================================================ */
+
+body {
+  background-color: #f6efe8 !important;
+  background-image:
+    radial-gradient(70% 55% at 8% 0%, #fdfaf7 0%, transparent 60%),
+    radial-gradient(65% 50% at 100% 12%, rgba(231, 214, 198, .85) 0%, transparent 62%),
+    radial-gradient(90% 80% at 50% 110%, #ebe0d4 0%, transparent 65%),
+    linear-gradient(135deg, #f6efe8 0%, #efe4d9 50%, #ebe0d4 100%) !important;
+}
+
+.tarjeta,
+.acta-bloque,
+.barra-superior,
+.tabla-caja,
+.ficha-grupo,
+.metrica,
+.pildora,
+.modal-caja,
+.panel-asistente,
+.acta-cabecera,
+.ws-top,
+.ws-seccion-barra {
+  background: rgba(255, 255, 255, 0.68) !important;
+  backdrop-filter: blur(22px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.55) !important;
+  box-shadow: 0 12px 32px rgba(107, 15, 26, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.85) !important;
+  border-radius: 20px !important;
+}
+
+.sidebar {
+  background: linear-gradient(180deg, rgba(114, 16, 29, 0.92), rgba(78, 9, 18, 0.95)) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.16) !important;
+}
+
+.mono,
+td,
+th,
+.metrica strong,
+.placa-badge,
+.estado-pill,
+.estado-badge,
+.num_contrato,
+input[type="text"],
+input[type="number"] {
+  font-variant-numeric: tabular-nums !important;
+}
+
+.acta-campo > span:first-child,
+.ws-form label,
+.form-seccion label {
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  color: #5c4b45 !important;
+}
+
+input,
+select,
+textarea {
+  height: 42px !important;
+  font-size: 16px !important;
+  border-radius: 12px !important;
+  box-sizing: border-box !important;
+}
+textarea { height: auto !important; }
+
+.tabla-inventario th,
+.tabla-inventario td,
+.tarjeta strong,
+.tarjeta span,
+.grid-docs strong,
+.ws-doc-info strong {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+#app.sidebar-collapsed {
+  grid-template-columns: 54px minmax(0, 1fr) !important;
+}
+#app.sidebar-collapsed .sidebar { width: 54px !important; }
+
+@media (max-width: 768px) {
+  .app:not(.sidebar-collapsed) {
+    grid-template-columns: 165px minmax(0, 1fr) !important;
+  }
+  .app:not(.sidebar-collapsed) .sidebar { width: 165px !important; }
+  .app.sidebar-collapsed,
+  .app.sidebar-collapsed .sidebar { width: 54px !important; }
+  .app.sidebar-collapsed { grid-template-columns: 54px minmax(0, 1fr) !important; }
+}
+
+.marca-login span { display: none !important; }
+.acta-cabecera .eyebrow { color: #5c4b45; }
+

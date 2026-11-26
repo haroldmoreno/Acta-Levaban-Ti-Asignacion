@@ -1554,6 +1554,14 @@
   }
 
   function instalarEventos() {
+    new MutationObserver(() => {
+      document
+        .querySelectorAll("td, .tarjeta strong, .ws-doc-info strong, .placa-item small")
+        .forEach((elemento) => {
+          if (!elemento.title) elemento.title = elemento.textContent.trim();
+        });
+    }).observe(document.body, { childList: true, subtree: true });
+
     byId("formLogin").addEventListener("submit", async (evento) => {
       evento.preventDefault();
       const error = byId("loginError");
@@ -1689,14 +1697,17 @@
     byId("actaNombre")?.addEventListener("input", (evento) => {
       clearTimeout(temporizadorNombreActa);
       const texto = evento.target.value.trim();
-      if (texto.length < 2) return;
+      const cajaNombre = byId("nombreSugerencias");
+      if (texto.length < 2) {
+        if (cajaNombre) cajaNombre.hidden = true;
+        return;
+      }
       temporizadorNombreActa = setTimeout(async () => {
-        const lista = byId("listaNombresActa");
-        if (!lista) return;
+        if (!cajaNombre) return;
         try {
           const { data } = await sb
             .from("vista_veredicto_360")
-            .select("responsable")
+            .select("responsable, cedula, sede")
             .ilike("responsable", `%${texto}%`)
             .limit(8);
           const nombres = [...new Set((data || []).map((f) => f.responsable).filter(Boolean))];
@@ -1707,9 +1718,16 @@
             .limit(8);
           const extras = (usuarios || []).map((u) => u.nombre_completo).filter(Boolean);
           const todos = [...new Set([...nombres, ...extras])];
-          lista.innerHTML = todos.map((nombre) => `<option value="${escapar(nombre)}"></option>`).join("");
+          if (!todos.length) {
+            cajaNombre.innerHTML = '<button type="button" disabled>Sin coincidencias</button>';
+          } else {
+            cajaNombre.innerHTML = todos
+              .map((nombre) => `<button type="button" data-sugerencia-nombre="${escapar(nombre)}">${escapar(nombre)}</button>`)
+              .join("");
+          }
+          cajaNombre.hidden = false;
         } catch {
-          /* sin sugerencias */
+          cajaNombre.hidden = true;
         }
       }, 320);
     });
@@ -1717,6 +1735,24 @@
     byId("btnLimpiarActa")?.addEventListener("click", () => llenarFormActa(null, "Asignación"));
 
     document.addEventListener("click", async (evento) => {
+      const sugerenciaNombre = evento.target.closest("[data-sugerencia-nombre]");
+      if (sugerenciaNombre) {
+        const nombre = sugerenciaNombre.dataset.sugerenciaNombre;
+        byId("actaNombre").value = nombre;
+        byId("nombreSugerencias").hidden = true;
+        try {
+          const { data } = await sb
+            .from("vista_veredicto_360")
+            .select("cedula, sede")
+            .eq("responsable", nombre)
+            .limit(1);
+          if (data?.[0]) {
+            if (data[0].cedula) byId("actaDocumento").value = data[0].cedula;
+            if (data[0].sede) byId("actaSede").value = data[0].sede;
+          }
+        } catch { /* datos parciales */ }
+        return;
+      }
       const sugerencia = evento.target.closest("[data-sugerencia-placa]");
       if (sugerencia) {
         const id = sugerencia.dataset.sugerenciaPlaca;
