@@ -12,6 +12,8 @@ Paquete completo para instalar la PWA y su backend (Supabase auto-hospedado) en 
 | `storage` | `supabase/storage-api:v1.0.6` | interno 5000 | Bóveda de PDF (`actas-pdf`, `boveda-ti`) |
 | `kong` | `kong:2.8.1` | **8000** | Gateway: `/auth/v1`, `/rest/v1`, `/storage/v1` + CORS |
 | `web` | `nginx:alpine` | **8080** | PWA estática servida desde `../public` |
+| `sync-cron` | `node:20-alpine` | interno | Sincroniza Entra ID al arrancar y cada 6 horas |
+| `db-backup` | `postgres:15-alpine` | interno | `pg_dump` diario en `./volumes/backups` con retención de 30 días |
 
 ## 1. Requisitos
 
@@ -60,12 +62,46 @@ docker compose exec -T db psql -U postgres -d postgres < migracion_supabase.sql
 
 Si quiere empezar limpio, omita este paso: `init-db.sql` crea automáticamente las 5 tablas base, las 27 columnas, las espejos Entra/HP y la vista `vista_veredicto_360`.
 
-## 4. Levantar los servicios
+## 4. Operación 24/7 (un solo comando)
+
+Todos los servicios tienen `restart: unless-stopped` y `healthcheck`, por lo que se levantan solos tras un reinicio del servidor o de Docker y se reinician si fallan. Para iniciar **toda** la operación —incluidas la sincronización de Entra ID y los respaldos automáticos—:
 
 ```powershell
+cd C:\Actas-Levapan\codigo\docker
 docker compose up -d
+```
+
+Verifique el estado de **todos** los contenedores (los ocho servicios deben aparecer `Up` y `healthy`):
+
+```powershell
 docker compose ps
-docker compose logs -f db
+docker compose logs -f sync-cron
+docker compose logs -f db-backup
+```
+
+### Sincronización automática de Entra ID
+
+El servicio `sync-cron` ejecuta `sync-entra.mjs` **inmediatamente al arrancar** y luego **cada 6 horas**, sin intervención humana. Completa `sync_entra_dispositivos` con los ~3.992 dispositivos y cruza los ~3.860 usuarios de Microsoft Graph, alimentando el Veredicto 360°. Configure en `.env`:
+
+```env
+MS_TENANT_ID=CAMBIAR_TENANT_ID
+MS_CLIENT_ID=CAMBIAR_CLIENT_ID
+MS_CLIENT_SECRET=CAMBIAR_CLIENT_SECRET
+SUPABASE_SERVICE_KEY=CAMBIAR_SERVICE_ROLE_JWT
+```
+
+La app de Azure necesita permisos de aplicación `Device.Read.All` y `User.Read.All` con consentimiento de administrador. El `service_role` se usa solo dentro de los contenedores, nunca en la PWA. Para ejecutar una sincronización manual:
+
+```powershell
+docker compose exec sync-cron node /app/sync-entra.mjs
+```
+
+### Respaldo automático
+
+`db-backup` crea un `pg_dump` comprimido al arrancar y cada 24 horas en `./volumes/backups/`, y elimina los archivos con más de 30 días. Para restaurar:
+
+```powershell
+docker compose exec -T db pg_restore -U postgres -d postgres < .\volumes\backups\levapan_AAAAmmdd_HHMMSS.dump
 ```
 
 El esquema se inicializa solo la **primera vez** que se crea `./volumes/db`. Si modifica `init-db.sql` después, borre ese volumen (¡esto elimina los datos!):
@@ -167,8 +203,10 @@ Copy-Item -Recurse .\volumes\storage .\respaldo_storage
 | Login responde 401 | `JWT_SECRET` distinto en los servicios | Unifique el valor en `.env` y ejecute `docker compose up -d --force-recreate` |
 | CORS en consola | `SITE_URL` distinto al origen de la PWA | Ajuste `SITE_URL` y reinicie `kong` |
 | El acta no descarga | `template.pdf` no accesible | Verifique `http://IP:8080/template.pdf` devuelve 200 |
-| El Veredicto sale `SOLO_INVENTARIO` | Espejos vacíos | Importe el CSV HP WXP y ejecute la Edge Function `sync-telemetria-360` |
+| El Veredicto sale `SOLO_INVENTARIO` | Espejos vacíos | Importe el CSV HP WXP y verifique los logs de `sync-cron` |
+| `sync-cron` sale `unhealthy` | Faltan credenciales de Graph o permisos de aplicación | Revise `MS_*` en `.env` y el consentimiento de administrador de `Device.Read.All` / `User.Read.All` |
+| No aparecen respaldos | Volumen `./volumes/backups` sin permisos | `docker compose logs db-backup` y cree el directorio con permisos de escritura |
 
 ---
 
-**Nota:** la Edge Function `sync-telemetria-360` sigue desplegada en Supabase y requiere los secretos `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET` y, opcionalmente, `HP_WXP_API_KEY`. En on-premise puede sustituirse por un cron que llame a Graph y escriba en `sync_entra_dispositivos` / `sync_hp_wxp`.
+**Nota:** en on-premise el cron local `sync-entra.mjs` sustituye a la Edge Function `sync-telemetria-360` para Entra ID. La telemetría HP WXP se sigue cargando con el botón **Importar CSV HP WXP** de Administración TI (o con un `HP_WXP_API_KEY` opcional si se usa la Edge Function en la nube).

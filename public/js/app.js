@@ -864,6 +864,55 @@
     recargar();
   }
 
+  function configuracionAcordeon(vista) {
+    if (vista === "placas") {
+      return {
+        contenedor: "listaPlacas",
+        boton: "btnTogglePlacas",
+        grupos: [{ clave: "placas", grupos: () => ESTADO.placasGrupos || [] }],
+        actualizar: actualizarBotonPlacas,
+      };
+    }
+    return {
+      contenedor: "listaContratos",
+      boton: "btnToggleContratos",
+      grupos: [
+        { clave: "contratos", grupos: () => ESTADO.contratosGrupos || [] },
+        { clave: "contratos-sub", grupos: () => ESTADO.contratosSubgrupos || [] },
+      ],
+      actualizar: actualizarBotonContratos,
+    };
+  }
+
+  // Abre o cierra TODAS las cortinas de una vista (grupos, subniveles y <details>).
+  function aplicarCortinas(vista, abrir) {
+    const config = configuracionAcordeon(vista);
+    const contenedor = byId(config.contenedor);
+    if (!contenedor) return;
+    contenedor.querySelectorAll("details, .accordion-item, .curtain-group, .acordeon-grupo").forEach((el) => {
+      el.open = abrir;
+      el.classList.toggle("is-open", abrir);
+      el.classList.toggle("abierto", abrir);
+      el.querySelectorAll(".accordion-body, .acordeon-cuerpo").forEach((body) => {
+        body.style.display = abrir ? "block" : "";
+        body.style.maxHeight = abrir ? "none" : "";
+        body.style.opacity = abrir ? "1" : "";
+      });
+      const cabecera = el.querySelector("[data-toggle-grupo], [data-toggle-subgrupo], summary, .acordeon-cabecera");
+      if (cabecera) {
+        cabecera.setAttribute("aria-expanded", String(abrir));
+        const flecha = cabecera.querySelector(".acordeon-flecha");
+        if (flecha) flecha.textContent = "▸";
+      }
+    });
+    config.grupos.forEach(({ clave, grupos }) => {
+      const set = acordeonSet(clave);
+      if (abrir) grupos().forEach((g) => set.add(g.indice));
+      else set.clear();
+    });
+    config.actualizar();
+  }
+
   async function cargarPlacas() {
     const [data, sistemas] = await Promise.all([
       cargarTodos("equipos", columnasVisibles()),
@@ -900,13 +949,13 @@
         <strong>${escapar(e.placa)}</strong>
         <small>${escapar(e.nombre_red || "Sin nombre en red")} · ${escapar(e.sede || "—")}</small>
       </button>`).join("");
-      return `<section class="acordeon-grupo${abierto ? " abierto" : ""}" data-grupo="${g.indice}">
+      return `<section class="acordeon-grupo accordion-item curtain-group${abierto ? " abierto is-open" : ""}" data-grupo="${g.indice}">
         <header class="acordeon-cabecera" data-toggle-grupo data-acordeon="placas" data-indice="${g.indice}" role="button" tabindex="0" aria-expanded="${abierto}">
-          <span class="acordeon-flecha">${abierto ? "▾" : "▸"}</span>
+          <span class="acordeon-flecha">▸</span>
           <span class="acordeon-titulo"><strong>${escapar(g.eco)}</strong><small>${escapar(g.sede)} · ${escapar(g.tipo)}</small></span>
           <span class="acordeon-conteo">${g.items.length} placas</span>
         </header>
-        <div class="acordeon-cuerpo"><div class="acordeon-inner"><div class="grid-placas">${tarjetas}</div></div></div>
+        <div class="acordeon-cuerpo accordion-body"><div class="acordeon-inner"><div class="grid-placas">${tarjetas}</div></div></div>
       </section>`;
     }).join("");
 
@@ -1116,25 +1165,25 @@
         const claveSub = `${i}-${j}`;
         const subAbierto = acordeonSet("contratos-sub").has(claveSub);
         ESTADO.contratosSubgrupos.push({ indice: claveSub, count: lista.length });
-        return `<section class="acordeon-grupo acordeon-sub${subAbierto ? " abierto" : ""}">
+        return `<section class="acordeon-grupo acordeon-sub accordion-item curtain-group${subAbierto ? " abierto is-open" : ""}">
           <header class="acordeon-cabecera" data-toggle-subgrupo data-acordeon="contratos-sub" data-indice="${claveSub}" role="button" tabindex="0" aria-expanded="${subAbierto}">
-            <span class="acordeon-flecha">${subAbierto ? "▾" : "▸"}</span>
+            <span class="acordeon-flecha">▸</span>
             <span class="acordeon-titulo"><strong>${escapar(sub)}</strong></span>
             <span class="acordeon-conteo">${lista.length} contratos</span>
           </header>
-          <div class="acordeon-cuerpo"><div class="acordeon-inner"><table class="tabla-inventario">
+          <div class="acordeon-cuerpo accordion-body"><div class="acordeon-inner"><table class="tabla-inventario">
             ${cabeceraTabla}<tbody>${lista.map(filaContrato).join("")}</tbody>
           </table></div></div>
         </section>`;
       }).join("");
 
-      return `<section class="acordeon-grupo${proveedorAbierto ? " abierto" : ""}">
+      return `<section class="acordeon-grupo accordion-item curtain-group${proveedorAbierto ? " abierto is-open" : ""}">
         <header class="acordeon-cabecera" data-toggle-grupo data-acordeon="contratos" data-indice="${i}" role="button" tabindex="0" aria-expanded="${proveedorAbierto}">
-          <span class="acordeon-flecha">${proveedorAbierto ? "▾" : "▸"}</span>
+          <span class="acordeon-flecha">▸</span>
           <span class="acordeon-titulo"><strong>${escapar(proveedor)}</strong><small>Vencimientos y garantías</small></span>
           <span class="acordeon-conteo">${total} contratos</span>
         </header>
-        <div class="acordeon-cuerpo"><div class="acordeon-inner"><div class="acordeon-subgrupos">${subHtml}</div></div></div>
+        <div class="acordeon-cuerpo accordion-body"><div class="acordeon-inner"><div class="acordeon-subgrupos">${subHtml}</div></div></div>
       </section>`;
     }).join("");
 
@@ -1738,7 +1787,10 @@
       }
       setTimeout(posicionarIndicador, 100);
     };
-    byId("btnToggleSidebar")?.addEventListener("click", alternarSidebar);
+    // Delegación global: el ≡ funciona siempre, incluso tras recargar la vista.
+    document.addEventListener("click", (evento) => {
+      if (evento.target.closest("#btnToggleSidebar")) alternarSidebar();
+    });
 
     // En celular la barra arranca compacta (52 px) salvo preferencia explícita del usuario.
     const preferencia = localStorage.getItem("levapan_sidebar_collapsed");
@@ -1899,6 +1951,13 @@
     });
 
     document.addEventListener("click", async (evento) => {
+      // Botón maestro: delegación global, funciona tras recargas y filtros.
+      const maestro = evento.target.closest("#btnTogglePlacas, #btnToggleContratos");
+      if (maestro) {
+        const vista = maestro.id === "btnTogglePlacas" ? "placas" : "contratos";
+        aplicarCortinas(vista, maestro.textContent.trim() !== "Recoger todo");
+        return;
+      }
       if (evento.target.closest("[data-accion]")) return;
 
       const cabecera = evento.target.closest("[data-toggle-grupo], [data-toggle-subgrupo]");
@@ -1910,10 +1969,15 @@
         if (abiertos.has(indice)) abiertos.delete(indice);
         else abiertos.add(indice);
         const abierto = abiertos.has(indice);
-        cabecera.closest(".acordeon-grupo")?.classList.toggle("abierto", abierto);
+        const grupo = cabecera.closest(".acordeon-grupo, .accordion-item, .curtain-group, details");
+        if (grupo) {
+          grupo.classList.toggle("abierto", abierto);
+          grupo.classList.toggle("is-open", abierto);
+          if ("open" in grupo) grupo.open = abierto;
+        }
         cabecera.setAttribute("aria-expanded", String(abierto));
         const flecha = cabecera.querySelector(".acordeon-flecha");
-        if (flecha) flecha.textContent = abierto ? "▾" : "▸";
+        if (flecha) flecha.textContent = "▸";
         if (clave.startsWith("contratos")) actualizarBotonContratos();
         else actualizarBotonPlacas();
         return;
@@ -1941,12 +2005,6 @@
     byId("buscarEquipo").addEventListener("input", () => cargarEquipos());
     ["filtroSede", "filtroCeco", "filtroEstado"].forEach((id) => byId(id)?.addEventListener("change", cargarEquipos));
     byId("buscarPlaca").addEventListener("input", () => cargarPlacas());
-    byId("btnTogglePlacas")?.addEventListener("click", () =>
-      alternarTodoAcordeon("placas", ESTADO.placasGrupos || [], cargarPlacas));
-    byId("btnToggleContratos")?.addEventListener("click", () =>
-      alternarTodoAcordeon("contratos", ESTADO.contratosGrupos || [], cargarContratos, [
-        { clave: "contratos-sub", grupos: ESTADO.contratosSubgrupos || [] },
-      ]));
     document.addEventListener("keydown", (evento) => {
       if (!["Enter", " "].includes(evento.key)) return;
       const cabecera = evento.target.closest?.("[data-toggle-grupo], [data-toggle-subgrupo]");
