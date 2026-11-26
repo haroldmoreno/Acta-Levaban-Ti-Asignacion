@@ -1117,6 +1117,152 @@
     }
   }
 
+  const HP_ENCABEZADOS = {
+    "serial number": "serial",
+    "numero de serie": "serial",
+    "número de serie": "serial",
+    serial: "serial",
+    "device name": "device_name",
+    "nombre del dispositivo": "device_name",
+    hostname: "device_name",
+    model: "modelo_hp",
+    modelo: "modelo_hp",
+    "product name": "modelo_hp",
+    "bios version": "bios_version",
+    "versión de bios": "bios_version",
+    "version de bios": "bios_version",
+    "battery health": "salud_bateria_pct",
+    "salud de la batería": "salud_bateria_pct",
+    "salud de la bateria": "salud_bateria_pct",
+    "disk health": "estado_disco",
+    "estado del disco": "estado_disco",
+    "storage status": "estado_disco",
+    "connection status": "estado_conexion",
+    "estado de conexión": "estado_conexion",
+    "estado de conexion": "estado_conexion",
+    status: "estado_conexion",
+    "last user": "ultimo_usuario_hp",
+    "último usuario": "ultimo_usuario_hp",
+    "ultimo usuario": "ultimo_usuario_hp",
+    "user name": "ultimo_usuario_hp",
+    "last seen": "ultima_conexion_hp",
+    "última conexión": "ultima_conexion_hp",
+    "ultima conexion": "ultima_conexion_hp",
+    "última vez visto": "ultima_conexion_hp",
+    "ultima vez visto": "ultima_conexion_hp",
+  };
+
+  function normalizarEncabezadoHp(texto) {
+    return String(texto ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[_-]+/g, " ")
+      .replace(/[^a-z0-9 ]+/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function fechaHpIso(valor) {
+    if (valor == null || valor === "") return null;
+    if (valor instanceof Date && !Number.isNaN(valor.getTime())) return valor.toISOString();
+    const texto = String(valor).trim();
+    if (!texto) return null;
+    const dias = texto.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[ T](\d{1,2}):(\d{2}))?/);
+    if (dias) {
+      const fecha = new Date(
+        Number(dias[3]), Number(dias[2]) - 1, Number(dias[1]),
+        Number(dias[4] || 0), Number(dias[5] || 0)
+      );
+      return Number.isNaN(fecha.getTime()) ? null : fecha.toISOString();
+    }
+    const fecha = new Date(texto);
+    return Number.isNaN(fecha.getTime()) ? null : fecha.toISOString();
+  }
+
+  function enteroHp(valor) {
+    const coincidencia = String(valor ?? "").match(/\d+/);
+    return coincidencia ? Number(coincidencia[0]) : null;
+  }
+
+  async function importarCsvHp(archivo) {
+    const aviso = byId("mensajeMigracion");
+    if (aviso) {
+      aviso.textContent = "Leyendo archivo HP WXP…";
+      aviso.className = "mensaje";
+    }
+    try {
+      const buffer = await archivo.arrayBuffer();
+      const nombre = String(archivo.name || "").toLowerCase();
+      let libro;
+      if (nombre.endsWith(".csv")) {
+        const texto = new TextDecoder("utf-8").decode(buffer).replace(/^\uFEFF/, "");
+        const primeraLinea = texto.split(/\r?\n/)[0] || "";
+        const separador = (primeraLinea.match(/;/g) || []).length > (primeraLinea.match(/,/g) || []).length ? ";" : ",";
+        libro = window.XLSX.read(texto, { type: "string", FS: separador, cellDates: true });
+      } else {
+        libro = window.XLSX.read(buffer, { type: "array", cellDates: true });
+      }
+
+      const hoja = libro.Sheets[libro.SheetNames[0]];
+      const filas = window.XLSX.utils.sheet_to_json(hoja, { defval: "", raw: false });
+      const totalFilas = filas.length;
+      const porSerial = new Map();
+      let descartadas = 0;
+
+      for (const fila of filas) {
+        const registro = {};
+        for (const [encabezado, valor] of Object.entries(fila)) {
+          const columna = HP_ENCABEZADOS[normalizarEncabezadoHp(encabezado)];
+          if (!columna) continue;
+          const texto = String(valor ?? "").trim();
+          if (!texto) continue;
+          if (columna === "serial") registro.serial = texto.toUpperCase().replace(/\s+/g, "");
+          else if (columna === "salud_bateria_pct") registro.salud_bateria_pct = enteroHp(texto);
+          else if (columna === "ultima_conexion_hp") registro.ultima_conexion_hp = fechaHpIso(texto);
+          else registro[columna] = texto;
+        }
+
+        if (!registro.serial) {
+          descartadas += 1;
+          continue;
+        }
+        porSerial.set(registro.serial, { ...registro, synced_at: new Date().toISOString() });
+      }
+
+      const registros = [...porSerial.values()];
+      if (!registros.length) throw new Error("No se encontraron filas con serial válido");
+
+      for (let i = 0; i < registros.length; i += 500) {
+        const { error } = await sb
+          .from("sync_hp_wxp")
+          .upsert(registros.slice(i, i + 500), { onConflict: "serial" });
+        if (error) throw error;
+      }
+
+      try {
+        await APP_RELOAD_VISTA360();
+      } catch { /* la vista puede no existir aún */ }
+      await cargarEquipos();
+
+      if (aviso) {
+        aviso.textContent =
+          `${registros.length} equipos HP únicos sincronizados · ` +
+          `${totalFilas - descartadas - registros.length} duplicados eliminados · ${descartadas} filas sin serial descartadas.`;
+        aviso.className = "mensaje ok";
+      }
+    } catch (err) {
+      if (aviso) {
+        aviso.textContent = `No se pudo importar HP WXP: ${err.message}`;
+        aviso.className = "mensaje error";
+      }
+    }
+  }
+
+  async function APP_RELOAD_VISTA360() {
+    await cargarTodos("vista_veredicto_360", "id");
+  }
+
   async function exportarRespaldoMaestro() {
     const tablas = ["sistemas", "equipos", "historial_movimientos", "usuarios_corporativos", "boveda_documentos", "sync_entra_dispositivos", "sync_hp_wxp"];
     const datos = {};
@@ -1364,9 +1510,16 @@
       if (accion === "exportar") return exportarExcel();
       if (accion === "exportar-contratos") return exportarContratos();
       if (accion === "importar" || accion === "migrar") return byId("archivoImportar").click();
+      if (accion === "importar-hp") return byId("archivoHpWxp").click();
       if (accion === "modo-auditoria") return modoAuditoria();
       if (accion === "respaldo-maestro") return exportarRespaldoMaestro();
       if (accion === "sync-entra") return sincronizarEntraAhora(evento.target.closest("[data-accion]"));
+    });
+
+    byId("archivoHpWxp")?.addEventListener("change", async (evento) => {
+      const archivo = evento.target.files?.[0];
+      if (archivo) await importarCsvHp(archivo);
+      evento.target.value = "";
     });
 
     byId("btnEscanear")?.addEventListener("click", abrirEscanner);
