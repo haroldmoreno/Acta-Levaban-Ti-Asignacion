@@ -1672,3 +1672,40 @@ details[open] .acordeon-flecha { transform: rotate(90deg) !important; }
   select { font-size: 16px !important; height: 42px !important; }
 }
 
+/* ============================================================
+   V24 · GUARDADO CONFIRMADO + RENDIMIENTO MÓVIL
+   ============================================================ */
+
+.estado-guardado {
+  margin: 10px 0 0 !important;
+  padding: 8px 12px !important;
+  border-radius: 10px !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  white-space: normal !important;
+}
+.estado-guardado[hidden] { display: none !important; }
+.estado-guardado.ok {
+  color: #0b5d32 !important;
+  background: rgba(16, 124, 72, .12) !important;
+  border: 1px solid rgba(16, 124, 72, .35) !important;
+}
+.estado-guardado.error {
+  color: #8b1e24 !important;
+  background: rgba(139, 30, 36, .10) !important;
+  border: 1px solid rgba(139, 30, 36, .35) !important;
+}
+.boton:disabled { opacity: .65 !important; cursor: wait !important; }
+.ver-mas { margin: 10px 0 4px !important; }
+
+@media (max-width: 768px) {
+  .orbe { animation: none !important; }
+  .tarjeta, .tarjeta-login, .acta-bloque, .acta-cabecera, .barra-superior,
+  .tabla-caja, .ficha-grupo, .metrica, .modal-caja, .panel-asistente,
+  .asistente-panel, .cabecera-seccion, .acordeon-grupo, .ws-top,
+  .ws-seccion-barra {
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+  }
+}
+

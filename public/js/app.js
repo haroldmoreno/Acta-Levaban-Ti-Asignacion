@@ -19,6 +19,10 @@
     sistemas: [],
     equipos: [],
     ultimaPlaca: null,
+    fotosComprimidas: {},
+    equiposLimite: 40,
+    placasLimite: 40,
+    contratosLimite: 40,
   };
 
   const TITULOS = {
@@ -406,6 +410,11 @@
     const sede = byId("filtroSede")?.value;
     const ceco = byId("filtroCeco")?.value;
     const estado = byId("filtroEstado")?.value;
+    const firmaFiltros = JSON.stringify([q, sede, ceco, estado]);
+    if (ESTADO.equiposFirma !== firmaFiltros) {
+      ESTADO.equiposLimite = 40;
+      ESTADO.equiposFirma = firmaFiltros;
+    }
 
     const todos = await cargarTodos("equipos", columnasVisibles(), (consulta) => {
       let c = consulta;
@@ -427,6 +436,8 @@
     byId("estadoConexion").textContent = `Supabase en vivo · ${total.toLocaleString("es-CO")} equipos`;
 
     ESTADO.equipos = todos;
+    const limiteEquipos = ESTADO.equiposLimite || 40;
+    const visiblesEquipos = ESTADO.equipos.slice(0, limiteEquipos);
     actualizarFiltros(todos);
     const sistemasPorId = Object.fromEntries(ESTADO.sistemas.map((s) => [s.id, s]));
     const estadoBadge = (valor) => {
@@ -441,7 +452,7 @@
         <col style="width:17%" /><col style="width:20%" /><col style="width:11%" /><col style="width:150px" />
       </colgroup>
       <thead><tr><th>Placa</th><th>Equipo y Red</th><th>Responsable</th><th>Ubicación</th><th>Contrato</th><th>Estado</th><th class="acciones-col">Acciones</th></tr></thead>
-      <tbody>${ESTADO.equipos.map((e) => {
+      <tbody>${visiblesEquipos.map((e) => {
         const sistema = sistemasPorId[e.sistema_id];
         return `<tr>
           <td data-etiqueta="Placa"><span class="placa-badge mono">${escapar(e.placa)}</span></td>
@@ -469,7 +480,10 @@
             </div>
           </td>
         </tr>`;
-      }).join("")}</tbody></table>` || '<p class="vacio">Sin equipos.</p>';
+      }).join("")}</tbody></table>
+      ${ESTADO.equipos.length > limiteEquipos
+        ? `<button type="button" class="boton ver-mas" data-ver-mas="equipos">Ver más (${ESTADO.equipos.length - limiteEquipos} equipos)</button>`
+        : ""}` || '<p class="vacio">Sin equipos.</p>';
   }
 
   function actualizarFiltros(equipos) {
@@ -599,6 +613,55 @@
     });
   }
 
+  // Reduce fotos de cámara (8-15 MB) a JPEG < 180 KB antes de incrustarlas/subirlas.
+  async function comprimirImagenMovil(file, maxLado = 1024, calidad = 0.72) {
+    if (!file || !String(file.type || "").startsWith("image/")) return null;
+    const origen = await archivoADataUrl(file);
+    const imagen = new Image();
+    await new Promise((resolver, rechazar) => {
+      imagen.onload = resolver;
+      imagen.onerror = () => rechazar(new Error("No se pudo leer la imagen capturada"));
+      imagen.src = origen;
+    });
+
+    let ancho = Math.max(1, Math.round(imagen.naturalWidth || imagen.width));
+    let alto = Math.max(1, Math.round(imagen.naturalHeight || imagen.height));
+    const escalaInicial = Math.min(1, maxLado / Math.max(ancho, alto));
+    ancho = Math.max(1, Math.round(ancho * escalaInicial));
+    alto = Math.max(1, Math.round(alto * escalaInicial));
+
+    const lienzo = document.createElement("canvas");
+    const contexto = lienzo.getContext("2d");
+    const dibujar = () => {
+      lienzo.width = ancho;
+      lienzo.height = alto;
+      contexto.drawImage(imagen, 0, 0, ancho, alto);
+    };
+    dibujar();
+
+    const limite = Math.round(180 * 1024 * 4 / 3); // base64 ≈ 4/3 del tamaño binario
+    let calidadActual = calidad;
+    let resultado = lienzo.toDataURL("image/jpeg", calidadActual);
+
+    while (resultado.length > limite && calidadActual > 0.35) {
+      calidadActual = Math.max(0.35, calidadActual - 0.08);
+      resultado = lienzo.toDataURL("image/jpeg", calidadActual);
+    }
+    while (resultado.length > limite && Math.max(ancho, alto) > 480) {
+      ancho = Math.max(1, Math.round(ancho * 0.85));
+      alto = Math.max(1, Math.round(alto * 0.85));
+      dibujar();
+      resultado = lienzo.toDataURL("image/jpeg", calidadActual);
+    }
+    return resultado;
+  }
+
+  async function fotoParaActa(id) {
+    const archivo = byId(id)?.files?.[0];
+    if (!archivo) return null;
+    return ESTADO.fotosComprimidas[id] || (await comprimirImagenMovil(archivo));
+  }
+
   async function llenarFormActa(ficha, tipo) {
     const poner = (id, valor) => {
       const campo = byId(id);
@@ -636,6 +699,7 @@
     ["fotoEncendido", "fotoFrontal", "fotoPosterior"].forEach((id) => {
       const campo = byId(id);
       if (campo) campo.value = "";
+      delete ESTADO.fotosComprimidas[id];
       const vistaPrevia = byId(`preview${id.charAt(0).toUpperCase()}${id.slice(1)}`);
       if (vistaPrevia) {
         vistaPrevia.removeAttribute("src");
@@ -665,60 +729,91 @@
     irAVista("acta");
   }
 
+  function mostrarEstadoGuardado(mensaje, tipo) {
+    let estado = byId("estadoGuardadoActa");
+    if (!estado) {
+      estado = document.createElement("p");
+      estado.id = "estadoGuardadoActa";
+      estado.className = "estado-guardado";
+      estado.setAttribute("role", "status");
+      const form = byId("formActa");
+      if (form) form.insertBefore(estado, form.querySelector(".form-pie") || null);
+    }
+    estado.textContent = mensaje;
+    estado.className = `estado-guardado ${tipo || ""}`;
+    estado.hidden = false;
+  }
+
+  function descargarActa(blob, nombreArchivo) {
+    const urlLocal = URL.createObjectURL(blob);
+    const enlace = document.createElement("a");
+    enlace.href = urlLocal;
+    enlace.download = nombreArchivo;
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+    setTimeout(() => URL.revokeObjectURL(urlLocal), 60000);
+  }
+
   async function guardarActa(evento) {
     evento.preventDefault();
-    const placa = byId("actaPlaca").value.trim();
-    if (!placa) return alert("Indica la placa del equipo");
-
-    let equipo = ESTADO.actaEquipo;
-    if (!equipo || equipo.placa !== placa) {
-      const { data } = await sb.from("equipos").select("*").eq("placa", placa).maybeSingle();
-      equipo = data;
+    const boton = byId("formActa")?.querySelector('button[type="submit"]');
+    const textoOriginal = boton?.textContent || "Generar acta PDF CORP-TEC-FR-002";
+    if (boton) {
+      boton.disabled = true;
+      boton.textContent = "Guardando acta en Bóveda...";
     }
-    if (!equipo) return alert("No se encontró la placa");
-
-    const tipo = document.querySelector('input[name="tipoActa"]:checked')?.value || "Asignación";
-    const esDevolucion = tipo.toLowerCase().startsWith("dev");
-    const responsable = byId("actaNombre").value.trim();
-    const cedula = byId("actaDocumento").value.trim();
-    const sede = byId("actaSede").value.trim();
-    const observaciones = byId("actaObs").value.trim();
-    const agenteTi = byId("actaAgenteTi").value.trim();
-    const documentoTi = byId("actaDocumentoTi").value.trim();
-
-    if (documentoTi) localStorage.setItem("levapan_agente_ti_cedula", documentoTi);
-    if (agenteTi) localStorage.setItem("levapan_agente_ti_nombre", agenteTi);
-
-    const accesorios = [...document.querySelectorAll("[data-accesorio]")]
-      .filter((casilla) => casilla.checked)
-      .map((casilla) => casilla.dataset.accesorio);
-    const otroAccesorio = byId("actaOtroAccesorio")?.value.trim();
-    if (otroAccesorio) accesorios.push(`Otro: ${otroAccesorio}`);
-
-    const software = [...document.querySelectorAll("[data-software]")]
-      .filter((casilla) => casilla.checked)
-      .map((casilla) => casilla.dataset.software);
-    const otroSoftware = byId("actaOtroSoftware")?.value.trim();
-    if (otroSoftware) software.push(`Otro: ${otroSoftware}`);
-
-    const fotos = {
-      encendido: await archivoADataUrl(byId("fotoEncendido")?.files?.[0]),
-      frontal: await archivoADataUrl(byId("fotoFrontal")?.files?.[0]),
-      posterior: await archivoADataUrl(byId("fotoPosterior")?.files?.[0]),
-    };
-
-    const cambios = {
-      responsable: esDevolucion ? null : responsable,
-      cedula: esDevolucion ? null : cedula,
-      sede: sede || null,
-      estado: esDevolucion ? "DISPONIBLE" : "ASIGNADO",
-      modificado_por: agenteTi || ESTADO.perfil?.nombre_completo || "sistema",
-    };
-    // El PDF oficial se genera y descarga ANTES de tocar el inventario:
-    // si falla la emisión, la placa permanece intacta.
-    let url;
     try {
-      url = await generarYSubirActa(
+      const placa = byId("actaPlaca").value.trim();
+      if (!placa) throw new Error("Indica la placa del equipo");
+
+      let equipo = ESTADO.actaEquipo;
+      if (!equipo || equipo.placa !== placa) {
+        const { data } = await sb.from("equipos").select("*").eq("placa", placa).maybeSingle();
+        equipo = data;
+      }
+      if (!equipo) throw new Error("No se encontró la placa");
+
+      const tipo = document.querySelector('input[name="tipoActa"]:checked')?.value || "Asignación";
+      const esDevolucion = tipo.toLowerCase().startsWith("dev");
+      const responsable = byId("actaNombre").value.trim();
+      const cedula = byId("actaDocumento").value.trim();
+      const sede = byId("actaSede").value.trim();
+      const observaciones = byId("actaObs").value.trim();
+      const agenteTi = byId("actaAgenteTi").value.trim();
+      const documentoTi = byId("actaDocumentoTi").value.trim();
+
+      if (documentoTi) localStorage.setItem("levapan_agente_ti_cedula", documentoTi);
+      if (agenteTi) localStorage.setItem("levapan_agente_ti_nombre", agenteTi);
+
+      const accesorios = [...document.querySelectorAll("[data-accesorio]")]
+        .filter((casilla) => casilla.checked)
+        .map((casilla) => casilla.dataset.accesorio);
+      const otroAccesorio = byId("actaOtroAccesorio")?.value.trim();
+      if (otroAccesorio) accesorios.push(`Otro: ${otroAccesorio}`);
+
+      const software = [...document.querySelectorAll("[data-software]")]
+        .filter((casilla) => casilla.checked)
+        .map((casilla) => casilla.dataset.software);
+      const otroSoftware = byId("actaOtroSoftware")?.value.trim();
+      if (otroSoftware) software.push(`Otro: ${otroSoftware}`);
+
+      const fotos = {
+        encendido: await fotoParaActa("fotoEncendido"),
+        frontal: await fotoParaActa("fotoFrontal"),
+        posterior: await fotoParaActa("fotoPosterior"),
+      };
+
+      const cambios = {
+        responsable: esDevolucion ? null : responsable,
+        cedula: esDevolucion ? null : cedula,
+        sede: sede || null,
+        estado: esDevolucion ? "DISPONIBLE" : "ASIGNADO",
+        modificado_por: agenteTi || ESTADO.perfil?.nombre_completo || "sistema",
+      };
+
+      // Primero se genera, se sube y se registra; después se toca el inventario.
+      const guardado = await generarYSubirActa(
         {
           ...equipo,
           ...cambios,
@@ -732,23 +827,30 @@
         datosFirmas(),
         { accesorios, software, observaciones, sede }
       );
+
+      const { data: actualizado, error } = await sb.from("equipos").update(cambios).eq("id", equipo.id).select().single();
+      if (error) throw error;
+
+      await registrarHistorial(equipo, tipo.toUpperCase(), `Acta CORP-TEC-FR-002 · ${placa} · ${responsable || "devolución"}`, {
+        responsable_anterior: equipo.responsable,
+        responsable_nuevo: cambios.responsable,
+        sede_nueva: sede,
+        acta_pdf_url: guardado.url,
+      });
+
+      ESTADO.actaEquipo = actualizado;
+      descargarActa(guardado.blob, guardado.nombreArchivo);
+      mostrarEstadoGuardado("Acta guardada correctamente en Bóveda PDF", "ok");
+      cargarBoveda();
+      cargarEquipos();
     } catch (err) {
-      return alert(`No se pudo emitir el acta CORP-TEC-FR-002: ${err.message}`);
+      mostrarEstadoGuardado(`Error al guardar el acta: ${err?.message || String(err)}`, "error");
+    } finally {
+      if (boton) {
+        boton.disabled = false;
+        boton.textContent = textoOriginal;
+      }
     }
-
-    const { data: actualizado, error } = await sb.from("equipos").update(cambios).eq("id", equipo.id).select().single();
-    if (error) return alert(error.message);
-
-    await registrarHistorial(equipo, tipo.toUpperCase(), `Acta CORP-TEC-FR-002 · ${placa} · ${responsable || "devolución"}`, {
-      responsable_anterior: equipo.responsable,
-      responsable_nuevo: cambios.responsable,
-      sede_nueva: sede,
-      acta_pdf_url: url,
-    });
-
-    ESTADO.actaEquipo = actualizado;
-    alert("Acta CORP-TEC-FR-002 generada y archivada en la Bóveda PDF.");
-    cargarEquipos();
   }
 
   async function generarYSubirActa(datos, fotos, firmas, extras) {
@@ -779,28 +881,38 @@
 
     if (!pdfBytes || pdfBytes.length < 1000) throw new Error("El PDF oficial quedó vacío");
     const blob = new Blob([pdfBytes], { type: "application/pdf" });
-
-    // Descarga automática del acta oficial (CORP-TEC-FR-002, 2 páginas).
     const nombreArchivo = `CORP-TEC-FR-002_${String(datos.placa || "acta").replace(/[^\w-]/g, "_")}.pdf`;
-    const urlLocal = URL.createObjectURL(blob);
-    const enlace = document.createElement("a");
-    enlace.href = urlLocal;
-    enlace.download = nombreArchivo;
-    document.body.appendChild(enlace);
-    enlace.click();
-    enlace.remove();
-    setTimeout(() => URL.revokeObjectURL(urlLocal), 60000);
-
     const ruta = `actas/${datos.placa}/${Date.now()}.pdf`;
+
     const subida = await sb.storage.from(CFG.bucket).upload(ruta, blob, { contentType: "application/pdf", upsert: false });
-    if (subida.error) throw subida.error;
+    if (subida.error) throw new Error(`Storage (PDF): ${subida.error.message}`);
     const firmada = await sb.storage.from(CFG.bucket).createSignedUrl(ruta, 3600);
+    const url = firmada.data?.signedUrl || null;
+
     const { error: errorBoveda } = await sb.from("boveda_documentos").insert([{
       titulo: `ACTA ${datos.tipoActa} · ${datos.placa}`, categoria: "Acta", equipo_id: datos.id,
-      placa: datos.placa, storage_path: ruta, url: firmada.data?.signedUrl || null, mime_type: "application/pdf",
+      placa: datos.placa, storage_path: ruta, url, mime_type: "application/pdf",
     }]);
-    if (errorBoveda) console.warn("[ACTA] No se pudo registrar en Bóveda PDF:", errorBoveda.message);
-    return firmada.data?.signedUrl || null;
+    if (errorBoveda) throw new Error(`Bóveda PDF: ${errorBoveda.message}`);
+
+    const esDevolucion = String(datos.tipoActa || "").toLowerCase().startsWith("dev");
+    const { error: errorActa } = await sb.from("actas").insert([{
+      tipo_acta: esDevolucion ? "Devolucion" : "Asignacion",
+      equipo_id: datos.id || null,
+      placa: datos.placa,
+      colaborador_nombre: datos.nombre || (esDevolucion ? "Devolución" : "Sin responsable"),
+      colaborador_cedula: datos.documento || "N/A",
+      sede: datos.sede || "N/A",
+      agente_ti_nombre: datos.agenteTi || null,
+      agente_ti_cedula: datos.documentoTi || null,
+      accesorios: extras?.accesorios || [],
+      software: extras?.software || [],
+      observaciones: extras?.observaciones || null,
+      pdf_storage_path: ruta,
+    }]);
+    if (errorActa) throw new Error(`Tabla actas: ${errorActa.message}`);
+
+    return { url, blob, nombreArchivo };
   }
 
   async function accionEquipo(accion, id) {
@@ -946,22 +1058,27 @@
     const abiertos = acordeonSet("placas");
     if (ESTADO.placasFiltro !== texto) {
       abiertos.clear();
+      ESTADO.placasLimite = 40;
       ESTADO.placasFiltro = texto;
     }
+    const limitePlacas = ESTADO.placasLimite || 40;
 
     const html = ESTADO.placasGrupos.map((g) => {
       const abierto = abiertos.has(g.indice);
-      const tarjetas = g.items.map((e) => `<button type="button" class="tarjeta placa-item mono" data-placa-ficha="${escapar(e.id)}">
+      const tarjetas = g.items.slice(0, limitePlacas).map((e) => `<button type="button" class="tarjeta placa-item mono" data-placa-ficha="${escapar(e.id)}">
         <strong>${escapar(e.placa)}</strong>
         <small>${escapar(e.nombre_red || "Sin nombre en red")} · ${escapar(e.sede || "—")}</small>
       </button>`).join("");
+      const masPlacas = g.items.length > limitePlacas
+        ? `<button type="button" class="boton mini ver-mas" data-ver-mas="placas">Ver más (${g.items.length - limitePlacas})</button>`
+        : "";
       return `<section class="acordeon-grupo accordion-item curtain-group${abierto ? " abierto is-open" : ""}" data-grupo="${g.indice}">
         <header class="acordeon-cabecera" data-toggle-grupo data-acordeon="placas" data-indice="${g.indice}" role="button" tabindex="0" aria-expanded="${abierto}">
           <span class="acordeon-flecha">▸</span>
           <span class="acordeon-titulo"><strong>${escapar(g.eco)}</strong><small>${escapar(g.sede)} · ${escapar(g.tipo)}</small></span>
           <span class="acordeon-conteo">${g.items.length} placas</span>
         </header>
-        <div class="acordeon-cuerpo accordion-body"><div class="acordeon-inner"><div class="grid-placas">${tarjetas}</div></div></div>
+        <div class="acordeon-cuerpo accordion-body"><div class="acordeon-inner"><div class="grid-placas">${tarjetas}</div>${masPlacas}</div></div>
       </section>`;
     }).join("");
 
@@ -1129,8 +1246,10 @@
     if (ESTADO.contratosFirma !== firmaFiltros) {
       acordeonSet("contratos").clear();
       acordeonSet("contratos-sub").clear();
+      ESTADO.contratosLimite = 40;
       ESTADO.contratosFirma = firmaFiltros;
     }
+    const limiteContratos = ESTADO.contratosLimite || 40;
 
     const filaContrato = (e) => {
       const semaforo = clasificarVencimiento(e.dias);
@@ -1178,8 +1297,11 @@
             <span class="acordeon-conteo">${lista.length} contratos</span>
           </header>
           <div class="acordeon-cuerpo accordion-body"><div class="acordeon-inner"><table class="tabla-inventario">
-            ${cabeceraTabla}<tbody>${lista.map(filaContrato).join("")}</tbody>
-          </table></div></div>
+            ${cabeceraTabla}<tbody>${lista.slice(0, limiteContratos).map(filaContrato).join("")}</tbody>
+          </table>
+          ${lista.length > limiteContratos
+            ? `<button type="button" class="boton mini ver-mas" data-ver-mas="contratos">Ver más (${lista.length - limiteContratos} contratos)</button>`
+            : ""}</div></div>
         </section>`;
       }).join("");
 
@@ -1381,21 +1503,24 @@
       const input = byId(inputId);
       if (!input || input.dataset.previewListo) return;
       input.dataset.previewListo = "1";
-      input.addEventListener("change", () => {
+      input.addEventListener("change", async () => {
         const vistaPrevia = byId(previewId);
         if (!vistaPrevia) return;
         const archivo = input.files?.[0];
         if (!archivo) {
+          delete ESTADO.fotosComprimidas[inputId];
           vistaPrevia.removeAttribute("src");
           vistaPrevia.hidden = true;
           return;
         }
-        const lector = new FileReader();
-        lector.onload = () => {
-          vistaPrevia.src = String(lector.result || "");
-          vistaPrevia.hidden = false;
-        };
-        lector.readAsDataURL(archivo);
+        try {
+          const comprimida = await comprimirImagenMovil(archivo);
+          ESTADO.fotosComprimidas[inputId] = comprimida;
+          vistaPrevia.src = comprimida;
+        } catch {
+          vistaPrevia.src = await archivoADataUrl(archivo);
+        }
+        vistaPrevia.hidden = false;
       });
     });
   }
@@ -2096,6 +2221,21 @@
     byId("buscarEquipo").addEventListener("input", () => cargarEquipos());
     ["filtroSede", "filtroCeco", "filtroEstado"].forEach((id) => byId(id)?.addEventListener("change", cargarEquipos));
     byId("buscarPlaca").addEventListener("input", () => cargarPlacas());
+    document.addEventListener("click", (evento) => {
+      const verMas = evento.target.closest("[data-ver-mas]");
+      if (!verMas) return;
+      const tipo = verMas.dataset.verMas;
+      if (tipo === "equipos") {
+        ESTADO.equiposLimite = (ESTADO.equiposLimite || 40) + 40;
+        cargarEquipos();
+      } else if (tipo === "placas") {
+        ESTADO.placasLimite = (ESTADO.placasLimite || 40) + 40;
+        cargarPlacas();
+      } else if (tipo === "contratos") {
+        ESTADO.contratosLimite = (ESTADO.contratosLimite || 40) + 40;
+        cargarContratos();
+      }
+    });
     document.addEventListener("keydown", (evento) => {
       if (!["Enter", " "].includes(evento.key)) return;
       const cabecera = evento.target.closest?.("[data-toggle-grupo], [data-toggle-subgrupo]");
@@ -2159,17 +2299,41 @@
     });
 
     let installPrompt = null;
+    const botonInstalar = byId("btnInstalar");
+    const yaInstalada = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+    if (botonInstalar) {
+      botonInstalar.hidden = yaInstalada;
+      botonInstalar.title = "Instalar la PWA Levapan TI en este equipo";
+      botonInstalar.addEventListener("click", async () => {
+        if (installPrompt) {
+          try {
+            installPrompt.prompt();
+            await installPrompt.userChoice;
+          } catch (err) {
+            alert(`No se pudo abrir el instalador: ${err.message}`);
+            return;
+          }
+          installPrompt = null;
+          botonInstalar.hidden = true;
+          return;
+        }
+        const agente = navigator.userAgent || "";
+        const esApple = /iPad|iPhone|iPod/.test(agente) ||
+          (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+        const guia = esApple
+          ? "Para instalar Levapan TI en iPhone/iPad:\n1) Pulsa Compartir.\n2) Elige «Agregar a pantalla de inicio».\n3) Confirma «Agregar»."
+          : "Para instalar Levapan TI:\n1) Abre el menú del navegador (⋮).\n2) Elige «Instalar aplicación» o «Guardar y compartir → Instalar página».\n3) Confirma la instalación.";
+        alert(guia);
+      });
+    }
     window.addEventListener("beforeinstallprompt", (evento) => {
       evento.preventDefault();
       installPrompt = evento;
-      byId("btnInstalar").hidden = false;
+      if (botonInstalar) botonInstalar.hidden = false;
     });
-    byId("btnInstalar").addEventListener("click", async () => {
-      if (!installPrompt) return;
-      installPrompt.prompt();
-      await installPrompt.userChoice;
+    window.addEventListener("appinstalled", () => {
       installPrompt = null;
-      byId("btnInstalar").hidden = true;
+      if (botonInstalar) botonInstalar.hidden = true;
     });
 
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
