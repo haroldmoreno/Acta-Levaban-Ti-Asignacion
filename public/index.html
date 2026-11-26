@@ -77,6 +77,8 @@
     </section>
 
     <!-- ================= APP ================= -->
+    <div id="drawerFondo" class="drawer-fondo" hidden></div>
+
     <main id="app" class="app" hidden>
       <aside id="sidebar" class="sidebar">
         <div class="marca-sidebar">
@@ -101,13 +103,18 @@
 
       <div class="principal">
         <header class="barra-superior">
-          <h2 id="tituloVista">Ecosistemas de TI</h2>
-          <div class="barra-derecha">
-            <button id="btnEscanear" class="boton mini" title="Escanear QR o código de barras">▣ Escanear QR / Placa</button>
+          <div class="barra-fila1">
+            <button id="btnMenuMovil" class="boton menu-movil" aria-label="Abrir menú">☰</button>
+            <h2 id="tituloVista">Ecosistemas de TI</h2>
+            <div class="acciones-top">
+              <button id="btnEscanear" class="boton mini" title="Escanear QR o código de barras">▣ Escanear QR / Placa</button>
+              <button id="btnSalir" class="boton salir">Cerrar sesión</button>
+            </div>
+          </div>
+          <div class="barra-fila2">
             <span id="estadoConexion" class="pildora">Supabase en vivo</span>
             <span id="usuarioNombre" class="usuario"></span>
             <span id="usuarioRol" class="pildora rol"></span>
-            <button id="btnSalir" class="boton salir">Cerrar sesión</button>
           </div>
         </header>
 

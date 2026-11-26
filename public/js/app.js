@@ -283,6 +283,7 @@
     document.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("activo", b.dataset.vista === vista));
     document.querySelectorAll(".vista").forEach((s) => { s.hidden = s.id !== "vista-" + vista; });
     byId("tituloVista").textContent = TITULOS[vista] || "";
+    cerrarDrawer();
     if (vista === "sistemas") cargarSistemas();
     if (vista === "equipos") cargarEquipos();
     if (vista === "contratos") cargarContratos();
@@ -1055,6 +1056,12 @@
     if (abrir) byId("chatInput").focus();
   }
 
+  function cerrarDrawer() {
+    byId("sidebar")?.classList.remove("abierto");
+    const fondo = byId("drawerFondo");
+    if (fondo) fondo.hidden = true;
+  }
+
   function instalarEventos() {
     byId("formLogin").addEventListener("submit", async (evento) => {
       evento.preventDefault();
@@ -1108,7 +1115,17 @@
 
     byId("btnSalir").addEventListener("click", cerrarSesion);
 
-    document.querySelectorAll(".nav-item").forEach((b) => b.addEventListener("click", () => irAVista(b.dataset.vista)));
+    document.querySelectorAll(".nav-item").forEach((b) => b.addEventListener("click", () => {
+      irAVista(b.dataset.vista);
+      cerrarDrawer();
+    }));
+
+    byId("btnMenuMovil")?.addEventListener("click", (evento) => {
+      evento.stopPropagation();
+      byId("sidebar")?.classList.toggle("abierto");
+      byId("drawerFondo").hidden = !byId("sidebar")?.classList.contains("abierto");
+    });
+    byId("drawerFondo")?.addEventListener("click", cerrarDrawer);
     document.querySelectorAll("[data-cerrar]").forEach((b) => b.addEventListener("click", () => { byId(b.dataset.cerrar).hidden = true; }));
 
     byId("formSistema").addEventListener("submit", guardarSistema);

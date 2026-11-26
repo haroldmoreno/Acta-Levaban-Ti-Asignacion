@@ -274,6 +274,11 @@
   function alternar(abrir) {
     const panel = byId("panelAsistente");
     if (!panel) return;
+    if (abrir && window.innerWidth <= 900) {
+      byId("sidebar")?.classList.remove("abierto");
+      const fondo = byId("drawerFondo");
+      if (fondo) fondo.hidden = true;
+    }
     panel.hidden = !abrir;
     panel.style.display = abrir ? "flex" : "none";
     if (abrir) byId("chatInput")?.focus();
