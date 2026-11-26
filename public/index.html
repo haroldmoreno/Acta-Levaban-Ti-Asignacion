@@ -11,9 +11,11 @@
     <link rel="stylesheet" href="css/styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="js/config.js"></script>
+    <script src="js/acta-pdf.js"></script>
   </head>
   <body>
     <video id="videoFondo" class="video-fondo" muted loop playsinline autoplay preload="metadata" poster="assets/fondo.svg" aria-hidden="true"></video>
@@ -305,12 +307,59 @@
       <div class="modal-caja">
         <header><h2>Acta CORP-TEC-FR-002</h2><button class="cerrar" data-cerrar="modalActa">×</button></header>
         <form id="formActa" class="formulario">
+          <input type="hidden" id="documentoTiAutofill" />
           <label>Placa *<input id="actaPlaca" required /></label>
           <label>Colaborador *<input id="actaColaborador" required /></label>
           <label>Cédula *<input id="actaCedula" required /></label>
           <label>Sede<input id="actaSede" /></label>
           <label>Tipo<select id="actaTipo"><option>ASIGNACIÓN</option><option>DEVOLUCIÓN</option></select></label>
           <label class="ancho">Observaciones<textarea id="actaObs" rows="3"></textarea></label>
+
+          <fieldset class="acta-opciones">
+            <legend>Accesorios entregados</legend>
+            <div class="opciones-grid">
+              <label class="check"><input type="checkbox" data-accesorio="Cargador" checked /> Cargador</label>
+              <label class="check"><input type="checkbox" data-accesorio="Mouse" /> Mouse</label>
+              <label class="check"><input type="checkbox" data-accesorio="Teclado" /> Teclado</label>
+              <label class="check"><input type="checkbox" data-accesorio="Morral" /> Morral</label>
+              <label class="check"><input type="checkbox" data-accesorio="Forro" /> Forro</label>
+              <label class="check"><input type="checkbox" data-accesorio="Base Refrigerante" /> Base Refrigerante</label>
+              <label class="check"><input type="checkbox" data-accesorio="Base Soporte" /> Base Soporte</label>
+              <label class="check"><input type="checkbox" data-accesorio="Multipuerto USB" /> Multipuerto USB</label>
+              <label class="check ancho"><input type="checkbox" data-accesorio="Otro" /> Otro (detallar)<input type="text" id="actaOtroAccesorio" placeholder="¿Cuál otro accesorio?" /></label>
+            </div>
+          </fieldset>
+
+          <fieldset class="acta-opciones">
+            <legend>Software instalado</legend>
+            <div class="opciones-grid">
+              <label class="check"><input type="checkbox" data-software="Microsoft Office" checked /> Microsoft Office</label>
+              <label class="check"><input type="checkbox" data-software="Antivirus" checked /> Antivirus</label>
+              <label class="check"><input type="checkbox" data-software="Google Chrome" checked /> Google Chrome</label>
+              <label class="check"><input type="checkbox" data-software="VPN" checked /> VPN</label>
+              <label class="check"><input type="checkbox" data-software="Adobe Reader" checked /> Adobe Reader</label>
+              <label class="check"><input type="checkbox" data-software="WinRAR" checked /> WinRAR</label>
+              <label class="check"><input type="checkbox" data-software="7zip" checked /> 7zip</label>
+              <label class="check"><input type="checkbox" data-software="Impresora" checked /> Impresora</label>
+              <label class="check"><input type="checkbox" data-software="Team Viewer" checked /> Team Viewer</label>
+              <label class="check"><input type="checkbox" data-software="SAP GUI" checked /> SAP GUI</label>
+              <label class="check"><input type="checkbox" data-software="Adobe Creative Cloud" checked /> Adobe Creative Cloud</label>
+              <label class="check"><input type="checkbox" data-software="Softphone" /> Softphone</label>
+              <label class="check"><input type="checkbox" data-software="Foxit Reader" /> Foxit Reader</label>
+              <label class="check"><input type="checkbox" data-software="Sofsin" /> Sofsin</label>
+              <label class="check ancho"><input type="checkbox" data-software="Otro" /> Otro (detallar)<input type="text" id="actaOtroSoftware" placeholder="¿Cuál otro programa?" /></label>
+            </div>
+          </fieldset>
+
+          <fieldset class="acta-opciones">
+            <legend>Registro fotográfico (página 2)</legend>
+            <div class="opciones-grid">
+              <label>Equipo encendido<input type="file" id="fotoEncendido" accept="image/png,image/jpeg,image/webp" /></label>
+              <label>Frontal<input type="file" id="fotoFrontal" accept="image/png,image/jpeg,image/webp" /></label>
+              <label>Posterior<input type="file" id="fotoPosterior" accept="image/png,image/jpeg,image/webp" /></label>
+            </div>
+          </fieldset>
+
           <fieldset class="firmas-bloque">
             <legend>Firmas digitales (táctil o mouse)</legend>
             <div class="firma-caja">

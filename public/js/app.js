@@ -605,18 +605,63 @@
 
   /* ---------------- Check-in / Check-out y actas ---------------- */
 
-  function abrirActa(equipo, tipo) {
-    byId("actaPlaca").value = equipo?.placa || "";
-    byId("actaColaborador").value = equipo?.responsable || "";
-    byId("actaCedula").value = equipo?.cedula || "";
-    byId("actaSede").value = equipo?.sede || "";
-    byId("actaTipo").value = tipo;
-    byId("actaObs").value = "";
+  async function datosActaPorPlaca(placa) {
+    const texto = String(placa || "").trim();
+    if (!texto) return null;
+    try {
+      const { data } = await sb.from("vista_veredicto_360").select("*").eq("placa", texto).maybeSingle();
+      if (data) return data;
+    } catch { /* vista aún no creada */ }
+    const { data } = await sb.from("equipos").select("*").eq("placa", texto).maybeSingle();
+    return data || null;
+  }
+
+  async function documentoAgenteTi() {
+    try {
+      const { data: usuario } = await sb.auth.getUser();
+      if (!usuario?.user?.id) return "";
+      const { data } = await sb
+        .from("perfiles_ti")
+        .select("cedula")
+        .eq("id", usuario.user.id)
+        .maybeSingle();
+      return data?.cedula || "";
+    } catch {
+      return "";
+    }
+  }
+
+  function archivoADataUrl(archivo) {
+    return new Promise((resolver, rechazar) => {
+      if (!archivo) return resolver(null);
+      const lector = new FileReader();
+      lector.onload = () => resolver(String(lector.result || ""));
+      lector.onerror = () => rechazar(lector.error);
+      lector.readAsDataURL(archivo);
+    });
+  }
+
+  async function abrirActa(equipo, tipo) {
+    const ficha = equipo || (await datosActaPorPlaca(byId("actaPlaca")?.value));
+    byId("actaPlaca").value = ficha?.placa || "";
+    byId("actaColaborador").value = ficha?.responsable || ficha?.usuario_asignado || "";
+    byId("actaCedula").value = ficha?.cedula || ficha?.usuario_cedula || "";
+    byId("actaSede").value = ficha?.sede || "";
+    byId("actaTipo").value = tipo || "ASIGNACIÓN";
+    byId("actaObs").value = ficha?.bitacora || "";
+
     const tecnico = byId("firmaTecnicoNombre");
     if (tecnico) tecnico.textContent = ESTADO.perfil?.nombre_completo || "Técnico TI";
+    const documento = byId("documentoTiAutofill");
+    if (documento) documento.value = await documentoAgenteTi();
+
     instalarFirmas();
     limpiarFirma("firmaColaborador");
     limpiarFirma("firmaTecnico");
+    ["fotoEncendido", "fotoFrontal", "fotoPosterior"].forEach((id) => {
+      const campo = byId(id);
+      if (campo) campo.value = "";
+    });
     byId("modalActa").hidden = false;
   }
 
@@ -632,6 +677,24 @@
     const sede = byId("actaSede").value.trim();
     const observaciones = byId("actaObs").value.trim();
 
+    const accesorios = [...document.querySelectorAll("[data-accesorio]")]
+      .filter((casilla) => casilla.checked)
+      .map((casilla) => casilla.dataset.accesorio);
+    const otroAccesorio = byId("actaOtroAccesorio")?.value.trim();
+    if (otroAccesorio) accesorios.push(`Otro: ${otroAccesorio}`);
+
+    const software = [...document.querySelectorAll("[data-software]")]
+      .filter((casilla) => casilla.checked)
+      .map((casilla) => casilla.dataset.software);
+    const otroSoftware = byId("actaOtroSoftware")?.value.trim();
+    if (otroSoftware) software.push(`Otro: ${otroSoftware}`);
+
+    const fotos = {
+      encendido: await archivoADataUrl(byId("fotoEncendido")?.files?.[0]),
+      frontal: await archivoADataUrl(byId("fotoFrontal")?.files?.[0]),
+      posterior: await archivoADataUrl(byId("fotoPosterior")?.files?.[0]),
+    };
+
     const cambios = {
       responsable: tipo === "DEVOLUCIÓN" ? null : responsable,
       cedula: tipo === "DEVOLUCIÓN" ? null : cedula,
@@ -642,8 +705,13 @@
     const { data: actualizado, error } = await sb.from("equipos").update(cambios).eq("id", equipo.id).select().single();
     if (error) return alert(error.message);
 
-    const url = await generarYSubirActa(actualizado, tipo, responsable, cedula, sede, observaciones, datosFirmas());
-    await registrarHistorial(actualizado, tipo, `Acta CORP-TEC-FR-002 · ${placa} · ${responsable || "devolución"}`, {
+    const url = await generarYSubirActa(
+      { ...actualizado, nombre: responsable, documento: cedula, agenteTi: ESTADO.perfil?.nombre_completo, documentoTi: byId("documentoTiAutofill")?.value, tipoActa: tipo },
+      fotos,
+      datosFirmas(),
+      { accesorios, software, observaciones, sede }
+    );
+    await registrarHistorial(equipo, tipo, `Acta CORP-TEC-FR-002 · ${placa} · ${responsable || "devolución"}`, {
       responsable_anterior: equipo.responsable,
       responsable_nuevo: cambios.responsable,
       sede_nueva: sede,
@@ -653,38 +721,40 @@
     cargarEquipos();
   }
 
-  async function generarYSubirActa(equipo, tipo, responsable, cedula, sede, observaciones, firmas) {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    doc.setFontSize(16); doc.setTextColor(139, 30, 36);
-    doc.text("LEVAPAN S.A.S. — CORP-TEC-FR-002", 18, 22);
-    doc.setFontSize(8.5); doc.setTextColor(28, 28, 28);
-    const lineas = [
-      ...ORDEN_MAESTRO.map(([header, columna]) => `${header}: ${equipo[columna] ?? "—"}`),
-      "",
-      `Responsable del acta: ${responsable || "—"} · Cédula: ${cedula || "—"} · Sede: ${sede || "—"}`,
-      `Observaciones: ${observaciones || "—"}`,
-      "",
-      "El colaborador declara recibir el activo en buen estado y se compromete a su custodia.",
-      "",
-      "______________________________     ______________________________",
-      "Firma colaborador                 Firma Tecnología e Infraestructura",
-    ];
-    lineas.forEach((linea, i) => doc.text(linea, 18, 44 + i * 6.5));
+  async function generarYSubirActa(datos, fotos, firmas, extras) {
+    const generador = window.ActaPdfLevapan;
+    if (!generador) throw new Error("El generador del acta oficial no está disponible");
 
-    const yFirmas = Math.min(262, 48 + lineas.length * 6.5);
-    if (firmas?.colaborador) doc.addImage(firmas.colaborador, "PNG", 18, yFirmas, 72, 22);
-    if (firmas?.tecnico) doc.addImage(firmas.tecnico, "PNG", 110, yFirmas, 72, 22);
-    doc.setFontSize(8);
-    doc.text(`Emitida por: ${ESTADO.perfil?.nombre_completo || "sistema"} · ${fechaHora(new Date())}`, 18, yFirmas + 30);
-    const blob = doc.output("blob");
-    const ruta = `actas/${equipo.placa}/${Date.now()}.pdf`;
+    const pdfBytes = await generador.generarActaPdf({
+      datos: {
+        nombre: datos.nombre,
+        documento: datos.documento,
+        tipo: datos.tipo_equipo || datos.tipo,
+        marca: datos.marca,
+        modelo: datos.modelo,
+        serial: datos.serial,
+        placa: datos.placa,
+        observaciones: extras?.observaciones || "",
+        sede: extras?.sede || datos.sede,
+        fecha: new Date().toISOString(),
+        agenteTi: datos.agenteTi,
+        documentoTi: datos.documentoTi || "",
+        tipoActa: datos.tipoActa,
+        accesorios: extras?.accesorios || [],
+        software: extras?.software || [],
+      },
+      fotos,
+      firmas,
+    });
+
+    const blob = new Blob([pdfBytes], { type: "application/pdf" });
+    const ruta = `actas/${datos.placa}/${Date.now()}.pdf`;
     const subida = await sb.storage.from(CFG.bucket).upload(ruta, blob, { contentType: "application/pdf", upsert: false });
     if (subida.error) return null;
     const firmada = await sb.storage.from(CFG.bucket).createSignedUrl(ruta, 3600);
     await sb.from("boveda_documentos").insert([{
-      titulo: `ACTA ${tipo} · ${equipo.placa}`, categoria: "Acta", equipo_id: equipo.id,
-      placa: equipo.placa, storage_path: ruta, url: firmada.data?.signedUrl || null, mime_type: "application/pdf",
+      titulo: `ACTA ${datos.tipoActa} · ${datos.placa}`, categoria: "Acta", equipo_id: datos.id,
+      placa: datos.placa, storage_path: ruta, url: firmada.data?.signedUrl || null, mime_type: "application/pdf",
     }]);
     return firmada.data?.signedUrl || null;
   }
@@ -1403,6 +1473,33 @@
     if (fondo) fondo.hidden = true;
   }
 
+  async function autocompletarActaDesde(campo, valor) {
+    const texto = String(valor || "").trim();
+    if (texto.length < 3) return;
+    let datos = null;
+    try {
+      const consulta = sb.from("vista_veredicto_360").select("*");
+      const { data } = await consulta.or(`placa.ilike.%${texto}%,serial.ilike.%${texto}%,responsable.ilike.%${texto}%,nombre_red.ilike.%${texto}%`).limit(1);
+      datos = data?.[0];
+    } catch { /* respaldo */ }
+    if (!datos) {
+      const { data } = await sb
+        .from("equipos")
+        .select("*")
+        .or(`placa.ilike.%${texto}%,serial.ilike.%${texto}%,responsable.ilike.%${texto}%,usuario_asignado.ilike.%${texto}%`)
+        .limit(1);
+      datos = data?.[0];
+    }
+    if (!datos) return;
+    if (byId("actaPlaca")) byId("actaPlaca").value = datos.placa || "";
+    if (campo !== "actaColaborador" && byId("actaColaborador")) {
+      byId("actaColaborador").value = datos.responsable || datos.usuario_asignado || "";
+    }
+    if (byId("actaCedula")) byId("actaCedula").value = datos.cedula || datos.usuario_cedula || "";
+    if (byId("actaSede")) byId("actaSede").value = datos.sede || "";
+    if (byId("actaObs") && !byId("actaObs").value) byId("actaObs").value = datos.bitacora || "";
+  }
+
   function instalarEventos() {
     byId("formLogin").addEventListener("submit", async (evento) => {
       evento.preventDefault();
@@ -1472,6 +1569,16 @@
     byId("formSistema").addEventListener("submit", guardarSistema);
     byId("formEquipo").addEventListener("submit", guardarEquipo);
     byId("formActa").addEventListener("submit", guardarActa);
+
+    let temporizadorActa = null;
+    ["actaPlaca", "actaColaborador"].forEach((id) => {
+      byId(id)?.addEventListener("input", (evento) => {
+        clearTimeout(temporizadorActa);
+        const campo = id;
+        const valor = evento.target.value;
+        temporizadorActa = setTimeout(() => autocompletarActaDesde(campo, valor), 350);
+      });
+    });
 
     document.addEventListener("click", (evento) => {
       const ficha = evento.target.closest("[data-placa-ficha]");

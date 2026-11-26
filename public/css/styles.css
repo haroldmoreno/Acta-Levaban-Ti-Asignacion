@@ -501,6 +501,21 @@ tr:hover td { background: rgba(247,225,199,.3); }
   .formulario, .form-seccion, .firmas-bloque { grid-template-columns: 1fr; }
   .firma-caja canvas { touch-action: none; }
 
+.acta-opciones {
+  grid-column: 1 / -1;
+  padding: 12px 14px;
+  border: 1px solid rgba(162,125,84,.3);
+  border-radius: 14px;
+  background: rgba(247,225,199,.2);
+}
+.acta-opciones legend { padding: 0 8px; font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; color: var(--vino); }
+.opciones-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.opciones-grid .check { display: inline-flex; flex-direction: row; align-items: center; gap: 7px; font-size: .76rem; }
+.opciones-grid .check input[type="checkbox"] { width: auto; min-height: 0; }
+.opciones-grid .ancho { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.opciones-grid .ancho input[type="text"] { flex: 1 1 260px; font-size: 16px; }
+.opciones-grid label:has(input[type="file"]) { font-size: .72rem; color: var(--gris); }
+
   .panel-asistente {
     width: calc(100vw - 24px);
     max-width: calc(100vw - 24px);
