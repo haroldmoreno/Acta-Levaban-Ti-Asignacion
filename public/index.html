@@ -19,22 +19,24 @@
     <script src="js/acta-pdf.js"></script>
   </head>
   <body>
-    <!-- Franja roja superior integrada: barra de acciones + indicadores KPIs -->
-    <div class="franja-superior">
-      <div style="position: relative; height: 100%; padding: 12px 16px; max-width: 1400px; margin: 0 auto;">
-        <div style="position: absolute; right: 0; top: 50%; transform: translateY(-50%); display: flex; gap: 12px; align-items: center;">
-          <button id="btnEscanear" class="boton mini" style="background: rgba(255,255,255,.3); color: #ffffff; border: 1px solid rgba(255,255,255,.2); border-radius: 20px; padding: 6px 12px; font-size: .78rem;" title="Escanear QR o código de barras">▣ Escanear QR / Placa</button>
-          <button id="btnSalir" class="boton salir" style="background: rgba(255,255,255,.1); color: #ffffff; border: 1px solid rgba(255,255,255,.2); border-radius: 20px; padding: 6px 12px; font-size: .78rem;">Cerrar sesión</button>
-          <span style="color: rgba(255,255,255,.9); font-weight: 600; font-size: .88rem;">Harold Adrián Hurtado Moreno</span>
-        </div>
-        <div style="position: absolute; right: 16px; top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
-          <span style="color: rgba(255,255,255,.7); font-size: .72rem;">Supabase en vivo</span>
-          <span style="color: rgba(255,255,255,.7); font-size: .72rem; padding: 4px 8px; border-radius: 10px; background: rgba(255,255,255,.15);">ADMINISTRADOR</span>
-        </div>
-      </div>
+    <!-- Topbar ERP ejecutiva superior -->
+<div class="topbar">
+  <div class="buscar">
+    <input type="text" placeholder="Buscar placa, serial, colaborador o sede...">
+  </div>
+  <div class="acciones">
+    <button class="btn-mini" title="Escanear QR o código de barras">▣</button>
+    <span class="notif"><span class="badge">3</span></span>
+    <span class="notif"><span class="badge">7</span></span>
+    <div class="usuario">
+      <span>Harold Hurtado</span>
+      <span>Auxiliar de TI</span>
     </div>
+    <button class="cerrar" aria-label="Cerrar sesión">Salir</div>
+  </div>
+</div>
 
-    <div class="body-wrapper">
+<div class="body-wrapper">
       <!-- ================= LOGIN ================= -->
       <section id="pantallaLogin" class="pantalla-login">
         <form id="formLogin" class="tarjeta-login" autocomplete="off" novalidate>
@@ -124,16 +126,95 @@
               <button id="btnRefrescarResumen" class="boton primario" type="button">↻ Actualizar panel</button>
             </div>
 
-            <div id="kpisResumen" class="kpis-resumen" aria-label="Indicadores ejecutivos">
-              <article class="kpi"><span class="kpi-icono">▦</span><strong id="kpiTotal">—</strong><span>Total activos · 27 campos</span></article>
-              <article class="kpi asignado"><span class="kpi-icono">✓</span><strong id="kpiAsignados">—</strong><span>Asignados</span></article>
-              <article class="kpi disponible"><span class="kpi-icono">◌</span><strong id="kpiDisponibles">—</strong><span>Disponibles</span></article>
-              <article class="kpi mantenimiento"><span class="kpi-icono">⚙</span><strong id="kpiMantenimiento">—</strong><span>Mantenimiento / Baja</span></article>
-              <article class="kpi alerta"><span class="kpi-icono">⚠</span><strong id="kpiAlertas">—</strong><span>Alertas 360°</span></article>
-              <article class="kpi contrato"><span class="kpi-icono">◷</span><strong id="kpiContratos">—</strong><span>Contratos por vencer</span></article>
-            </div>
+            <!-- Fila 1: 4 KPIs Horizontales ERP -->
+<div class="kpis-resumenerp" aria-label="Indicadores ejecutivos">
+  <!-- KPI Total Activos -->
+  <article class="kpi tarjeta-kpi">
+    <div class="kpi-icono-cuadro">
+      <div class="cuadro-icono crimson">
+        <span class="icono">▦</span>
+      </div>
+    </div>
+    <div class="kpi-derecho">
+      <span class="kpi-etiqueta">Total Activos</span>
+      <span class="kpi-cifra">1.580</span>
+      <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#10b981" d="M2 0l6 6-6 6"/></svg></span>
+    </div>
+  </article>
+  <!-- KPI Equipos Asignados -->
+  <article class="kpi tarjeta-kpi">
+    <div class="kpi-icono-cuadro">
+      <div class="cuadro-icono azul">
+        <span class="icono">✓</span>
+      </div>
+    </div>
+    <div class="kpi-derecho">
+      <span class="kpi-etiqueta">Equipos Asignados</span>
+      <span class="kpi-cifra">1.204</span>
+      <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#3b82f6" d="M2 0l6 6-6 6"/></svg></span>
+    </div>
+  </article>
+  <!-- KPI Disponibles -->
+  <article class="kpi tarjeta-kpi">
+    <div class="kpi-icono-cuadro">
+      <div class="cuadro-icono ámbar">
+        <span class="icono">◌</span>
+      </div>
+    </div>
+    <div class="kpi-derecho">
+      <span class="kpi-etiqueta">Disponibles</span>
+      <span class="kpi-cifra">318</span>
+      <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#f59e0b" d="M2 0l6 6-6 6"/></svg></span>
+    </div>
+  </article>
+  <!-- KPI Alertas 360° -->
+  <article class="kpi tarjeta-kpi">
+    <div class="kpi-icono-cuadro">
+      <div class="cuadro-icono esmeralda">
+        <span class="icono">⚠</span>
+      </div>
+    </div>
+    <div class="kpi-derecho">
+      <span class="kpi-etiqueta">Alertas 360°</span>
+      <span class="kpi-cifra">73</span>
+      <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#059669" d="M2 0l6 6-6 6"/></svg></span>
+    </div>
+  </article>
+</div>
 
-            <div class="grid-graficas">
+<!-- Fila 2: Gráficas Asimétricas ERP -->
+<div class="grid-erp-filas">
+  <!-- Izquierda: Distribución por Ecosistema y Sede (2/3) -->
+  <div class="tarjeta tarjeta-kpi crm-grafica" style="grid-column: span 2;">
+    <div class="kpi-icono-cuadro crm">
+      <div class="cuadro-icono crimson">
+        <span class="icono">📊</span>
+      </div>
+    </div>
+    <h3 style="margin: 12px 0 8px; color: var(--ink-primary);">Distribución por Ecosistema y Sede</h3>
+    <select class="selector-superior" style="position: absolute; right: 12px; top: 8px; background: #fafbfc; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 8px; font-size: .72rem; color: var(--ink-primary);">
+      <option>Todos</option>
+      <option>Sede Central</option>
+      <option>Sede Planta</option>
+      <option>Sede Oficinas</option>
+    </select>
+    <canvas id="graficaEcosistema" class="grafica-lienzo"></canvas>
+  </div>
+  <!-- Derecha: Estado General 360° (1/3) -->
+  <div class="tarjeta tarjeta-kpi crm-grafica">
+    <div class="kpi-icono-cuadro crm">
+      <div class="cuadro-icono crimson">
+        <span class="icono">🔵</span>
+      </div>
+    </div>
+    <h3 style="margin: 12px 0 8px; color: var(--ink-primary);">Estado General 360°</h3>
+    <select class="selector-superior" style="position: absolute; right: 12px; top: 8px; background: #fafbfc; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 8px; font-size: .72rem; color: var(--ink-primary);">
+      <option>Actual</option>
+      <option>Verificados</option>
+      <option>Alertas</option>
+    </select>
+    <canvas id="graficaEstado360" class="grafica-lienzo"></canvas>
+    </div>
               <article class="tarjeta grafica-card" data-spotlight>
                 <header><div><span class="eyebrow">INVENTARIO</span><h3>Estado General del Inventario</h3></div><span class="grafica-pista">Clic para filtrar</span></header>
                 <div class="grafica-lienzo"><canvas id="graficaEstado" aria-label="Gráfica de estado general del inventario"></canvas></div>
