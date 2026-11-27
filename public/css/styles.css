@@ -11,7 +11,53 @@
   --border-card: #e4e7ec;
   --bg-light: #f6f7f9;
   
-  --radio: 14px;
+  /* Fondo de pantalla 11 bandas verticales tipo vidrio estriado (fluted glass) */
+  .levapan-fluted-bg {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none; z-index: 0;
+    overflow: hidden;
+  }
+  .levapan-fluted-bg span {
+    position: absolute; top: 0; bottom: 0;
+    border-left: 1px solid rgba(143, 12, 17, 0.45);
+    opacity: .35; will-change: opacity, left;
+  }
+  .levapan-fluted-bg span:nth-child(1) { left: 9.09%; width: 9.09%; animation: fade-in-left 8s ease-in-out infinite; }
+  .levapan-fluted-bg span:nth-child(2) { left: 18.18%; width: 9.09%; animation: fade-in-left 8s ease-in-out 1s infinite; }
+  .levapan-fluted-bg span:nth-child(3) { left: 27.27%; width: 9.09%; animation: fade-in-left 8s ease-in-out 2s infinite; }
+  .levapan-fluted-bg span:nth-child(4) { left: 36.36%; width: 9.09%; animation: fade-in-left 8s ease-in-out 3s infinite; }
+  .levapan-fluted-bg span:nth-child(5) { left: 45.45%; width: 9.09%; animation: fade-in-left 8s ease-in-out 4s infinite; }
+  .levapan-fluted-bg span:nth-child(6) { left: 54.55%; width: 9.09%; animation: fade-in-left 8s ease-in-out 5s infinite; }
+  .levapan-fluted-bg span:nth-child(7) { left: 63.64%; width: 9.09%; animation: fade-in-left 8s ease-in-out 6s infinite; }
+  .levapan-fluted-bg span:nth-child(8) { left: 72.73%; width: 9.09%; animation: fade-in-left 8s ease-in-out 7s infinite; }
+  .levapan-fluted-bg span:nth-child(9) { left: 81.82%; width: 9.09%; animation: fade-in-left 8s ease-in-out 8s infinite; }
+  .levapan-fluted-bg span:nth-child(10) { left: 90.91%; width: 9.09%; animation: fade-in-left 8s ease-in-out 9s infinite; }
+  .levapan-fluted-bg span:nth-child(11) { left: 100%; width: 9.09%; animation: fade-in-left 8s ease-in-out 10s infinite; }
+  @keyframes fade-in-left {
+    0% { opacity: 0; transform: translateX(-20px); }
+    100% { opacity: .35; transform: translateX(0); }
+  }
+  
+  /* Capa degradado blanco → carmesí sobre todo el fondo */
+  .fluted-gradient-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none; z-index: 1;
+    background: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.8) 0%, transparent 50%),
+                linear-gradient(180deg, var(--crimson-bright) 0%, var(--crimson-deep) 100%);
+    mask-image: linear-gradient(transparent, white 20%, white 80%, transparent);
+  }
+  
+  .contenido-ejecutivo {
+    position: relative; z-index: 10;
+    min-height: 100dvh;
+  }
+  
+  .body-wrapper {
+    position: relative;
+    min-height: 100dvh;
+    background: var(--canvas-bg);
+    padding-top: 80px;
+  }
   --radio-card: 16px;
   --curva: cubic-bezier(0.22, 1, 0.36, 1);
   --transition-fast: .15s var(--curva);
