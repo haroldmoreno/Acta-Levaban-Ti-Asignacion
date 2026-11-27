@@ -1722,3 +1722,465 @@ details[open] .acordeon-flecha { transform: rotate(90deg) !important; }
   }
 }
 
+
+/* ============================================================
+   V26 · ULTRA LIQUID GLASS, LOGOTIPO OFICIAL, GRÁFICAS 360°
+   ============================================================ */
+
+:root {
+  --vino: #8b1e24;
+  --vino-oscuro: #641218;
+  --blanco: #fff6f0;
+  --bronce: #a27d54;
+  --crema: #f7e1c7;
+  --tinta: #1c0d10;
+  --gris: #4a2a2f;
+  --cristal: rgba(255, 255, 255, .32);
+  --borde: rgba(255, 255, 255, .80);
+  --sombra: 0 12px 32px rgba(155, 14, 30, .14), inset 0 1.5px 1px rgba(255, 255, 255, .92), inset 0 -1px 2px rgba(200, 16, 46, .14);
+  --radio: 18px;
+  --curva: cubic-bezier(.22, 1, .36, 1);
+}
+
+html { background: #fff6f0 !important; }
+body { color: var(--tinta) !important; }
+
+/* Fondo vivo multicolor: el cristal refracta rojo, coral, ámbar y luz perlada. */
+.fondo-animado {
+  background:
+    radial-gradient(circle at 12% 18%, rgba(255, 123, 84, .55), transparent 42%),
+    radial-gradient(circle at 88% 12%, rgba(230, 46, 69, .48), transparent 46%),
+    radial-gradient(circle at 76% 88%, rgba(255, 209, 148, .58), transparent 48%),
+    radial-gradient(circle at 28% 92%, rgba(200, 16, 46, .34), transparent 52%),
+    linear-gradient(135deg, #fff6f0 0%, #ffe3d8 42%, #ffc4c0 100%) !important;
+}
+.fondo-animado::before {
+  content: "";
+  position: absolute;
+  inset: -38%;
+  background: conic-gradient(from 30deg, rgba(255, 123, 84, .38), rgba(255, 209, 148, .30), rgba(230, 46, 69, .34), rgba(255, 246, 240, .32), rgba(255, 123, 84, .38));
+  filter: blur(90px);
+  opacity: .9;
+  will-change: transform;
+  animation: fondoVivo 28s linear infinite;
+}
+.fondo-animado::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 0%, rgba(255, 255, 255, .55), transparent 55%);
+  pointer-events: none;
+}
+.orbe-crema { background: #fff6f0 !important; opacity: .62 !important; }
+.orbe-arena { background: #ff7b54 !important; opacity: .48 !important; filter: blur(100px) !important; }
+.orbe-vino { background: #c8102e !important; opacity: .34 !important; filter: blur(110px) !important; }
+
+@keyframes fondoVivo {
+  0% { transform: rotate(0deg) scale(1.05); }
+  50% { transform: rotate(180deg) scale(1.18); }
+  100% { transform: rotate(360deg) scale(1.05); }
+}
+
+/* ---------------- LOGOTIPO OFICIAL ---------------- */
+.marca-login { justify-content: center !important; padding: 2px 0 6px !important; }
+.marca-login img {
+  width: clamp(180px, 68%, 250px) !important;
+  height: auto !important;
+  display: block !important;
+  filter: drop-shadow(0 8px 18px rgba(155, 14, 30, .22));
+}
+.marca-sidebar { gap: 8px !important; }
+.marca-logo { display: block; width: auto; max-width: 100%; object-fit: contain; flex: 0 1 auto; }
+.marca-sidebar .marca-logo-full { height: auto !important; width: min(148px, calc(100% - 38px)) !important; max-height: 48px; filter: drop-shadow(0 6px 14px rgba(60, 0, 8, .28)); }
+.marca-sidebar .marca-logo-mini { display: none; width: 34px !important; height: 34px !important; border-radius: 10px; }
+.app-shell.app.sidebar-collapsed .marca-sidebar .marca-logo-full { display: none !important; }
+.app-shell.app.sidebar-collapsed .marca-sidebar .marca-logo-mini { display: block !important; }
+.app-shell.app.sidebar-collapsed > .sidebar { padding-inline: 6px !important; }
+.app-shell.app.sidebar-collapsed .marca-sidebar { flex-direction: column !important; justify-content: center !important; gap: 6px !important; padding: 4px 0 12px !important; }
+.app-shell.app.sidebar-collapsed .marca-sidebar .marca-logo-mini { width: 30px !important; height: 30px !important; }
+
+/* ---------------- CRISTAL ULTRA-TRANSPARENTE ---------------- */
+.tarjeta,
+.tarjeta-login,
+.acta-bloque,
+.acta-cabecera,
+.barra-superior,
+.tabla-caja,
+.ficha-grupo,
+.metrica,
+.modal-caja,
+.panel-asistente,
+.asistente-panel,
+.cabecera-seccion,
+.acordeon-grupo,
+.ws-top,
+.ws-seccion-barra,
+.kpi,
+.grafica-card,
+.acta-progreso,
+.filtro-grafica {
+  background: rgba(255, 255, 255, .32) !important;
+  backdrop-filter: blur(28px) saturate(215%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(215%) !important;
+  border: 1px solid rgba(255, 255, 255, .80) !important;
+  box-shadow: 0 12px 32px rgba(155, 14, 30, .14), inset 0 1.5px 1px rgba(255, 255, 255, .92), inset 0 -1px 2px rgba(200, 16, 46, .14) !important;
+  border-radius: 18px !important;
+}
+
+/* Barra lateral en rojo cristalino translúcido. */
+.sidebar {
+  background: linear-gradient(165deg, rgba(175, 14, 34, .72), rgba(115, 8, 22, .80)) !important;
+  backdrop-filter: blur(26px) saturate(200%) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(200%) !important;
+  border: 1px solid rgba(255, 255, 255, .35) !important;
+  border-right: 1px solid rgba(255, 255, 255, .35) !important;
+  box-shadow: 0 18px 46px rgba(90, 6, 18, .34), inset 0 1px 0 rgba(255, 255, 255, .26) !important;
+}
+.nav-item {
+  background: rgba(255, 255, 255, .10) !important;
+  border: 1px solid rgba(255, 255, 255, .12) !important;
+  color: rgba(255, 255, 255, .90) !important;
+  text-shadow: 0 1px 2px rgba(70, 0, 10, .26);
+}
+.nav-item:hover {
+  background: rgba(255, 255, 255, .24) !important;
+  border-color: rgba(255, 255, 255, .55) !important;
+  box-shadow: 0 0 0 2px rgba(214, 24, 46, .18), 0 10px 24px rgba(60, 0, 8, .22) !important;
+}
+.nav-item.activo {
+  background: linear-gradient(100deg, rgba(255, 123, 84, .92), rgba(214, 24, 46, .96)) !important;
+  border-color: rgba(255, 255, 255, .78) !important;
+  color: #fff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 10px 26px rgba(90, 6, 18, .34) !important;
+}
+.sidebar-pie .boton {
+  background: rgba(255, 246, 240, .90) !important;
+  color: #7a101e !important;
+  border-color: rgba(255, 255, 255, .65) !important;
+}
+
+/* Legibilidad nítida sobre el cristal. */
+label,
+.acta-campo > span:first-child,
+.form-seccion label,
+.ws-form label,
+th,
+.acta-bloque > legend,
+.acta-tipo > span {
+  color: #4a2a2f !important;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .42);
+}
+p, small, .ayuda, .secundario, .tarjeta p { color: #4a2a2f !important; }
+h1, h2, h3, strong { color: #2a1116; }
+.tarjeta h3, .barra-superior h2, .modal-caja h2, .acordeon-titulo strong { color: #7a101e !important; }
+.boton.primario, .boton-asistente { color: #fff !important; text-shadow: 0 1px 2px rgba(80, 0, 10, .24); }
+.boton { background: rgba(255, 255, 255, .58) !important; backdrop-filter: blur(12px) saturate(160%); -webkit-backdrop-filter: blur(12px) saturate(160%); }
+.input, input, select, textarea {
+  background: rgba(255, 255, 255, .62) !important;
+  border-color: rgba(139, 30, 36, .22) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .65);
+}
+input:focus, select:focus, textarea:focus {
+  border-color: rgba(214, 24, 46, .72) !important;
+  box-shadow: 0 0 0 4px rgba(214, 24, 46, .16), inset 0 1px 0 rgba(255, 255, 255, .75) !important;
+}
+
+/* ---------------- ILUMINACIÓN REACTIVA AL PUNTERO ---------------- */
+.tarjeta, .kpi, .metrica, .grafica-card, .acta-bloque, .barra-superior,
+.cabecera-seccion, .modal-caja, .acordeon-grupo, .nav-item, .boton {
+  position: relative;
+  isolation: isolate;
+  transition: transform .22s var(--curva), box-shadow .22s var(--curva), border-color .22s var(--curva), background-color .22s var(--curva);
+}
+.tarjeta::after, .kpi::after, .metrica::after, .grafica-card::after,
+.acta-bloque::after, .barra-superior::after, .cabecera-seccion::after,
+.modal-caja::after, .acordeon-grupo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(280px circle at var(--pointer-x, 50%) var(--pointer-y, 50%), rgba(255, 255, 255, .92), rgba(255, 255, 255, .28) 42%, transparent 72%);
+  transition: opacity .22s var(--curva);
+}
+.tarjeta:hover::after, .kpi:hover::after, .metrica:hover::after,
+.grafica-card:hover::after, .acta-bloque:hover::after,
+.barra-superior:hover::after, .cabecera-seccion:hover::after,
+.modal-caja:hover::after, .acordeon-grupo:hover::after,
+.tarjeta:focus-within::after, .acta-bloque:focus-within::after {
+  opacity: 1;
+}
+.tarjeta:hover, .kpi:hover, .metrica:hover, .grafica-card:hover,
+.acta-bloque:hover, .acordeon-grupo:hover, .cabecera-seccion:hover {
+  border-color: rgba(214, 24, 46, .75) !important;
+  box-shadow: 0 0 0 2px rgba(214, 24, 46, .25), 0 14px 30px rgba(200, 16, 46, .22), inset 0 0 20px rgba(255, 255, 255, .55) !important;
+  transform: translateY(-2px) !important;
+}
+.nav-item:hover { transform: translateX(4px) !important; }
+.boton:hover {
+  border-color: rgba(214, 24, 46, .75) !important;
+  box-shadow: 0 0 0 2px rgba(214, 24, 46, .22), 0 14px 30px rgba(200, 16, 46, .22), inset 0 0 16px rgba(255, 255, 255, .55) !important;
+  transform: translateY(-2px);
+}
+.boton.primario:hover {
+  background: linear-gradient(135deg, #d61a2e, #a30d22) !important;
+}
+.tabla-inventario tbody tr { transition: background .22s var(--curva), box-shadow .22s var(--curva); }
+.tabla-inventario tbody tr:hover td {
+  background: rgba(255, 255, 255, .56) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .65), inset 0 -1px 0 rgba(214, 24, 46, .14);
+}
+.tabla-inventario tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 rgba(214, 24, 46, .72); }
+
+/* ---------------- RESUMEN EJECUTIVO ---------------- */
+.resumen-cabecera { align-items: flex-start !important; }
+.resumen-titulo { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.resumen-titulo h2 { font-size: clamp(1.05rem, 2.2vw, 1.5rem) !important; }
+.resumen-titulo p { flex: 0 0 auto !important; margin: 0 !important; max-width: 70ch; }
+.kpis-resumen {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)) !important;
+  gap: 12px !important;
+}
+.kpi {
+  position: relative;
+  overflow: hidden;
+  padding: 15px 16px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 118px;
+  justify-content: center;
+}
+.kpi::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  border-radius: 18px 0 0 18px;
+  background: linear-gradient(180deg, #e62e45, #8b1e24);
+}
+.kpi.asignado::before { background: linear-gradient(180deg, #1f9d6b, #0d6b47); }
+.kpi.disponible::before { background: linear-gradient(180deg, #4c7dd1, #2b4f9e); }
+.kpi.mantenimiento::before { background: linear-gradient(180deg, #f2b34b, #b57614); }
+.kpi.alerta::before { background: linear-gradient(180deg, #ff7b54, #c8102e); }
+.kpi.contrato::before { background: linear-gradient(180deg, #ffd194, #c8102e); }
+.kpi strong {
+  font-size: clamp(1.45rem, 3.2vw, 2.1rem) !important;
+  line-height: 1 !important;
+  color: #7a101e !important;
+  font-variant-numeric: tabular-nums;
+}
+.kpi span:last-child {
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: #5c3a40 !important;
+  line-height: 1.25;
+}
+.kpi-icono {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  font-size: 18px;
+  opacity: .42;
+  color: #8b1e24 !important;
+}
+.grid-graficas {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 410px), 1fr)) !important;
+  gap: 14px !important;
+}
+.grafica-card {
+  padding: 16px 18px 14px !important;
+  overflow: visible !important;
+  min-width: 0;
+}
+.grafica-card header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.grafica-card h3 { font-size: clamp(.92rem, 1.6vw, 1.06rem) !important; margin: 2px 0 0 !important; }
+.grafica-pista {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(255, 209, 148, .42);
+  border: 1px solid rgba(255, 255, 255, .66);
+  color: #7a101e;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.grafica-lienzo {
+  position: relative;
+  width: 100%;
+  height: clamp(230px, 30vw, 310px);
+  min-height: 230px;
+}
+.grafica-lienzo canvas { width: 100% !important; height: 100% !important; }
+.grafica-aviso {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 20px;
+  text-align: center;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .34);
+  color: #6b3a3f;
+  font-size: 12px;
+}
+.grafica-aviso strong { color: #8b1e24; }
+
+/* ---------------- FILTRO ACTIVO DE GRÁFICAS ---------------- */
+.filtro-grafica {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px !important;
+}
+.filtro-grafica[hidden] { display: none !important; }
+.filtro-grafica-texto { font-size: 12px; color: #4a2a2f; }
+.filtro-grafica-texto strong { color: #8b1e24; }
+
+/* ---------------- PROGRESO DEL ACTA ---------------- */
+.acta-progreso {
+  display: flex !important;
+  align-items: stretch;
+  gap: 6px;
+  list-style: none;
+  margin: 0 !important;
+  padding: 9px 10px !important;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.paso {
+  flex: 1 1 0;
+  min-width: 128px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, .42);
+  background: rgba(255, 255, 255, .22);
+  color: #6b4a4f;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  transition: all .22s var(--curva);
+  cursor: pointer;
+}
+.paso:hover { background: rgba(255, 255, 255, .46); border-color: rgba(214, 24, 46, .34); }
+.paso-numero {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(139, 30, 36, .16);
+  color: #8b1e24;
+  font-size: 11px;
+  font-weight: 900;
+}
+.paso.activo {
+  background: rgba(255, 255, 255, .58);
+  border-color: rgba(214, 24, 46, .48);
+  box-shadow: 0 0 0 2px rgba(214, 24, 46, .16), 0 8px 20px rgba(155, 14, 30, .12);
+  color: #8b1e24;
+}
+.paso.activo .paso-numero { background: linear-gradient(135deg, #e62e45, #8b1e24); color: #fff; }
+.paso.completado { color: #0b5d32; border-color: rgba(31, 157, 107, .36); background: rgba(31, 157, 107, .12); }
+.paso.completado .paso-numero { background: linear-gradient(135deg, #27b77f, #0d6b47); color: #fff; }
+.paso.completado .paso-numero::after { content: "✓"; }
+.paso.completado .paso-numero { font-size: 0; }
+.paso.completado .paso-numero::after { font-size: 12px; }
+
+/* ---------------- CAPAS Z-INDEX ORDENADAS ---------------- */
+.fondo-cajon { z-index: 1200 !important; }
+.app-shell.app.movil-abierto > .sidebar { z-index: 1210 !important; }
+.fondo-asistente { z-index: 1300 !important; }
+#btnAsistente { z-index: 1305 !important; }
+.asistente-panel, #panelAsistente.asistente-panel { z-index: 1310 !important; }
+.modal { z-index: 1400 !important; }
+.pantalla-login { z-index: 2000 !important; }
+
+/* ---------------- ADAPTABILIDAD FLUIDA ---------------- */
+.app-shell, .principal, .contenido, .vista, .tarjeta, .acta-bloque,
+.tabla-caja, .modal-caja, .grafica-card, .kpi { max-width: 100%; min-width: 0; }
+.app-shell { overflow-x: clip !important; }
+.grid-sistemas, .grid-docs { grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)) !important; }
+.grid-placas { grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)) !important; }
+.tabla-caja { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+h1, h2, h3, .acta-titulo, .acordeon-titulo strong { overflow-wrap: anywhere; }
+.boton, .nav-item, .pildora { max-width: 100%; }
+
+@media (max-width: 1024px) {
+  .grid-graficas { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)) !important; }
+}
+
+@media (max-width: 768px) {
+  .fondo-animado {
+    background: linear-gradient(160deg, #ffe9df 0%, #ffd4cb 42%, #ffc0bd 72%, #ffb1ae 100%) !important;
+    background-size: 180% 180% !important;
+    animation: fondoMovil 24s ease-in-out infinite alternate !important;
+  }
+  .fondo-animado::before { animation: none !important; opacity: .55; }
+  .orbe { animation: none !important; }
+  .marca-sidebar .marca-logo-full { display: none !important; }
+  .marca-sidebar .marca-logo-mini { display: block !important; }
+  .app-shell.app.movil-abierto .marca-sidebar .marca-logo-full { display: block !important; height: 38px !important; width: auto !important; }
+  .app-shell.app.movil-abierto .marca-sidebar .marca-logo-mini { display: none !important; }
+  .app-shell.app:not(.movil-abierto) .marca-sidebar { flex-direction: column !important; justify-content: center !important; gap: 6px !important; padding: 4px 0 10px !important; }
+  .tarjeta, .tarjeta-login, .acta-bloque, .acta-cabecera, .barra-superior,
+  .tabla-caja, .ficha-grupo, .metrica, .modal-caja, .panel-asistente,
+  .asistente-panel, .cabecera-seccion, .acordeon-grupo, .ws-top,
+  .ws-seccion-barra, .kpi, .grafica-card, .acta-progreso, .filtro-grafica {
+    backdrop-filter: blur(8px) saturate(175%) !important;
+    -webkit-backdrop-filter: blur(8px) saturate(175%) !important;
+  }
+  .app-shell > .main-content { width: calc(100vw - 46px) !important; max-width: calc(100vw - 46px) !important; padding: 10px !important; }
+  .kpis-resumen { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 9px !important; }
+  .kpi { min-height: 96px; padding: 12px 12px 12px 16px !important; }
+  .kpi strong { font-size: 1.38rem !important; }
+  .kpi span:last-child { font-size: 9px !important; }
+  .kpi-icono { font-size: 15px; top: 9px; right: 10px; }
+  .grid-graficas { grid-template-columns: minmax(0, 1fr) !important; }
+  .grafica-lienzo { height: 250px; min-height: 250px; }
+  .acta-progreso {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    overflow: visible;
+  }
+  .paso { min-width: 0; font-size: 9px; padding: 7px 8px; }
+  .paso-numero { width: 20px; height: 20px; font-size: 10px; }
+  .resumen-cabecera { flex-direction: column !important; align-items: stretch !important; }
+  .resumen-cabecera .boton { width: 100% !important; }
+  .grafica-pista { display: none; }
+  .marca-login img { width: min(74vw, 230px) !important; }
+}
+
+@keyframes fondoMovil {
+  0% { background-position: 0% 30%; }
+  100% { background-position: 100% 70%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fondo-animado, .fondo-animado::before, .orbe { animation: none !important; }
+  .tarjeta, .kpi, .metrica, .grafica-card, .acta-bloque, .nav-item, .boton { transition: none !important; }
+}

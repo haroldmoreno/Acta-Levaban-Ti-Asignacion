@@ -23,9 +23,13 @@
     equiposLimite: 40,
     placasLimite: 40,
     contratosLimite: 40,
+    filtroGrafica: null,
+    graficas: {},
+    v360PorPlaca: null,
   };
 
   const TITULOS = {
+    resumen: "Resumen y Gráficas 360°",
     sistemas: "Ecosistemas de TI",
     placas: "Placas & QR",
     equipos: "Equipos",
@@ -293,6 +297,7 @@
 
   async function recargarVista() {
     if (!ESTADO.perfil) return;
+    if (ESTADO.vista === "resumen") await cargarResumen();
     if (ESTADO.vista === "sistemas") await cargarSistemas();
     if (ESTADO.vista === "equipos") await cargarEquipos();
     if (ESTADO.vista === "contratos") await cargarContratos();
@@ -309,6 +314,7 @@
     document.querySelectorAll(".vista").forEach((s) => { s.hidden = s.id !== "vista-" + vista; });
     byId("tituloVista").textContent = TITULOS[vista] || "";
     cerrarDrawer();
+    if (vista === "resumen") cargarResumen();
     if (vista === "sistemas") cargarSistemas();
     if (vista === "equipos") cargarEquipos();
     if (vista === "contratos") cargarContratos();
@@ -316,6 +322,355 @@
     if (vista === "boveda") cargarBoveda();
     if (vista === "admin") cargarUsuarios();
     if (vista === "acta") setTimeout(redimensionarFirmas, 60);
+  }
+
+  /* ---------------- Resumen ejecutivo y gráficas 360° ---------------- */
+
+  const PALETA_GRAFICAS = {
+    rojo: "#d61a2e",
+    rojoVivo: "#e62e45",
+    coral: "#ff7b54",
+    ambar: "#f2b34b",
+    esmeralda: "#1f9d6b",
+    vino: "#8b1e24",
+    malva: "#b06a72",
+    crema: "#ffd194",
+    azul: "#4c7dd1",
+  };
+
+  const numeroCO = (valor) => Number(valor || 0).toLocaleString("es-CO");
+
+  function diasVencimientoContrato(fila) {
+    const fecha = fila?.fecha_vencimiento_contrato;
+    if (!fecha) return null;
+    const tiempo = new Date(fecha).getTime();
+    if (Number.isNaN(tiempo)) return null;
+    return Math.ceil((tiempo - Date.now()) / 86400000);
+  }
+
+  function prefijoEstado(fila, prefijo) {
+    return normTexto(fila?.estado).startsWith(normTexto(prefijo));
+  }
+
+  function esMantenimientoOBaja(fila) {
+    const estado = normTexto(fila?.estado);
+    return ["MANTENIMIENTO", "BAJA", "REPARACION", "AVERIADO", "OBSOLETO"].some((p) => estado.startsWith(p));
+  }
+
+  function mostrarAvisoGrafica(canvas, texto) {
+    const caja = canvas?.parentElement;
+    if (!caja) return;
+    caja.innerHTML = `<div class="grafica-aviso"><strong>No se pudo dibujar la gráfica</strong><span>${escapar(texto)}</span></div>`;
+  }
+
+  function crearGrafica(idCanvas, configuracion) {
+    const canvas = byId(idCanvas);
+    if (!canvas) return null;
+    if (!window.Chart) {
+      mostrarAvisoGrafica(canvas, "Chart.js no está disponible sin conexión. Vuelve a cargar la página con internet.");
+      return null;
+    }
+    if (ESTADO.graficas[idCanvas]) ESTADO.graficas[idCanvas].destroy();
+    ESTADO.graficas[idCanvas] = new window.Chart(canvas, configuracion);
+    return ESTADO.graficas[idCanvas];
+  }
+
+  function opcionesBaseGrafica(extra = {}) {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 750, easing: "easeOutQuart" },
+      plugins: {
+        legend: {
+          position: "bottom",
+          labels: {
+            color: "#4a2a2f",
+            usePointStyle: true,
+            pointStyle: "circle",
+            boxWidth: 9,
+            boxHeight: 9,
+            padding: 14,
+            font: { size: 11, weight: "700" },
+          },
+        },
+        tooltip: {
+          backgroundColor: "rgba(33, 12, 16, .92)",
+          titleColor: "#ffe9df",
+          bodyColor: "#ffffff",
+          borderColor: "rgba(255, 123, 84, .65)",
+          borderWidth: 1,
+          padding: 12,
+          cornerRadius: 12,
+          displayColors: true,
+          titleFont: { size: 12, weight: "800" },
+          bodyFont: { size: 12 },
+        },
+      },
+      ...extra,
+    };
+  }
+
+  function irAEquiposConFiltro(filtro, etiqueta) {
+    ESTADO.filtroGrafica = { ...filtro, etiqueta };
+    ESTADO.equiposLimite = 40;
+    ["buscarEquipo", "filtroSede", "filtroCeco", "filtroEstado"].forEach((id) => {
+      const campo = byId(id);
+      if (campo) campo.value = "";
+    });
+    irAVista("equipos");
+  }
+
+  function aplicarFiltroGrafica(lista) {
+    const filtro = ESTADO.filtroGrafica;
+    if (!filtro) return lista;
+    if (filtro.campo === "estado") return lista.filter((e) => prefijoEstado(e, filtro.valor));
+    if (filtro.campo === "mantenimiento") return lista.filter((e) => esMantenimientoOBaja(e));
+    if (filtro.campo === "sistema") return lista.filter((e) => String(e.sistema_id || "") === String(filtro.valor));
+    if (filtro.campo === "contrato") {
+      return lista.filter((e) => {
+        const dias = diasVencimientoContrato(e);
+        if (dias == null) return filtro.valor === "sin-fecha";
+        if (filtro.valor === "vencido") return dias < 0;
+        if (filtro.valor === "proximo") return dias >= 0 && dias <= 90;
+        if (filtro.valor === "vigente") return dias > 90;
+        return true;
+      });
+    }
+    if (filtro.campo === "veredicto") {
+      const mapa = ESTADO.v360PorPlaca;
+      if (!mapa) return lista;
+      return lista.filter((e) => {
+        if (filtro.valor === "local") return true;
+        const fila = mapa.get(e.placa);
+        if (!fila) return false;
+        if (filtro.valor === "verificado") return veredictoDe(fila).estado === "VERIFICADO";
+        if (filtro.valor === "alerta") return veredictoDe(fila).estado !== "VERIFICADO";
+        if (filtro.valor === "entra") return Boolean(fila.device_id || fila.device_name || fila.upn_usuario || fila.nombre_usuario_entra);
+        if (filtro.valor === "telemetria") return Boolean(fila.device_name || fila.ultima_conexion_hp || fila.ultimo_usuario_hp);
+        return true;
+      });
+    }
+    return lista;
+  }
+
+  function actualizarFiltroGraficaUI(cantidad) {
+    const caja = byId("filtroGraficaActivo");
+    if (!caja) return;
+    const filtro = ESTADO.filtroGrafica;
+    if (!filtro) {
+      caja.hidden = true;
+      caja.innerHTML = "";
+      return;
+    }
+    caja.hidden = false;
+    caja.innerHTML = `<span class="filtro-grafica-texto">Filtro de gráfica: <strong>${escapar(filtro.etiqueta || "Selección")}</strong> · ${numeroCO(cantidad)} equipos</span>
+      <button type="button" class="boton mini" data-limpiar-grafica>Quitar filtro</button>`;
+  }
+
+  async function cargarResumen() {
+    const kpis = {
+      total: byId("kpiTotal"),
+      asignados: byId("kpiAsignados"),
+      disponibles: byId("kpiDisponibles"),
+      mantenimiento: byId("kpiMantenimiento"),
+      alertas: byId("kpiAlertas"),
+      contratos: byId("kpiContratos"),
+    };
+    try {
+      const equipos = await cargarTodos("equipos", columnasVisibles());
+      let v360 = [];
+      try {
+        v360 = await cargarTodos("vista_veredicto_360", "*");
+      } catch {
+        v360 = [];
+      }
+      let sistemas = ESTADO.sistemas;
+      if (!sistemas.length) {
+        try {
+          const respuesta = await sb.from("sistemas").select("*");
+          sistemas = respuesta.data || [];
+        } catch {
+          sistemas = [];
+        }
+      }
+
+      if (!ESTADO.sistemas.length) ESTADO.sistemas = sistemas;
+      const mapaSistemas = Object.fromEntries((ESTADO.sistemas || []).map((s) => [String(s.id), s]));
+      const mapaVeredictos = new Map();
+      v360.forEach((fila) => {
+        if (fila?.placa) mapaVeredictos.set(fila.placa, fila);
+      });
+      ESTADO.v360PorPlaca = mapaVeredictos;
+
+      const asignados = equipos.filter((e) => prefijoEstado(e, "ASIGNADO")).length;
+      const disponibles = equipos.filter((e) => prefijoEstado(e, "DISPONIBLE")).length;
+      const mantenimiento = equipos.filter((e) => esMantenimientoOBaja(e)).length;
+      const alertas = v360.filter((fila) => veredictoDe(fila).estado !== "VERIFICADO").length;
+      const contratosPorVencer = equipos.filter((e) => {
+        const dias = diasVencimientoContrato(e);
+        return dias != null && dias >= 0 && dias <= 90;
+      }).length;
+
+      if (kpis.total) kpis.total.textContent = numeroCO(equipos.length);
+      if (kpis.asignados) kpis.asignados.textContent = numeroCO(asignados);
+      if (kpis.disponibles) kpis.disponibles.textContent = numeroCO(disponibles);
+      if (kpis.mantenimiento) kpis.mantenimiento.textContent = numeroCO(mantenimiento);
+      if (kpis.alertas) kpis.alertas.textContent = numeroCO(alertas);
+      if (kpis.contratos) kpis.contratos.textContent = numeroCO(contratosPorVencer);
+
+      // 1 · Estado general del inventario.
+      crearGrafica("graficaEstado", {
+        type: "doughnut",
+        data: {
+          labels: ["Asignados", "Disponibles", "Mantenimiento", "Discrepancias 360°"],
+          datasets: [{
+            data: [asignados, disponibles, mantenimiento, alertas],
+            backgroundColor: ["rgba(214,26,46,.88)", "rgba(31,157,107,.86)", "rgba(242,179,75,.9)", "rgba(255,123,84,.9)"],
+            hoverBackgroundColor: [PALETA_GRAFICAS.rojoVivo, "#27b77f", "#ffc65c", "#ff8f6d"],
+            borderColor: "rgba(255,255,255,.9)",
+            borderWidth: 3,
+            hoverOffset: 10,
+          }],
+        },
+        options: opcionesBaseGrafica({
+          cutout: "62%",
+          onClick: (_evt, elementos) => {
+            if (!elementos.length) return;
+            const indice = elementos[0].index;
+            if (indice === 0) irAEquiposConFiltro({ campo: "estado", valor: "ASIGNADO" }, "Equipos asignados");
+            if (indice === 1) irAEquiposConFiltro({ campo: "estado", valor: "DISPONIBLE" }, "Equipos disponibles");
+            if (indice === 2) irAEquiposConFiltro({ campo: "mantenimiento", valor: true }, "Equipos en mantenimiento o baja");
+            if (indice === 3) irAEquiposConFiltro({ campo: "veredicto", valor: "alerta" }, "Alertas del veredicto 360°");
+          },
+        }),
+      });
+
+      // 2 · Activos por ecosistema crítico.
+      const conteoEcosistemas = new Map();
+      equipos.forEach((e) => {
+        const clave = String(e.sistema_id || "");
+        const sistema = mapaSistemas[clave];
+        const etiqueta = sistema?.nombre || "Sin ecosistema";
+        if (!conteoEcosistemas.has(clave)) conteoEcosistemas.set(clave, { etiqueta, cantidad: 0 });
+        conteoEcosistemas.get(clave).cantidad += 1;
+      });
+      const ecosistemas = [...conteoEcosistemas.entries()]
+        .sort((a, b) => b[1].cantidad - a[1].cantidad)
+        .slice(0, 7);
+      crearGrafica("graficaEcosistemas", {
+        type: "bar",
+        data: {
+          labels: ecosistemas.map(([, v]) => v.etiqueta),
+          datasets: [{
+            label: "Activos",
+            data: ecosistemas.map(([, v]) => v.cantidad),
+            backgroundColor: ecosistemas.map((_, i) => ["rgba(214,26,46,.88)", "rgba(255,123,84,.88)", "rgba(242,179,75,.9)", "rgba(31,157,107,.85)", "rgba(139,30,36,.82)", "rgba(176,106,114,.88)", "rgba(76,125,209,.82)"][i % 7]),
+            borderRadius: 9,
+            borderSkipped: false,
+            hoverBackgroundColor: PALETA_GRAFICAS.rojoVivo,
+          }],
+        },
+        options: opcionesBaseGrafica({
+          indexAxis: "y",
+          plugins: {
+            ...opcionesBaseGrafica().plugins,
+            legend: { display: false },
+          },
+          scales: {
+            x: { beginAtZero: true, grid: { color: "rgba(139,30,36,.10)" }, ticks: { color: "#6b4a4f", precision: 0 } },
+            y: { grid: { display: false }, ticks: { color: "#3d2227", font: { size: 11, weight: "700" } } },
+          },
+          onClick: (_evt, elementos) => {
+            if (!elementos.length) return;
+            const [clave, datos] = ecosistemas[elementos[0].index] || [];
+            if (clave === undefined) return;
+            irAEquiposConFiltro({ campo: "sistema", valor: clave }, `Ecosistema: ${datos.etiqueta}`);
+          },
+        }),
+      });
+
+      // 3 · Veredicto cruzado 360°.
+      const conEntra = v360.filter((f) => f.device_id || f.device_name || f.upn_usuario || f.nombre_usuario_entra).length;
+      const conTelemetria = v360.filter((f) => f.device_name || f.ultima_conexion_hp || f.ultimo_usuario_hp).length;
+      const verificados = v360.filter((f) => veredictoDe(f).estado === "VERIFICADO").length;
+      crearGrafica("graficaVeredicto", {
+        type: "bar",
+        data: {
+          labels: ["Inventario Local", "Microsoft Entra ID", "Telemetría HP WXP", "Verificados 360°"],
+          datasets: [{
+            label: "Activos",
+            data: [equipos.length, conEntra, conTelemetria, verificados],
+            backgroundColor: ["rgba(214,26,46,.88)", "rgba(76,125,209,.86)", "rgba(255,123,84,.9)", "rgba(31,157,107,.86)"],
+            borderRadius: 10,
+            borderSkipped: false,
+            hoverBackgroundColor: PALETA_GRAFICAS.rojoVivo,
+          }],
+        },
+        options: opcionesBaseGrafica({
+          plugins: {
+            ...opcionesBaseGrafica().plugins,
+            legend: { display: false },
+          },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: "#3d2227", font: { size: 10, weight: "700" } } },
+            y: { beginAtZero: true, grid: { color: "rgba(139,30,36,.10)" }, ticks: { color: "#6b4a4f", precision: 0 } },
+          },
+          onClick: (_evt, elementos) => {
+            if (!elementos.length) return;
+            const valores = ["local", "entra", "telemetria", "verificado"];
+            const etiquetas = ["Todos los activos del inventario local", "Reportan en Entra ID", "Reportan telemetría HP WXP", "Verificados 360°"];
+            irAEquiposConFiltro({ campo: "veredicto", valor: valores[elementos[0].index] }, etiquetas[elementos[0].index]);
+          },
+        }),
+      });
+
+      // 4 · Semáforo de contratos y garantías.
+      let vencidos = 0;
+      let proximos = 0;
+      let vigentes = 0;
+      equipos.forEach((e) => {
+        const dias = diasVencimientoContrato(e);
+        if (dias == null) return;
+        if (dias < 0) vencidos += 1;
+        else if (dias <= 90) proximos += 1;
+        else vigentes += 1;
+      });
+      crearGrafica("graficaContratos", {
+        type: "bar",
+        data: {
+          labels: ["Vigentes", "Próximos ≤ 90 días", "Vencidos"],
+          datasets: [{
+            label: "Contratos",
+            data: [vigentes, proximos, vencidos],
+            backgroundColor: ["rgba(31,157,107,.88)", "rgba(242,179,75,.92)", "rgba(214,26,46,.9)"],
+            borderRadius: 11,
+            borderSkipped: false,
+            hoverBackgroundColor: PALETA_GRAFICAS.rojoVivo,
+          }],
+        },
+        options: opcionesBaseGrafica({
+          plugins: {
+            ...opcionesBaseGrafica().plugins,
+            legend: { display: false },
+          },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: "#3d2227", font: { size: 11, weight: "700" } } },
+            y: { beginAtZero: true, grid: { color: "rgba(139,30,36,.10)" }, ticks: { color: "#6b4a4f", precision: 0 } },
+          },
+          onClick: (_evt, elementos) => {
+            if (!elementos.length) return;
+            const valores = ["vigente", "proximo", "vencido"];
+            const etiquetas = ["Contratos vigentes", "Contratos próximos a vencer (≤ 90 días)", "Contratos vencidos"];
+            irAEquiposConFiltro({ campo: "contrato", valor: valores[elementos[0].index] }, etiquetas[elementos[0].index]);
+          },
+        }),
+      });
+    } catch (err) {
+      ["graficaEstado", "graficaEcosistemas", "graficaVeredicto", "graficaContratos"].forEach((id) => {
+        const canvas = byId(id);
+        if (canvas) mostrarAvisoGrafica(canvas, err?.message || String(err));
+      });
+    }
   }
 
   /* ---------------- Ecosistemas ---------------- */
@@ -424,6 +779,7 @@
       if (estado) c = c.eq("estado", estado);
       return c;
     });
+    const filtrados = aplicarFiltroGrafica(todos);
 
     const { count: totalReal } = await sb.from("equipos").select("id", { count: "exact", head: true });
     const total = Number(totalReal || 0);
@@ -435,10 +791,11 @@
     byId("metricaPrestamo").textContent = (porEstado("PRÉSTAMO") + porEstado("PRESTAMO")).toLocaleString("es-CO");
     byId("estadoConexion").textContent = `Supabase en vivo · ${total.toLocaleString("es-CO")} equipos`;
 
-    ESTADO.equipos = todos;
+    ESTADO.equipos = filtrados;
     const limiteEquipos = ESTADO.equiposLimite || 40;
     const visiblesEquipos = ESTADO.equipos.slice(0, limiteEquipos);
     actualizarFiltros(todos);
+    actualizarFiltroGraficaUI(filtrados.length);
     const sistemasPorId = Object.fromEntries(ESTADO.sistemas.map((s) => [s.id, s]));
     const estadoBadge = (valor) => {
       const texto = String(valor || "—");
@@ -662,6 +1019,51 @@
     return ESTADO.fotosComprimidas[id] || (await comprimirImagenMovil(archivo));
   }
 
+  function firmaConTrazo(canvas) {
+    if (!canvas || !canvas.width || !canvas.height) return false;
+    try {
+      const datos = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+      for (let i = 3; i < datos.length; i += 32) {
+        if (datos[i] > 10) return true;
+      }
+    } catch {
+      return false;
+    }
+    return false;
+  }
+
+  function actualizarProgresoActa() {
+    const lista = byId("progresoActa");
+    if (!lista) return;
+    const pasos = [...lista.querySelectorAll(".paso")];
+    if (!pasos.length) return;
+
+    const valor = (id) => byId(id)?.value?.trim() || "";
+    const algunCheck = (selector) => [...document.querySelectorAll(selector)].some((c) => c.checked);
+    const fotos = PREVIEWS_FOTO ? PREVIEWS_FOTO.filter(([inputId, previewId]) => {
+      const previa = byId(previewId);
+      return Boolean(ESTADO.fotosComprimidas[inputId]) || (previa && !previa.hidden && previa.getAttribute("src"));
+    }).length : 0;
+
+    const completados = [
+      Boolean(valor("actaNombre") && valor("actaDocumento")),
+      Boolean(valor("actaPlaca") && (valor("actaTipoEquipo") || valor("actaMarca") || valor("actaModelo") || valor("actaSerial"))),
+      algunCheck("[data-accesorio]") || algunCheck("[data-software]"),
+      fotos > 0 && (firmaConTrazo(byId("firmaColaborador")) || firmaConTrazo(byId("firmaTecnico"))),
+    ];
+
+    const primerPendiente = completados.findIndex((listo) => !listo);
+    pasos.forEach((paso, indice) => {
+      paso.classList.toggle("completado", Boolean(completados[indice]));
+      paso.classList.toggle("activo", indice === primerPendiente);
+      if (indice === primerPendiente) paso.setAttribute("aria-current", "step");
+      else paso.removeAttribute("aria-current");
+    });
+    const avance = Math.round((completados.filter(Boolean).length / completados.length) * 100);
+    lista.dataset.avance = String(avance);
+    lista.setAttribute("aria-label", `Progreso de captura del acta: ${avance}%`);
+  }
+
   async function llenarFormActa(ficha, tipo) {
     const poner = (id, valor) => {
       const campo = byId(id);
@@ -719,6 +1121,7 @@
         campo.hidden = true;
       }
     });
+    actualizarProgresoActa();
   }
 
   async function abrirActa(equipo, tipo) {
@@ -1465,7 +1868,10 @@
       ctx.lineTo(p.x, p.y);
       ctx.stroke();
     });
-    ["pointerup", "pointercancel", "pointerleave"].forEach((evt) => canvas.addEventListener(evt, () => { activo = false; }));
+    ["pointerup", "pointercancel", "pointerleave"].forEach((evt) => canvas.addEventListener(evt, () => {
+      activo = false;
+      if (evt !== "pointerleave") actualizarProgresoActa();
+    }));
   }
 
   function instalarFirmas() {
@@ -1483,6 +1889,7 @@
     const canvas = byId(id);
     if (!canvas) return;
     canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+    actualizarProgresoActa();
   }
 
   function datosFirmas() {
@@ -1511,6 +1918,7 @@
           delete ESTADO.fotosComprimidas[inputId];
           vistaPrevia.removeAttribute("src");
           vistaPrevia.hidden = true;
+          actualizarProgresoActa();
           return;
         }
         try {
@@ -1521,6 +1929,7 @@
           vistaPrevia.src = await archivoADataUrl(archivo);
         }
         vistaPrevia.hidden = false;
+        actualizarProgresoActa();
       });
     });
   }
@@ -1937,7 +2346,29 @@
     if (byId("actaObs") && !byId("actaObs").value) byId("actaObs").value = datos.bitacora || "";
   }
 
+  function instalarSpotlight() {
+    if (window.__spotlightLevapan) return;
+    window.__spotlightLevapan = true;
+    let pendiente = null;
+    let ultimo = null;
+    const aplicar = () => {
+      pendiente = null;
+      if (!ultimo) return;
+      const { elemento, x, y } = ultimo;
+      const rect = elemento.getBoundingClientRect();
+      elemento.style.setProperty("--pointer-x", `${Math.round(x - rect.left)}px`);
+      elemento.style.setProperty("--pointer-y", `${Math.round(y - rect.top)}px`);
+    };
+    document.addEventListener("pointermove", (evento) => {
+      const elemento = evento.target.closest?.(".tarjeta, .kpi, .metrica, .grafica-card, .acta-bloque, .barra-superior, .cabecera-seccion, .modal-caja, .nav-item, .boton");
+      if (!elemento) return;
+      ultimo = { elemento, x: evento.clientX, y: evento.clientY };
+      if (!pendiente) pendiente = requestAnimationFrame(aplicar);
+    }, { passive: true });
+  }
+
   function instalarEventos() {
+    instalarSpotlight();
     new MutationObserver(() => {
       document
         .querySelectorAll("td, .tarjeta strong, .ws-doc-info strong, .placa-item small")
@@ -1962,6 +2393,7 @@
     document.querySelectorAll(".nav-item").forEach((b) => {
       b.title = b.querySelector(".nav-texto")?.textContent?.trim() || b.textContent.trim();
       b.addEventListener("click", () => {
+        ESTADO.filtroGrafica = null;
         irAVista(b.dataset.vista);
         cerrarDrawer();
       });
@@ -2025,6 +2457,15 @@
     byId("formSistema").addEventListener("submit", guardarSistema);
     byId("formEquipo").addEventListener("submit", guardarEquipo);
     byId("formActa").addEventListener("submit", guardarActa);
+    byId("formActa").addEventListener("input", actualizarProgresoActa);
+    byId("formActa").addEventListener("change", actualizarProgresoActa);
+    byId("progresoActa")?.addEventListener("click", (evento) => {
+      const paso = evento.target.closest("[data-paso]");
+      if (!paso) return;
+      const destinos = [0, 1, 2, 4];
+      const bloques = byId("formActa")?.querySelectorAll("fieldset.acta-bloque") || [];
+      bloques[destinos[Number(paso.dataset.paso)]]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
     instalarPreviewsFotos();
 
     let temporizadorPlacaActa = null;
@@ -2219,10 +2660,23 @@
       if (doc) abrirDocumento(doc.dataset.doc);
     });
 
-    byId("buscarEquipo").addEventListener("input", () => cargarEquipos());
-    ["filtroSede", "filtroCeco", "filtroEstado"].forEach((id) => byId(id)?.addEventListener("change", cargarEquipos));
+    byId("buscarEquipo").addEventListener("input", () => {
+      ESTADO.filtroGrafica = null;
+      cargarEquipos();
+    });
+    ["filtroSede", "filtroCeco", "filtroEstado"].forEach((id) => byId(id)?.addEventListener("change", () => {
+      ESTADO.filtroGrafica = null;
+      cargarEquipos();
+    }));
+    byId("btnRefrescarResumen")?.addEventListener("click", () => cargarResumen());
     byId("buscarPlaca").addEventListener("input", () => cargarPlacas());
     document.addEventListener("click", (evento) => {
+      if (evento.target.closest("[data-limpiar-grafica]")) {
+        ESTADO.filtroGrafica = null;
+        ESTADO.equiposLimite = 40;
+        cargarEquipos();
+        return;
+      }
       const verMas = evento.target.closest("[data-ver-mas]");
       if (!verMas) return;
       const tipo = verMas.dataset.verMas;

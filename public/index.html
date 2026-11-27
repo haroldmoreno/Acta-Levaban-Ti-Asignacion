@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#8B1E24" />
+    <meta name="theme-color" content="#C8102E" />
     <title>Levapan TI — Arquitectura Inversa y Activos</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
@@ -14,6 +14,7 @@
     <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="js/config.js"></script>
     <script src="js/acta-pdf.js"></script>
   </head>
@@ -51,12 +52,11 @@
       <aside id="sidebar" class="sidebar">
         <div class="marca-sidebar">
           <button id="btnToggleSidebar" class="sidebar-toggle" type="button" title="Contraer menú" aria-label="Contraer menú">≡</button>
-          <div class="marca-texto">
-            <strong>LEVAPAN</strong>
-            <span>Arquitectura Inversa de TI</span>
-          </div>
+          <img class="marca-logo marca-logo-full" src="assets/logo.svg" alt="Levapan · Arquitectura Inversa de TI" />
+          <img class="marca-logo marca-logo-mini" src="assets/isotipo.svg" alt="Levapan TI" />
         </div>
         <nav class="nav" aria-label="Módulos">
+          <button class="nav-item" data-vista="resumen"><span class="nav-icono">▦</span><span class="nav-texto nav-label">Resumen y Gráficas 360°</span></button>
           <button class="nav-item activo" data-vista="sistemas"><span class="nav-icono">◈</span><span class="nav-texto nav-label">Ecosistemas de TI</span></button>
           <button class="nav-item" data-vista="placas"><span class="nav-icono">⬡</span><span class="nav-texto nav-label">Placas & QR</span></button>
           <button class="nav-item" data-vista="equipos"><span class="nav-icono">▤</span><span class="nav-texto nav-label">Equipos</span></button>
@@ -87,6 +87,46 @@
         </header>
 
         <div class="contenido">
+          <!-- RESUMEN EJECUTIVO Y GRÁFICAS 360° -->
+          <section id="vista-resumen" class="vista" hidden>
+            <div class="cabecera-seccion resumen-cabecera">
+              <div class="resumen-titulo">
+                <span class="eyebrow">PANEL EJECUTIVO · DATOS EN VIVO</span>
+                <h2>Resumen y Gráficas 360°</h2>
+                <p>Inventario, identidad Microsoft Entra ID, telemetría HP WXP y contratos en una sola lectura.</p>
+              </div>
+              <button id="btnRefrescarResumen" class="boton primario" type="button">↻ Actualizar panel</button>
+            </div>
+
+            <div id="kpisResumen" class="kpis-resumen" aria-label="Indicadores ejecutivos">
+              <article class="kpi"><span class="kpi-icono">▦</span><strong id="kpiTotal">—</strong><span>Total activos · 27 campos</span></article>
+              <article class="kpi asignado"><span class="kpi-icono">✓</span><strong id="kpiAsignados">—</strong><span>Asignados</span></article>
+              <article class="kpi disponible"><span class="kpi-icono">◌</span><strong id="kpiDisponibles">—</strong><span>Disponibles</span></article>
+              <article class="kpi mantenimiento"><span class="kpi-icono">⚙</span><strong id="kpiMantenimiento">—</strong><span>Mantenimiento / Baja</span></article>
+              <article class="kpi alerta"><span class="kpi-icono">⚠</span><strong id="kpiAlertas">—</strong><span>Alertas 360°</span></article>
+              <article class="kpi contrato"><span class="kpi-icono">◷</span><strong id="kpiContratos">—</strong><span>Contratos por vencer</span></article>
+            </div>
+
+            <div class="grid-graficas">
+              <article class="tarjeta grafica-card" data-spotlight>
+                <header><div><span class="eyebrow">INVENTARIO</span><h3>Estado General del Inventario</h3></div><span class="grafica-pista">Clic para filtrar</span></header>
+                <div class="grafica-lienzo"><canvas id="graficaEstado" aria-label="Gráfica de estado general del inventario"></canvas></div>
+              </article>
+              <article class="tarjeta grafica-card" data-spotlight>
+                <header><div><span class="eyebrow">ECOSISTEMAS</span><h3>Activos por Ecosistema Crítico</h3></div><span class="grafica-pista">Clic para filtrar</span></header>
+                <div class="grafica-lienzo"><canvas id="graficaEcosistemas" aria-label="Gráfica de activos por ecosistema"></canvas></div>
+              </article>
+              <article class="tarjeta grafica-card" data-spotlight>
+                <header><div><span class="eyebrow">VEREDICTO CRUZADO</span><h3>Inventario vs. Entra ID vs. HP WXP</h3></div><span class="grafica-pista">Clic para filtrar</span></header>
+                <div class="grafica-lienzo"><canvas id="graficaVeredicto" aria-label="Gráfica comparativa del veredicto 360"></canvas></div>
+              </article>
+              <article class="tarjeta grafica-card" data-spotlight>
+                <header><div><span class="eyebrow">CONTRATOS Y GARANTÍAS</span><h3>Semáforo de Vencimientos</h3></div><span class="grafica-pista">Clic para filtrar</span></header>
+                <div class="grafica-lienzo"><canvas id="graficaContratos" aria-label="Gráfica del semáforo de contratos"></canvas></div>
+              </article>
+            </div>
+          </section>
+
           <!-- SISTEMAS -->
           <section id="vista-sistemas" class="vista activo">
             <div class="cabecera-seccion">
@@ -121,6 +161,7 @@
               <select id="filtroCeco" class="input"><option value="">Todos los CECO</option></select>
               <select id="filtroEstado" class="input"><option value="">Todos los estados</option></select>
             </div>
+            <div id="filtroGraficaActivo" class="filtro-grafica" hidden></div>
             <div class="acciones">
               <button class="boton primario" data-accion="nuevo-equipo">+ Nuevo equipo</button>
             </div>
@@ -160,6 +201,13 @@
               </div>
               <span id="estadoActa" class="pildora">SUPABASE EN VIVO</span>
             </div>
+
+            <ol id="progresoActa" class="acta-progreso" aria-label="Progreso de captura del acta">
+              <li class="paso completado" data-paso="0"><span class="paso-numero">1</span><span class="paso-texto">Datos Personales</span></li>
+              <li class="paso" data-paso="1"><span class="paso-numero">2</span><span class="paso-texto">Equipo</span></li>
+              <li class="paso" data-paso="2"><span class="paso-numero">3</span><span class="paso-texto">Accesorios / Software</span></li>
+              <li class="paso" data-paso="3"><span class="paso-numero">4</span><span class="paso-texto">Fotos y Firmas</span></li>
+            </ol>
 
             <form id="formActa" class="acta-form">
               <input type="hidden" id="documentoTiAutofill" />

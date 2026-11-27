@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Levapan TI">
+  <defs>
+    <linearGradient id="isoRojo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e01b32"/>
+      <stop offset=".55" stop-color="#c8102e"/>
+      <stop offset="1" stop-color="#980a1f"/>
+    </linearGradient>
+    <linearGradient id="isoBrillo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".34"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="112" height="112" rx="28" fill="url(#isoRojo)"/>
+  <rect x="4" y="4" width="112" height="56" rx="28" fill="url(#isoBrillo)"/>
+  <text x="60" y="86" text-anchor="middle"
+        font-family="'Brush Script MT','Segoe Script','Lucida Handwriting',cursive"
+        font-size="70" font-style="italic" font-weight="700"
+        fill="#ffffff">L</text>
+  <text x="60" y="104" text-anchor="middle" font-family="Arial, sans-serif"
+        font-size="13" font-weight="800" letter-spacing="3" fill="#ffe9df">TI</text>
+</svg>

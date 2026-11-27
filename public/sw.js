@@ -1,6 +1,6 @@
 /* Levapan TI PWA — Network-First para estáticos, Network-Only para Supabase/Auth. */
-const CACHE_NAME = "levapan-ti-v25-asistente-outside";
-const SHELL = ["./", "./index.html", "./css/styles.css", "./js/config.js", "./js/app.js", "./js/asistente-ti.js", "./js/acta-pdf.js", "./template.pdf", "./manifest.json", "./assets/icon.svg", "./assets/logo.svg", "./assets/fondo.svg"];
+const CACHE_NAME = "levapan-ti-v26-ultra-liquid-charts";
+const SHELL = ["./", "./index.html", "./css/styles.css", "./js/config.js", "./js/app.js", "./js/asistente-ti.js", "./js/acta-pdf.js", "./template.pdf", "./manifest.json", "./assets/icon.svg", "./assets/icon-192.png", "./assets/icon-512.png", "./assets/logo.svg", "./assets/isotipo.svg", "./assets/fondo.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
