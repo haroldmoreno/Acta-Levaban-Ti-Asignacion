@@ -2408,17 +2408,13 @@
 
     const alternarSidebar = () => {
       const app = byId("app");
-      if (!app) return;
-      // En celular el ≡ abre/cierra un cajón flotante; el riel de 46 px nunca se ensancha.
-      if (window.innerWidth <= 768) {
-        const abierto = app.classList.toggle("movil-abierto");
-        const fondo = byId("fondoCajon");
-        if (fondo) fondo.hidden = !abierto;
-        actualizarTituloBoton(abierto);
-        return;
-      }
-      // En PC se conserva el comportamiento de 210 px / 54 px.
+      const appShell = byId("app-shell") || document.querySelector(".app-shell");
+      if (!app || !appShell) return;
+      // Alterna el estado en ambos contenedores para consistencia
       const colapsado = app.classList.toggle("sidebar-collapsed");
+      if (appShell) appShell.classList.toggle("sidebar-collapsed");
+      // Also toggle on document.body for full-page consistency
+      document.body.classList.toggle("sidebar-collapsed", colapsado);
       localStorage.setItem("levapan_sidebar_collapsed", colapsado ? "1" : "0");
       actualizarTituloBoton(!colapsado);
       setTimeout(posicionarIndicador, 100);
@@ -2427,7 +2423,9 @@
 
     // Delegación global: el ≡ funciona siempre y tocar fuera cierra el cajón móvil.
     document.addEventListener("click", (evento) => {
-      if (evento.target.closest("#btnToggleSidebar")) {
+      // Funciona al hacer clic en cualquier parte del botón ≡ (incluyendo su icono)
+      const btnToggle = evento.target.closest("#btnToggleSidebar");
+      if (btnToggle) {
         alternarSidebar();
         return;
       }
