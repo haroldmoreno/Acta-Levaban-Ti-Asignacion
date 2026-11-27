@@ -19,111 +19,81 @@
     <script src="js/acta-pdf.js"></script>
   </head>
   <body>
-    <!-- Fondo de pantalla 11 bandas verticales tipo vidrio estriado (fluted glass) -->
-    <div class="levapan-fluted-bg" aria-hidden="true">
-      <span></span><span></span><span></span><span></span><span></span>
-      <span></span>
-      <span></span><span></span><span></span><span></span><span></span>
-    </div>
+    <!-- Pantalla de login clásica centrada -->
+    <section id="pantallaLogin" class="pantalla-login" style="display: block;">
+      <form id="formLogin" class="tarjeta-login" autocomplete="off" novalidate>
+        <div class="marca-login" style="justify-content: center;">
+          <img src="assets/logo.svg" alt="Levapan" style="width: min(140px, 80%); height: auto; filter: drop-shadow(0 8px 24px rgba(208,0,24,.3));" />
+        </div>
+        <h1 style="text-align: center; margin: 24px 0 12px; font-size: clamp(1.75rem, 5vw, 2.2rem); color: #141416;">Levapan TI</h1>
+        <p style="text-align: center; margin-bottom: 24px; color: #6b7280; font-size: .88rem;">Gestión de Activos y Actas CORP-TEC-FR-002</p>
 
-    <!-- Topbar ERP ejecutiva superior -->
-<div class="topbar">
-  <div class="buscar">
-    <input type="text" placeholder="Buscar placa, serial, colaborador o sede...">
-  </div>
-  <div class="acciones">
-    <button class="btn-mini" title="Escanear QR o código de barras">▣</button>
-    <span class="notif"><span class="badge">3</span></span>
-    <span class="notif"><span class="badge">7</span></span>
-    <div class="usuario">
-      <span>Harold Hurtado</span>
-      <span>Auxiliar de TI</span>
-    </div>
-    <button class="cerrar" aria-label="Cerrar sesión">Salir</div>
-  </div>
-</div>
-
-<div class="body-wrapper">
-      <!-- ================= LOGIN ================= -->
-      <section id="pantallaLogin" class="pantalla-login">
-        <form id="formLogin" class="tarjeta-login" autocomplete="off" novalidate>
-          <div class="marca-login" style="justify-content: center;">
-            <img src="assets/logo.svg" alt="Levapan" style="width: min(140px, 80%); height: auto; filter: drop-shadow(0 8px 24px rgba(208,0,24,.3));" />
+        <div style="display: flex; gap: 12px; margin-bottom: 16px; justify-content: center;">
+          <label for="loginEmail" style="order: 2; width: 100%; min-width: 200px;">Correo corporativo</label>
+          <div style="order: 1; width: min(260px, 100%);">
+            <input id="loginEmail" type="email" placeholder="admin@levapan.com" autocomplete="username" required value="admin@levapan.com"
+              style="width: 100%; background: rgba(255,255,255,.28); backdrop-filter: blur(12px) saturate(180%); border: 1px solid #9c0012; color: #9c0012; border-radius: 14px; padding: 12px 14px; font-size: 14px;"
+              />
           </div>
-          <h1 style="text-align: center; margin: 24px 0 12px; font-size: clamp(1.75rem, 5vw, 2.2rem); color: var(--crimson-bright);">Levapan TI</h1>
-          <p style="text-align: center; margin-bottom: 24px; color: var(--ink-muted); font-size: .88rem;">Arquitectura Inversa de Activos</p>
+        </div>
 
-          <div style="display: flex; gap: 12px; margin-bottom: 16px; justify-content: center;">
-            <label for="loginEmail" style="order: 2; width: 100%; min-width: 200px;">Correo corporativo</label>
-            <div style="order: 1; width: min(260px, 100%);">
-              <input id="loginEmail" type="email" placeholder="admin@levapan.com" autocomplete="username" required value="admin@levapan.com"
-                style="width: 100%; background: rgba(255,255,255,.28); backdrop-filter: blur(12px) saturate(180%); border: 1px solid var(--border-subtle); color: var(--crimson-bright); border-radius: 14px; padding: 12px 14px; font-size: 14px;"
+        <div style="display: flex; gap: 12px; margin-bottom: 24px; justify-content: center;">
+          <label for="loginPassword" style="order: 2; width: 100%; min-width: 200px;">Contraseña</label>
+          <div style="order: 1; width: min(260px, 100%);">
+            <div style="position: relative;">
+              <input id="loginPassword" type="password" placeholder="Tu contraseña corporativa" autocomplete="current-password" required
+                style="width: 100%; background: rgba(255,255,255,.28); backdrop-filter: blur(12px) saturate(180%); border: 1px solid #9c0012; color: #9c0012; border-radius: 14px; padding: 12px 14px; font-size: 14px;"
                 />
+              <button type="button" id="togglePassword" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: rgba(255,255,255,.5); font-size: 1rem; padding: 0; cursor: pointer;"
+                aria-label="Mostrar contraseña">👁️</button>
             </div>
           </div>
+        </div>
 
-          <div style="display: flex; gap: 12px; margin-bottom: 24px; justify-content: center;">
-            <label for="loginPassword" style="order: 2; width: 100%; min-width: 200px;">Contraseña</label>
-            <div style="order: 1; width: min(260px, 100%);">
-              <div style="position: relative;">
-                <input id="loginPassword" type="password" placeholder="Tu contraseña corporativa" autocomplete="current-password" required
-                  style="width: 100%; background: rgba(255,255,255,.28); backdrop-filter: blur(12px) saturate(180%); border: 1px solid var(--border-subtle); color: var(--crimson-bright); border-radius: 14px; padding: 12px 14px; font-size: 14px;"
-                  />
-                <button type="button" id="togglePassword" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: rgba(255,255,255,.5); font-size: 1rem; padding: 0; cursor: pointer;"
-                  aria-label="Mostrar contraseña">👁️</button>
-              </div>
-            </div>
-          </div>
+        <p id="loginError" class="error" role="alert" style="text-align: center; margin: 16px 0; font-size: .82rem; min-height: 16px;" hidden></p>
+        <button id="btnLogin" type="submit" class="boton primario w-100" style="background: #9c0012; color: #ffffff; border: none; font-weight: 700; padding: 14px 24px; font-size: 1rem; border-radius: 10px; width: 100%; max-width: 280px; margin: 0 auto; display: block;"
+          >Ingresar</button>
+        <p class="nota" style="text-align: center; margin-top: 20px; font-size: .74rem; color: #6b7280;">Solo personal autorizado de Tecnología e Infraestructura.</p>
+      </form>
+    </section>
 
-          <p id="loginError" class="error" role="alert" style="text-align: center; margin: 16px 0; font-size: .82rem; min-height: 16px;" hidden></p>
-          <button id="btnLogin" type="submit" class="boton primario w-100" style="background: #161922; color: #ffffff; border: none; font-weight: 700; padding: 14px 24px; font-size: 1rem; border-radius: 14px; width: 100%; max-width: 280px; margin: 0 auto; display: block;"
-            >Ingresar</button>
-          <p class="nota" style="text-align: center; margin-top: 20px; font-size: .74rem; color: var(--ink-muted);">Solo personal autorizado de Tecnología e Infraestructura.</p>
-        </form>
-      </section>
-
-      <!-- ================= APP ================= -->
-      <div id="fondoCajon" class="fondo-cajon" hidden></div>
-      <main id="app" class="app app-shell" style="margin-top: 250px;">
+    <!-- Contenedor principal de la app (oculto hasta login) -->
+    <div id="app" class="app app-shell" style="margin-top: 0; display: none;">
       <aside id="sidebar" class="sidebar">
         <div class="marca-sidebar">
           <button id="btnToggleSidebar" class="sidebar-toggle" type="button" title="Contraer menú" aria-label="Contraer menú">≡</button>
           <img class="marca-logo marca-logo-full" src="assets/logo.svg" alt="Levapan · Arquitectura Inversa de TI" />
           <img class="marca-logo marca-logo-mini" src="assets/isotipo.svg" alt="Levapan TI" />
+          <span class="marca-texto">Levapan TI</span>
         </div>
         <nav class="nav" aria-label="Módulos">
-          <button class="nav-item" data-vista="resumen"><span class="nav-icono">▦</span><span class="nav-texto nav-label">Resumen y Gráficas 360°</span></button>
-          <button class="nav-item" data-vista="placas"><span class="nav-icono">⬡</span><span class="nav-texto nav-label">Placas & QR</span></button>
-          <button class="nav-item" data-vista="equipos"><span class="nav-icono">▤</span><span class="nav-texto nav-label">Equipos</span></button>
-          <button class="nav-item" data-vista="contratos"><span class="nav-icono">◷</span><span class="nav-texto nav-label">Contratos y Garantías</span></button>
-          <button class="nav-item" data-vista="acta"><span class="nav-icono">▣</span><span class="nav-texto nav-label">Acta de Asignación</span></button>
-          <button class="nav-item" data-vista="boveda"><span class="nav-icono">◫</span><span class="nav-texto nav-label">Bóveda PDF</span></button>
-          <button class="nav-item" data-vista="admin" data-admin hidden><span class="nav-icono">⚙</span><span class="nav-texto nav-label">Administración TI</span></button>
+          <button class="nav-item activo" data-vista="resumen"><span class="nav-icono">▦</span><span class="nav-label nav-label-texto">Resumen y Gráficas 360°</span></button>
+          <button class="nav-item" data-vista="placas"><span class="nav-icono">⬡</span><span class="nav-label nav-label-texto">Placas & QR</span></button>
+          <button class="nav-item" data-vista="equipos"><span class="nav-icono">▤</span><span class="nav-label nav-label-texto">Equipos</span></button>
+          <button class="nav-item" data-vista="contratos"><span class="nav-icono">◷</span><span class="nav-label nav-label-texto">Contratos y Garantías</span></button>
+          <button class="nav-item" data-vista="acta"><span class="nav-icono">▣</span><span class="nav-label nav-label-texto">Acta de Asignación</span></button>
+          <button class="nav-item" data-vista="boveda"><span class="nav-icono">◫</span><span class="nav-label nav-label-texto">Bóveda PDF</span></button>
+          <button class="nav-item" data-vista="admin" data-admin hidden><span class="nav-icono">⚙</span><span class="nav-label nav-label-texto">Administración TI</span></button>
         </nav>
         <div class="sidebar-pie">
           <button id="btnInstalar" class="boton instalar" hidden>Instalar App en Equipo</button>
         </div>
+        <div class="seccion-titulo">MENÚ</div>
       </aside>
 
       <div class="principal main-content">
-        <header class="barra-superior">
-          <div class="barra-fila1">
-            <h2 id="tituloVista">Ecosistemas de TI</h2>
-            <div class="acciones-top">
-              <button id="btnEscanear" class="boton mini" title="Escanear QR o código de barras">▣ Escanear QR / Placa</button>
-              <button id="btnSalir" class="boton salir">Cerrar sesión</button>
-            </div>
+        <header class="topbar">
+          <div class="titulo-vista" id="tituloVista">Ecosistemas de TI</div>
+          <div class="acciones-top">
+            <button id="btnEscanear" class="btn-mini" title="Escanear QR o código de barras">▣</button>
+            <button id="btnSalir" class="btn-mini salir" aria-label="Cerrar sesión">Salir</div>
           </div>
-          <div class="barra-fila2">
-            <span id="estadoConexion" class="pildora">Supabase en vivo</span>
-            <span id="usuarioNombre" class="usuario"></span>
-            <span id="usuarioRol" class="pildora rol"></span>
-          </div>
+          <div class="fecha" id="fechaHoy">Viernes, 27 de noviembre de 2026</div>
         </header>
 
         <div class="contenido">
           <!-- RESUMEN EJECUTIVO Y GRÁFICAS 360° -->
-          <section id="vista-resumen" class="vista" hidden>
+          <section id="vista-resumen" class="vista activo">
             <div class="cabecera-seccion resumen-cabecera">
               <div class="resumen-titulo">
                 <span class="eyebrow">PANEL EJECUTIVO · DATOS EN VIVO</span>
@@ -133,116 +103,143 @@
               <button id="btnRefrescarResumen" class="boton primario" type="button">↻ Actualizar panel</button>
             </div>
 
-            <!-- Fila 1: 4 KPIs Horizontales ERP -->
+            <!-- Fila 1: 4 KPIs Horizontales -->
 <div class="kpis-resumenerp" aria-label="Indicadores ejecutivos">
-  <!-- KPI Total Activos -->
-  <article class="kpi tarjeta-kpi">
-    <div class="kpi-icono-cuadro">
-      <div class="cuadro-icono crimson">
-        <span class="icono">▦</span>
-      </div>
+  <!-- KPI Total Activos (Carmesi) -->
+  <article class="kpi tarjeta-kpi carmesi">
+    <div class="kpi-icono-cuadro carmesi">
+      <svg class="icono-carmesi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=""><path d="M12 2v2M12 22v2M2 12h2M22 12h2"/></svg>
     </div>
     <div class="kpi-derecho">
-      <span class="kpi-etiqueta">Total Activos</span>
-      <span class="kpi-cifra">1.580</span>
-      <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#10b981" d="M2 0l6 6-6 6"/></svg></span>
+      <span class="kpi-etiqueta">Total Activos TI</span>
+      <span class="kpi-cifra">324</span>
+      <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#38d964" d="M2 0l6 6-6 6"/></svg></span>
+    </div>
+    <div class="kpi-sub">
+      <span class="p-pillo verde">+100%</span>
+      <span class="p-pillo-texto">En vivo</span>
     </div>
   </article>
-  <!-- KPI Equipos Asignados -->
+
+  <!-- KPI Equipos Asignados (Blanco) -->
   <article class="kpi tarjeta-kpi">
-    <div class="kpi-icono-cuadro">
-      <div class="cuadro-icono azul">
-        <span class="icono">✓</span>
-      </div>
+    <div class="kpi-icono-cuadro gris">
+      <svg class="icono-gris" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=""><path d="M5 12h14M12 5l7 7-7 7"/></svg>
     </div>
     <div class="kpi-derecho">
       <span class="kpi-etiqueta">Equipos Asignados</span>
-      <span class="kpi-cifra">1.204</span>
+      <span class="kpi-cifra">240</span>
       <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#3b82f6" d="M2 0l6 6-6 6"/></svg></span>
     </div>
+    <div class="kpi-sub">
+      <span class="p-pillo verde">Asignados</span>
+      <span class="p-pillo-texto">Equipos en operación</span>
+    </div>
   </article>
-  <!-- KPI Disponibles -->
+
+  <!-- KPI Disponibles (Blanco) -->
   <article class="kpi tarjeta-kpi">
-    <div class="kpi-icono-cuadro">
-      <div class="cuadro-icono ámbar">
-        <span class="icono">◌</span>
-      </div>
+    <div class="kpi-icono-cuadro gris">
+      <svg class="icono-gris" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=""><path d="M12 2v2M12 20v2M2 12h2M22 12h2"/></svg>
     </div>
     <div class="kpi-derecho">
-      <span class="kpi-etiqueta">Disponibles</span>
-      <span class="kpi-cifra">318</span>
+      <span class="kpi-etiqueta">Disponibles / Stock TI</span>
+      <span class="kpi-cifra">84</span>
       <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#f59e0b" d="M2 0l6 6-6 6"/></svg></span>
     </div>
+    <div class="kpi-sub">
+      <span class="p-pillo roja">Pendientes</span>
+      <span class="p-pillo-texto">Disponibles / Stock TI</span>
+    </div>
   </article>
-  <!-- KPI Alertas 360° -->
+
+  <!-- KPI Alertas (Blanco) -->
   <article class="kpi tarjeta-kpi">
-    <div class="kpi-icono-cuadro">
-      <div class="cuadro-icono esmeralda">
-        <span class="icono">⚠</span>
-      </div>
+    <div class="kpi-icono-cuadro gris">
+      <svg class="icono-gris" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=""><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 4"/></svg>
     </div>
     <div class="kpi-derecho">
-      <span class="kpi-etiqueta">Alertas 360°</span>
+      <span class="kpi-etiqueta">Actas firmadas y garantías</span>
       <span class="kpi-cifra">73</span>
-      <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#059669" d="M2 0l6 6-6 6"/></svg></span>
+      <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill:#38d964" d="M2 0l6 6-6 6"/></svg></span>
+    </div>
+    <div class="kpi-sub">
+      <span class="p-pillo verde">Actas</span>
+      <span class="p-pillo-texto">Firmadas y garantías</span>
     </div>
   </article>
 </div>
 
-<!-- Fila 2: Gráficas Asimétricas ERP -->
-<div class="grid-erp-filas">
-  <!-- Izquierda: Distribución por Ecosistema y Sede (2/3) -->
-  <div class="tarjeta tarjeta-kpi crm-grafica" style="grid-column: span 2;">
-    <div class="kpi-icono-cuadro crm">
-      <div class="cuadro-icono crimson">
-        <span class="icono">📊</span>
-      </div>
-    </div>
-    <h3 style="margin: 12px 0 8px; color: var(--ink-primary);">Distribución por Ecosistema y Sede</h3>
-    <select class="selector-superior" style="position: absolute; right: 12px; top: 8px; background: #fafbfc; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 8px; font-size: .72rem; color: var(--ink-primary);">
+<!-- Fila 2: Gráficas Asimétricas -->
+<div class="grid-bento">
+  <!-- Izquierda: Distribución por Ecosistema y Sede (2 columnas) -->
+  <div class="tarjeta-grafica-barras">
+    <h4 style="color: var(--crimson-verydeep); margin-bottom: 12px;">Distribución por Ecosistema y Sede</h4>
+    <select class="selector" style="position: absolute; right: 12px; top: 12px; background: #f8fafc; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 8px; font-size: .72rem; color: var(--ink-primary);">
       <option>Todos</option>
       <option>Sede Central</option>
       <option>Sede Planta</option>
       <option>Sede Oficinas</option>
     </select>
-    <canvas id="graficaEcosistema" class="grafica-lienzo"></canvas>
+    <canvas id="graficaEcosistema" class="grafica-pie" style="height: 220px;"></canvas>
   </div>
-  <!-- Derecha: Estado General 360° (1/3) -->
-  <div class="tarjeta tarjeta-kpi crm-grafica">
-    <div class="kpi-icono-cuadro crm">
-      <div class="cuadro-icono crimson">
-        <span class="icono">🔵</span>
-      </div>
-    </div>
-    <h3 style="margin: 12px 0 8px; color: var(--ink-primary);">Estado General 360°</h3>
-    <select class="selector-superior" style="position: absolute; right: 12px; top: 8px; background: #fafbfc; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 8px; font-size: .72rem; color: var(--ink-primary);">
-      <option>Actual</option>
-      <option>Verificados</option>
-      <option>Alertas</option>
+
+  <!-- Derecha: Estado General 360° -->
+  <div class="tarjeta-derecha">
+    <h5 style="color: var(--crimson-verydeep); margin-bottom: 16px;">Estadística de Activos 360°</h5>
+    <select class="selector" style="position: absolute; right: 12px; top: 12px; background: #f8fafc; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 8px; font-size: .72rem; color: var(--ink-primary);">
+      <option>Hoy</option>
+      <option>Todo</option>
     </select>
-    <canvas id="graficaEstado360" class="grafica-lienzo"></canvas>
+    <canvas id="graficaEstado360" class="grafica-pie" style="height: 140px;"></canvas>
+    <div class="filas-conteo">
+      <div class="fila-conteo"><span>Asignados</span><span class="pill verde">85%</span></div>
+      <div class="fila-conteo"><span>Disponibles</span><span class="pill roja">15%</span></div>
+      <div class="fila-conteo"><span>Alertas</span><span class="pill verde">73</span></div>
     </div>
-              <article class="tarjeta grafica-card" data-spotlight>
-                <header><div><span class="eyebrow">INVENTARIO</span><h3>Estado General del Inventario</h3></div><span class="grafica-pista">Clic para filtrar</span></header>
-                <div class="grafica-lienzo"><canvas id="graficaEstado" aria-label="Gráfica de estado general del inventario"></canvas></div>
-              </article>
-              <article class="tarjeta grafica-card" data-spotlight>
-                <header><div><span class="eyebrow">ECOSISTEMAS</span><h3>Activos por Ecosistema Crítico</h3></div><span class="grafica-pista">Clic para filtrar</span></header>
-                <div class="grafica-lienzo"><canvas id="graficaEcosistemas" aria-label="Gráfica de activos por ecosistema"></canvas></div>
-              </article>
-              <article class="tarjeta grafica-card" data-spotlight>
-                <header><div><span class="eyebrow">VEREDICTO CRUZADO</span><h3>Inventario vs. Entra ID vs. HP WXP</h3></div><span class="grafica-pista">Clic para filtrar</span></header>
-                <div class="grafica-lienzo"><canvas id="graficaVeredicto" aria-label="Gráfica comparativa del veredicto 360"></canvas></div>
-              </article>
-              <article class="tarjeta grafica-card" data-spotlight>
-                <header><div><span class="eyebrow">CONTRATOS Y GARANTÍAS</span><h3>Semáforo de Vencimientos</h3></div><span class="grafica-pista">Clic para filtrar</span></header>
-                <div class="grafica-lienzo"><canvas id="graficaContratos" aria-label="Gráfica del semáforo de contratos"></canvas></div>
-              </article>
-            </div>
-          </section>
+  </div>
+</div>
+
+<!-- Fila 3: Tabla Ejecutiva Inferior -->
+<div style="margin-top: 24px;">
+  <div class="titulo-tabla flex-between">
+    <h3 style="color: var(--ink-primary);">Últimos Activos y Actas</h3>
+    <button class="boton" style="background: var(--crimson-mid); color: #ffffff; border: none; border-radius: 10px; padding: 6px 12px; font-size: .76rem;">+ Nueva Acta</button>
+  </div>
+  <table style="width: 100%; border-collapse: separate; border-spacing: 0 8px;">
+    <thead>
+      <tr style="background: #f8fafc;">
+        <th style="padding: 8px 12px; color: var(--ink-muted); font-size: .72rem;">Equipo / Modelo</th>
+        <th style="padding: 8px 12px; color: var(--ink-muted); font-size: .72rem;">Placa / Serial</th>
+        <th style="padding: 8px 12px; color: var(--ink-muted); font-size: .72rem;">Responsable</th>
+        <th style="padding: 8px 12px; color: var(--ink-muted); font-size: .72rem;">Sede</th>
+        <th style="padding: 8px 12px; color: var(--ink-muted); font-size: .72rem;">Estado</th>
+        <th style="padding: 8px 12px; color: var(--ink-muted); font-size: .72rem; text-align: center;">Acción</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="transition: background .2s;">
+        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle); color: var(--ink-primary);</td>
+        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle); color: var(--ink-primary);</td>
+        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle); color: var(--ink-primary);</td>
+        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle); color: var(--ink-primary);</td>
+        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle); color: var(--ink-primary);</td>
+        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle); text-align: center; color: var(--ink-primary);</td>
+      </tr>
+      <tr style="background: #f1f5f9;">
+        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle);</td>
+        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle);</td>
+        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle);</td>
+        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle);</td>
+        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle);</td>
+        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle); text-align: center; color: var(--ink-primary);</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
 
           <!-- SISTEMAS -->
-          <section id="vista-sistemas" class="vista activo">
+          <section id="vista-sistemas" class="vista" hidden>
             <div class="cabecera-seccion">
               <p>Cada placa pertenece a un ecosistema crítico. Entra por el sistema y baja hasta el contrato y el acta.</p>
               <button class="boton primario" data-accion="nuevo-sistema">+ Nuevo sistema</button>
@@ -413,13 +410,13 @@
                   <label class="check"><input type="checkbox" data-software="7zip" checked /> 7zip</label>
                   <label class="check"><input type="checkbox" data-software="Antivirus" checked /> Antivirus</label>
                   <label class="check"><input type="checkbox" data-software="Adobe Reader" checked /> Adobe Reader</label>
-                  <label class="check"><input type="checkbox" data-software="VPN" /> VPN</label>
+                  <label class="check"><input type="checkbox" data-software="VPN" checked /> VPN</label>
                   <label class="check"><input type="checkbox" data-software="Impresora" checked /> Impresora</label>
-                  <label class="check"><input type="checkbox" data-software="Foxit Reader" /> Foxit Reader</label>
+                  <label class="check"><input type="checkbox" data-software="Foxit Reader" checked /> Foxit Reader</label>
                   <label class="check"><input type="checkbox" data-software="Team Viewer" checked /> Team Viewer</label>
-                  <label class="check"><input type="checkbox" data-software="Softphone" /> Softphone</label>
+                  <label class="check"><input type="checkbox" data-software="Softphone" checked /> Softphone</label>
                   <label class="check"><input type="checkbox" data-software="SAP GUI" checked /> SAP GUI</label>
-                  <label class="check"><input type="checkbox" data-software="Sofsin" /> Sofsin</label>
+                  <label class="check"><input type="checkbox" data-software="Sofsin" checked /> Sofsin</label>
                   <label class="check"><input type="checkbox" data-software="Google Chrome" checked /> Google Chrome</label>
                   <label class="check"><input type="checkbox" data-software="Adobe Creative Cloud" checked /> Adobe Creative Cloud</label>
                   <label class="check"><input type="checkbox" data-software="Otro" id="actaOtroSoftwareChk" /> Otro</label>
@@ -498,9 +495,9 @@
           </section>
         </div>
       </div>
-    </main>
+    </div>
 
-    <!-- MODAL EQUIPO -->
+    <!-- Modal Equipo -->
     <div id="modalEquipo" class="modal" hidden>
       <div class="modal-caja">
         <header><h2 id="tituloModalEquipo">Registrar equipo</h2><button class="cerrar" data-cerrar="modalEquipo">×</button></header>
@@ -565,7 +562,7 @@
       </div>
     </div>
 
-    <!-- MODAL SISTEMA -->
+    <!-- Modal Sistema -->
     <div id="modalSistema" class="modal" hidden>
       <div class="modal-caja pequeno">
         <header><h2>Ecosistema de TI</h2><button class="cerrar" data-cerrar="modalSistema">×</button></header>
@@ -584,7 +581,7 @@
       </div>
     </div>
 
-    <!-- ASISTENTE TI -->
+    <!-- Asistente TI -->
     <div id="fondoAsistente" class="fondo-asistente" hidden></div>
     <div id="asistente" class="asistente">
       <button id="btnAsistente" class="boton-asistente" aria-label="Abrir Asistente TI">
