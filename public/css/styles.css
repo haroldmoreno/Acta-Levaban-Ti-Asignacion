@@ -5,9 +5,6 @@
 
 /* --- Colores ejecutivos Crimson (paleta Bento) --- */
 :root {
-  --crimson-bright: #c4161c;
-  --crimson-active: #b8141a;
-  --crimson-deep: #8f0c11;
   --crimson-verydeep: #7a0912;
   --crimson-mid: #9c0012;
   --crimson-light: #d00018;
@@ -116,7 +113,7 @@ body {
   background: #9c0012;
   color: #ffffff;
   border: none;
-  border-radius: 10px;
+  border-radius: 10x;
   padding: 12px 20px;
   font-size: .98rem;
   font-weight: 600;
@@ -277,7 +274,7 @@ body {
 .tarjeta-veredicto .descripcion { font-size: .66rem; opacity: .8; }
 
 .tarjeta-veredicto .boton-instalar {
-  background: #9c0012; color: #ffffff; border: none;
+  background: #b60012; color: #ffffff; border: none;
   border-radius: 10px; padding: 8px; font-size: .72rem;
   font-weight: 600; align-self: flex-start; width: 100%;
 }
@@ -291,7 +288,6 @@ body {
   .sidebar.collapsed .nav-label { display: none; }
   .sidebar.collapsed .marca-texto { display: none; }
   .sidebar.collapsed .marca-logo img { width: 24px; }
-  .sidebar.collapsed .nav-item span { display: none; }
   .principal { grid-template-columns: 1fr !important; gap: 10px !important; }
   .grid-sistemas, .grid-docs, .grid-placas {
     grid-template-columns: 1fr !important; gap: 8px !important;
@@ -306,7 +302,7 @@ body {
   position: fixed; top: 0; left: 235px; right: 0; height: 64px;
   background: #ffffff; border-bottom: 1px solid var(--border-subtle);
   z-index: 1000; padding: 0 24px; display: flex; align-items: center; gap: 16px;
-  box-shadow: 0 2px 10px rgba(0,0,0,.04);
+  box-shadow: 0 2px 10x rgba(0,0,0,.04);
   transition: left .22s ease;
 }
 
@@ -489,7 +485,7 @@ button, input, select, textarea { font: inherit; }
   padding: 20px 16px; text-align: center; margin-top: 12px;
 }
 
-.tarjeta-grafica-circle h5 { color: var(--crimson-verydeep); font-size: .82rem; margin-bottom: 16px; }
+.tarjeta-graphica-circle h5 { color: var(--crimson-verydeep); font-size: .82rem; margin-bottom: 16px; }
 
 .grafica-pie { position: relative; height: 140px; }
 

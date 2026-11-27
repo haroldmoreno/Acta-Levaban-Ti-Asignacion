@@ -84,11 +84,11 @@
       <div class="principal main-content">
         <header class="topbar">
           <div class="titulo-vista" id="tituloVista">Ecosistemas de TI</div>
+          <div class="fecha" id="fechaHoy">Viernes, 27 de noviembre de 2026</div>
           <div class="acciones-top">
             <button id="btnEscanear" class="btn-mini" title="Escanear QR o código de barras">▣</button>
             <button id="btnSalir" class="btn-mini salir" aria-label="Cerrar sesión">Salir</div>
           </div>
-          <div class="fecha" id="fechaHoy">Viernes, 27 de noviembre de 2026</div>
         </header>
 
         <div class="contenido">
@@ -170,9 +170,79 @@
   </article>
 </div>
 
-<!-- Fila 2: Gráficas Asimétricas -->
+<!-- Fila 2: Bento Grid 2fr 1fr -->
 <div class="grid-bento">
-  <!-- Izquierda: Distribución por Ecosistema y Sede (2 columnas) -->
+
+  <!-- Bloque Izquierdo: Sub-rejilla 2×2 KPIs + Gráfica Barras -->
+  <div class="subgrid-kpi">
+
+    <!-- Tarjeta KPI 1 Carmesí -->
+    <article class="tarjeta-kpi carmesi">
+      <div class="icono-cuadro carmesi">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=""><path d="M12 2v2M12 22v2M2 12h2M22 12h2"/></svg>
+      </div>
+      <div class="kpi-derecho">
+        <span class="kpi-etiqueta">Total Activos TI</span>
+        <span class="kpi-cifra">324</span>
+        <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#38d964" d="M2 0l6 6-6 6"/></svg></span>
+      </div>
+      <div class="kpi-sub">
+        <span class="p-pillo verde">+100%</span>
+        <span class="p-pillo-texto">En vivo</span>
+      </div>
+    </article>
+
+    <!-- Tarjeta KPI 2 Blanca -->
+    <article class="tarjeta-kpi">
+      <div class="icono-cuadro gris">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=""><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </div>
+      <div class="kpi-derecho">
+        <span class="kpi-etiqueta">Equipos Asignados</span>
+        <span class="kpi-cifra">240</span>
+        <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#3b82f6" d="M2 0l6 6-6 6"/></svg></span>
+      </div>
+      <div class="kpi-sub">
+        <span class="p-pillo verde">Asignados</span>
+        <span class="p-pillo-texto">Equipos en operación</span>
+      </div>
+    </article>
+
+    <!-- Tarjeta KPI 3 Blanca -->
+    <article class="tarjeta-kpi">
+      <div class="icono-cuadro gris">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=""><path d="M12 2v2M12 20v2M2 12h2M22 12h2"/></svg>
+      </div>
+      <div class="kpi-derecho">
+        <span class="kpi-etiqueta">Disponibles / Stock TI</span>
+        <span class="kpi-cifra">84</span>
+        <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#f59e0b" d="M2 0l6 6-6 6"/></svg></span>
+      </div>
+      <div class="kpi-sub">
+        <span class="p-pillo roja">Pendientes</span>
+        <span class="p-pillo-texto">Disponibles / Stock TI</span>
+      </div>
+    </article>
+
+    <!-- Tarjeta KPI 4 Blanca -->
+    <article class="tarjeta-kpi">
+      <div class="icono-cuadro gris">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=""><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 4"/></svg>
+      </div>
+      <div class="kpi-derecho">
+        <span class="kpi-etiqueta">Actas firmadas y garantías</span>
+        <span class="kpi-cifra">73</span>
+        <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill:#38d964" d="M2 0l6 6-6 6"/></svg></span>
+      </div>
+      <div class="kpi-sub">
+        <span class="p-pillo verde">Actas</span>
+        <span class="p-pillo-texto">Firmadas y garantías</span>
+      </div>
+    </article>
+
+  </div>
+
+  <!-- Gráfica de Barras Redondeadas -->
   <div class="tarjeta-grafica-barras">
     <h4 style="color: var(--crimson-verydeep); margin-bottom: 12px;">Distribución por Ecosistema y Sede</h4>
     <select class="selector" style="position: absolute; right: 12px; top: 12px; background: #f8fafc; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 8px; font-size: .72rem; color: var(--ink-primary);">
@@ -184,7 +254,13 @@
     <canvas id="graficaEcosistema" class="grafica-pie" style="height: 220px;"></canvas>
   </div>
 
-  <!-- Derecha: Estado General 360° -->
+</div>
+
+<!-- Bloque Derecho: 2 tarjetas apiladas -->
+
+<div style="display: flex; flex-direction: column; gap: 16px;">
+
+  <!-- Tarjeta Superior - Gráfica Circular -->
   <div class="tarjeta-derecha">
     <h5 style="color: var(--crimson-verydeep); margin-bottom: 16px;">Estadística de Activos 360°</h5>
     <select class="selector" style="position: absolute; right: 12px; top: 12px; background: #f8fafc; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 8px; font-size: .72rem; color: var(--ink-primary);">
@@ -198,6 +274,25 @@
       <div class="fila-conteo"><span>Alertas</span><span class="pill verde">73</span></div>
     </div>
   </div>
+
+  <!-- Tarjeta Inferior - Burbujas Superpuestas -->
+  <div style="background: #ffffff; border: 1px solid var(--border-card); border-radius: 16px; padding: 20px;">
+    <h5 style="color: var(--crimson-verydeep); margin-bottom: 12px;">Cobertura por Sedes</h5>
+    <select class="selector" style="width: 100%; padding: 8px; border: 1px solid var(--border-subtle); border-radius: 10px; background: #f8fafc; font-size: .78rem; color: var(--ink-primary); margin-bottom: 12px;">
+      <option>Top Sedes</option>
+      <option>Todas</option>
+    </select>
+    <div style="display: flex; gap: 8px; align-items: center; justify-content: center;">
+      <div style="width: 28px; height: 28px; border-radius: 50%; background: #59060d; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #ffffff; font-size: .6rem; font-weight: 600;;">87%</div>
+      <div style="width: 22px; height: 22px; border-radius: 50%; background: #8f0c11; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #ffffff; font-size: .6rem; font-weight: 600;;">57%</div>
+      <div style="width: 18px; height: 18px; border-radius: 50%; background: #c4161c; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #ffffff; font-size: .6rem; font-weight: 600;;">37%</div>
+      <div style="width: 14px; height: 14px; border-radius: 50%; background: #e03145; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #ffffff; font-size: .6rem; font-weight: 600;;">17%</div>
+    </div>
+    <div style="margin-top: 8px; font-size: .66rem; color: var(--ink-muted); text-align: center;">
+      Sedes: Central · Planta · Oficinas · Norte
+    </div>
+  </div>
+
 </div>
 
 <!-- Fila 3: Tabla Ejecutiva Inferior -->
