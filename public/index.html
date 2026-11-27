@@ -19,53 +19,63 @@
     <script src="js/acta-pdf.js"></script>
   </head>
   <body>
-    <div class="fondo-animado" aria-hidden="true">
-      <span class="orbe orbe-crema"></span>
-      <span class="orbe orbe-arena"></span>
-      <span class="orbe orbe-vino"></span>
+    <!-- Franja roja superior integrada: barra de acciones + indicadores KPIs -->
+    <div class="franja-superior">
+      <div style="position: relative; height: 100%; padding: 12px 16px; max-width: 1400px; margin: 0 auto;">
+        <div style="position: absolute; right: 0; top: 50%; transform: translateY(-50%); display: flex; gap: 12px; align-items: center;">
+          <button id="btnEscanear" class="boton mini" style="background: rgba(255,255,255,.3); color: #ffffff; border: 1px solid rgba(255,255,255,.2); border-radius: 20px; padding: 6px 12px; font-size: .78rem;" title="Escanear QR o código de barras">▣ Escanear QR / Placa</button>
+          <button id="btnSalir" class="boton salir" style="background: rgba(255,255,255,.1); color: #ffffff; border: 1px solid rgba(255,255,255,.2); border-radius: 20px; padding: 6px 12px; font-size: .78rem;">Cerrar sesión</button>
+          <span style="color: rgba(255,255,255,.9); font-weight: 600; font-size: .88rem;">Harold Adrián Hurtado Moreno</span>
+        </div>
+        <div style="position: absolute; right: 16px; top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+          <span style="color: rgba(255,255,255,.7); font-size: .72rem;">Supabase en vivo</span>
+          <span style="color: rgba(255,255,255,.7); font-size: .72rem; padding: 4px 8px; border-radius: 10px; background: rgba(255,255,255,.15);">ADMINISTRADOR</span>
+        </div>
+      </div>
     </div>
 
-    <!-- ================= LOGIN Dark Crimson Liquid Glass ================= -->
-    <section id="pantallaLogin" class="pantalla-login">
-      <form id="formLogin" class="tarjeta-login" autocomplete="off" novalidate>
-        <div class="marca-login" style="justify-content: center;">
-          <img src="assets/logo.svg" alt="Levapan" style="width: min(140px, 80%); height: auto; filter: drop-shadow(0 8px 24px rgba(208,0,24,.3));" />
-        </div>
-        <h1 style="text-align: center; margin: 24px 0 12px; font-size: clamp(1.75rem, 5vw, 2.2rem); color: var(--crimson-100);">Levapan TI</h1>
-        <p style="text-align: center; margin-bottom: 24px; color: var(--texto-subtle); font-size: .88rem;">Arquitectura Inversa de Activos</p>
-
-        <div style="display: flex; gap: 12px; margin-bottom: 16px; justify-content: center;">
-          <label for="loginEmail" style="order: 2; width: 100%; min-width: 200px;">Correo corporativo</label>
-          <div style="order: 1; width: min(260px, 100%);">
-            <input id="loginEmail" type="email" placeholder="admin@levapan.com" autocomplete="username" required value="admin@levapan.com"
-              style="width: 100%; background: rgba(255,255,255,.28); backdrop-filter: blur(12px) saturate(180%); border: 1px solid rgba(208,0,24,.22); color: var(--crimson-100); border-radius: 14px; padding: 12px 14px; font-size: 14px;"
-              />
+    <div class="body-wrapper">
+      <!-- ================= LOGIN ================= -->
+      <section id="pantallaLogin" class="pantalla-login">
+        <form id="formLogin" class="tarjeta-login" autocomplete="off" novalidate>
+          <div class="marca-login" style="justify-content: center;">
+            <img src="assets/logo.svg" alt="Levapan" style="width: min(140px, 80%); height: auto; filter: drop-shadow(0 8px 24px rgba(208,0,24,.3));" />
           </div>
-        </div>
+          <h1 style="text-align: center; margin: 24px 0 12px; font-size: clamp(1.75rem, 5vw, 2.2rem); color: var(--crimson-bright);">Levapan TI</h1>
+          <p style="text-align: center; margin-bottom: 24px; color: var(--ink-muted); font-size: .88rem;">Arquitectura Inversa de Activos</p>
 
-        <div style="display: flex; gap: 12px; margin-bottom: 24px; justify-content: center;">
-          <label for="loginPassword" style="order: 2; width: 100%; min-width: 200px;">Contraseña</label>
-          <div style="order: 1; width: min(260px, 100%);">
-            <div style="position: relative;">
-              <input id="loginPassword" type="password" placeholder="Tu contraseña corporativa" autocomplete="current-password" required
-                style="width: 100%; background: rgba(255,255,255,.28); backdrop-filter: blur(12px) saturate(180%); border: 1px solid rgba(208,0,24,.22); color: var(--crimson-100); border-radius: 14px; padding: 12px 14px; font-size: 14px;"
+          <div style="display: flex; gap: 12px; margin-bottom: 16px; justify-content: center;">
+            <label for="loginEmail" style="order: 2; width: 100%; min-width: 200px;">Correo corporativo</label>
+            <div style="order: 1; width: min(260px, 100%);">
+              <input id="loginEmail" type="email" placeholder="admin@levapan.com" autocomplete="username" required value="admin@levapan.com"
+                style="width: 100%; background: rgba(255,255,255,.28); backdrop-filter: blur(12px) saturate(180%); border: 1px solid var(--border-subtle); color: var(--crimson-bright); border-radius: 14px; padding: 12px 14px; font-size: 14px;"
                 />
-              <button type="button" id="togglePassword" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: rgba(255,255,255,.5); font-size: 1rem; padding: 0; cursor: pointer;"
-                aria-label="Mostrar contraseña">👁️</button>
             </div>
           </div>
-        </div>
 
-        <p id="loginError" class="error" role="alert" style="text-align: center; margin: 16px 0; font-size: .82rem; min-height: 16px;" hidden></p>
-        <button id="btnLogin" type="submit" class="boton primario w-100" style="background: linear-gradient(135deg, var(--crimson-100), var(--crimson-300)); border: none; color: var(--blanco); font-weight: 700; padding: 14px 24px; font-size: 1rem; border-radius: 14px; width: 100%; max-width: 280px; margin: 0 auto; display: block;"
-          >Ingresar</button>
-        <p class="nota" style="text-align: center; margin-top: 20px; font-size: .74rem; color: var(--texto-subtle);">Solo personal autorizado de Tecnología e Infraestructura.</p>
-      </form>
-    </section>
+          <div style="display: flex; gap: 12px; margin-bottom: 24px; justify-content: center;">
+            <label for="loginPassword" style="order: 2; width: 100%; min-width: 200px;">Contraseña</label>
+            <div style="order: 1; width: min(260px, 100%);">
+              <div style="position: relative;">
+                <input id="loginPassword" type="password" placeholder="Tu contraseña corporativa" autocomplete="current-password" required
+                  style="width: 100%; background: rgba(255,255,255,.28); backdrop-filter: blur(12px) saturate(180%); border: 1px solid var(--border-subtle); color: var(--crimson-bright); border-radius: 14px; padding: 12px 14px; font-size: 14px;"
+                  />
+                <button type="button" id="togglePassword" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: rgba(255,255,255,.5); font-size: 1rem; padding: 0; cursor: pointer;"
+                  aria-label="Mostrar contraseña">👁️</button>
+              </div>
+            </div>
+          </div>
 
-    <!-- ================= APP ================= -->
-    <div id="fondoCajon" class="fondo-cajon" hidden></div>
-    <main id="app" class="app app-shell" hidden>
+          <p id="loginError" class="error" role="alert" style="text-align: center; margin: 16px 0; font-size: .82rem; min-height: 16px;" hidden></p>
+          <button id="btnLogin" type="submit" class="boton primario w-100" style="background: #161922; color: #ffffff; border: none; font-weight: 700; padding: 14px 24px; font-size: 1rem; border-radius: 14px; width: 100%; max-width: 280px; margin: 0 auto; display: block;"
+            >Ingresar</button>
+          <p class="nota" style="text-align: center; margin-top: 20px; font-size: .74rem; color: var(--ink-muted);">Solo personal autorizado de Tecnología e Infraestructura.</p>
+        </form>
+      </section>
+
+      <!-- ================= APP ================= -->
+      <div id="fondoCajon" class="fondo-cajon" hidden></div>
+      <main id="app" class="app app-shell" style="margin-top: 250px;">
       <aside id="sidebar" class="sidebar">
         <div class="marca-sidebar">
           <button id="btnToggleSidebar" class="sidebar-toggle" type="button" title="Contraer menú" aria-label="Contraer menú">≡</button>

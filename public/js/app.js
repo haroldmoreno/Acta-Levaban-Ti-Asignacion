@@ -525,8 +525,8 @@
           labels: ["Asignados", "Disponibles", "Mantenimiento", "Discrepancias 360°"],
           datasets: [{
             data: [asignados, disponibles, mantenimiento, alertas],
-            backgroundColor: ["rgba(214,26,46,.88)", "rgba(31,157,107,.86)", "rgba(242,179,75,.9)", "rgba(255,123,84,.9)"],
-            hoverBackgroundColor: [PALETA_GRAFICAS.rojoVivo, "#27b77f", "#ffc65c", "#ff8f6d"],
+            backgroundColor: ["#c4161c", "#161922", "#f59e0b", "#10b981"],
+            hoverBackgroundColor: ["#f05252", "#3f83f0", "#fbbf24", "#34d399"],
             borderColor: "rgba(255,255,255,.9)",
             borderWidth: 3,
             hoverOffset: 10,
@@ -564,7 +564,7 @@
           datasets: [{
             label: "Activos",
             data: ecosistemas.map(([, v]) => v.cantidad),
-            backgroundColor: ecosistemas.map((_, i) => ["rgba(214,26,46,.88)", "rgba(255,123,84,.88)", "rgba(242,179,75,.9)", "rgba(31,157,107,.85)", "rgba(139,30,36,.82)", "rgba(176,106,114,.88)", "rgba(76,125,209,.82)"][i % 7]),
+            backgroundColor: ecosistemas.map((_, i) => ["#c4161c", "#f05252", "#f59e0b", "#10b981", "#161922", "#6b7280", "#374151"][i % 7]),
             borderRadius: 9,
             borderSkipped: false,
             hoverBackgroundColor: PALETA_GRAFICAS.rojoVivo,
@@ -600,7 +600,7 @@
           datasets: [{
             label: "Activos",
             data: [equipos.length, conEntra, conTelemetria, verificados],
-            backgroundColor: ["rgba(214,26,46,.88)", "rgba(76,125,209,.86)", "rgba(255,123,84,.9)", "rgba(31,157,107,.86)"],
+            backgroundColor: ["#c4161c", "#3b82f6", "#f05252", "#10b981"],
             borderRadius: 10,
             borderSkipped: false,
             hoverBackgroundColor: PALETA_GRAFICAS.rojoVivo,
@@ -642,7 +642,7 @@
           datasets: [{
             label: "Contratos",
             data: [vigentes, proximos, vencidos],
-            backgroundColor: ["rgba(31,157,107,.88)", "rgba(242,179,75,.92)", "rgba(214,26,46,.9)"],
+            backgroundColor: ["#10b981", "#f59e0b", "#f05252"],
             borderRadius: 11,
             borderSkipped: false,
             hoverBackgroundColor: PALETA_GRAFICAS.rojoVivo,
