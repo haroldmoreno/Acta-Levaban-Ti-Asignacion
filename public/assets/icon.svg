@@ -1,27 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Levapan TI">
-  <defs>
-    <linearGradient id="iconFondo" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#fffaf6"/>
-      <stop offset="1" stop-color="#ffe7d8"/>
-    </linearGradient>
-    <linearGradient id="iconRojo" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#e01b32"/>
-      <stop offset=".55" stop-color="#c8102e"/>
-      <stop offset="1" stop-color="#980a1f"/>
-    </linearGradient>
-    <linearGradient id="iconBrillo" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity=".30"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
-    </linearGradient>
-    <filter id="iconSombra" x="-20%" y="-30%" width="140%" height="180%">
-      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#7a0816" flood-opacity=".26"/>
-    </filter>
-  </defs>
-  <rect width="512" height="512" fill="url(#iconFondo)"/>
-  <ellipse cx="256" cy="264" rx="198" ry="126" fill="url(#iconRojo)" filter="url(#iconSombra)"/>
-  <ellipse cx="256" cy="208" rx="164" ry="52" fill="url(#iconBrillo)"/>
-  <text x="256" y="311" text-anchor="middle"
-        font-family="'Brush Script MT','Segoe Script','Lucida Handwriting',cursive"
-        font-size="112" font-style="italic" font-weight="700" letter-spacing="1"
-        fill="#ffffff">Levapan</text>
+  <rect width="512" height="512" rx="104" fill="#8B1E24"/>
+  <circle cx="256" cy="256" r="150" fill="#F6F4F2" opacity="0.96"/>
+  <path d="M170 300c30 30 70 44 110 44 46 0 82-16 106-46-24 12-52 18-84 18-50 0-94-16-132-48z" fill="#8B1E24"/>
+  <text x="256" y="250" text-anchor="middle" font-family="Arial,sans-serif" font-size="92" font-weight="800" fill="#8B1E24">LTI</text>
 </svg>

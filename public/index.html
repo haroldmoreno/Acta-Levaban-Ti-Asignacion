@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#C8102E" />
+    <meta name="theme-color" content="#8B1E24" />
     <title>Levapan TI — Arquitectura Inversa y Activos</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
@@ -14,344 +14,81 @@
     <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="js/config.js"></script>
     <script src="js/acta-pdf.js"></script>
   </head>
   <body>
-    <!-- Pantalla de login clásica centrada -->
+    <div class="fondo-animado" aria-hidden="true">
+      <span class="orbe orbe-crema"></span>
+      <span class="orbe orbe-arena"></span>
+      <span class="orbe orbe-vino"></span>
+    </div>
+
+    <!-- ================= LOGIN ================= -->
     <section id="pantallaLogin" class="pantalla-login">
-      <form id="formLogin" class="tarjeta-login" autocomplete="off" novalidate>
-        <div class="marca-login" style="justify-content: center;">
-          <img src="assets/logo.svg" alt="Levapan" style="width: min(140px, 80%); height: auto; filter: drop-shadow(0 8px 24px rgba(208,0,24,.3));" />
+      <form id="formLogin" class="tarjeta-login" autocomplete="off">
+        <div class="marca-login">
+          <img src="assets/logo.svg" alt="Levapan" />
         </div>
-        <h1 style="text-align: center; margin: 24px 0 12px; font-size: clamp(1.75rem, 5vw, 2.2rem); color: #141416;">Levapan TI</h1>
-        <p style="text-align: center; margin-bottom: 24px; color: #6b7280; font-size: .88rem;">Gestión de Activos y Actas CORP-TEC-FR-002</p>
+        <h1>Arquitectura Inversa de TI</h1>
+        <p class="sub">Gestión corporativa de activos · CORP-TEC-FR-002</p>
 
-        <div style="display: flex; gap: 12px; margin-bottom: 16px; justify-content: center;">
-          <label for="loginEmail" style="order: 2; width: 100%; min-width: 200px;">Correo corporativo</label>
-          <div style="order: 1; width: min(260px, 100%);">
-            <input id="loginEmail" type="email" placeholder="admin@levapan.com" autocomplete="username" required value="admin@levapan.com"
-              style="width: 100%; background: rgba(255,255,255,.28); backdrop-filter: blur(12px) saturate(180%); border: 1px solid #9c0012; color: #9c0012; border-radius: 14px; padding: 12px 14px; font-size: 14px;"
-              />
-          </div>
-        </div>
+        <label for="loginEmail">Correo corporativo</label>
+        <input id="loginEmail" type="email" placeholder="admin@levapan.com" autocomplete="username" required value="admin@levapan.com" />
 
-        <div style="display: flex; gap: 12px; margin-bottom: 24px; justify-content: center;">
-          <label for="loginPassword" style="order: 2; width: 100%; min-width: 200px;">Contraseña</label>
-          <div style="order: 1; width: min(260px, 100%);">
-            <div style="position: relative;">
-              <input id="loginPassword" type="password" placeholder="Tu contraseña corporativa" autocomplete="current-password" required
-                style="width: 100%; background: rgba(255,255,255,.28); backdrop-filter: blur(12px) saturate(180%); border: 1px solid #9c0012; color: #9c0012; border-radius: 14px; padding: 12px 14px; font-size: 14px;"
-                />
-              <button type="button" id="togglePassword" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: rgba(255,255,255,.5); font-size: 1rem; padding: 0; cursor: pointer;"
-                aria-label="Mostrar contraseña">👁️</button>
-            </div>
-          </div>
-        </div>
+        <label for="loginPassword">Contraseña</label>
+        <input id="loginPassword" type="password" placeholder="Tu contraseña corporativa" autocomplete="current-password" required />
 
-        <p id="loginError" class="error" role="alert" style="text-align: center; margin: 16px 0; font-size: .82rem; min-height: 16px;" hidden></p>
-        <button id="btnLogin" type="submit" class="boton primario w-100" style="background: #9c0012; color: #ffffff; border: none; font-weight: 700; padding: 14px 24px; font-size: 1rem; border-radius: 10px; width: 100%; max-width: 280px; margin: 0 auto; display: block;"
-          >Ingresar</button>
-        <p class="nota" style="text-align: center; margin-top: 20px; font-size: .74rem; color: #6b7280;">Solo personal autorizado de Tecnología e Infraestructura.</p>
+        <p id="loginError" class="error" role="alert" hidden></p>
+        <button id="btnLogin" type="submit" class="boton primario">Ingresar</button>
+        <p class="nota">Solo personal autorizado de Tecnología e Infraestructura.</p>
       </form>
     </section>
 
+    <!-- ================= APP ================= -->
     <div id="fondoCajon" class="fondo-cajon" hidden></div>
-
-    <!-- Contenedor principal de la app (oculto hasta login) -->
-    <div id="app" class="app app-shell" hidden>
+    <main id="app" class="app app-shell" hidden>
       <aside id="sidebar" class="sidebar">
         <div class="marca-sidebar">
           <button id="btnToggleSidebar" class="sidebar-toggle" type="button" title="Contraer menú" aria-label="Contraer menú">≡</button>
-          <img class="marca-logo marca-logo-full" src="assets/logo.svg" alt="Levapan · Arquitectura Inversa de TI" />
-          <img class="marca-logo marca-logo-mini" src="assets/isotipo.svg" alt="Levapan TI" />
-          <span class="marca-texto">Levapan TI</span>
+          <div class="marca-texto">
+            <strong>LEVAPAN</strong>
+            <span>Arquitectura Inversa de TI</span>
+          </div>
         </div>
         <nav class="nav" aria-label="Módulos">
-          <button class="nav-item activo" data-vista="resumen"><span class="nav-icono">▦</span><span class="nav-label nav-label-texto">Resumen y Gráficas 360°</span></button>
-          <button class="nav-item" data-vista="placas"><span class="nav-icono">⬡</span><span class="nav-label nav-label-texto">Placas & QR</span></button>
-          <button class="nav-item" data-vista="equipos"><span class="nav-icono">▤</span><span class="nav-label nav-label-texto">Equipos</span></button>
-          <button class="nav-item" data-vista="contratos"><span class="nav-icono">◷</span><span class="nav-label nav-label-texto">Contratos y Garantías</span></button>
-          <button class="nav-item" data-vista="acta"><span class="nav-icono">▣</span><span class="nav-label nav-label-texto">Acta de Asignación</span></button>
-          <button class="nav-item" data-vista="boveda"><span class="nav-icono">◫</span><span class="nav-label nav-label-texto">Bóveda PDF</span></button>
-          <button class="nav-item" data-vista="admin" data-admin hidden><span class="nav-icono">⚙</span><span class="nav-label nav-label-texto">Administración TI</span></button>
+          <button class="nav-item activo" data-vista="sistemas"><span class="nav-icono">◈</span><span class="nav-texto nav-label">Ecosistemas de TI</span></button>
+          <button class="nav-item" data-vista="placas"><span class="nav-icono">⬡</span><span class="nav-texto nav-label">Placas & QR</span></button>
+          <button class="nav-item" data-vista="equipos"><span class="nav-icono">▤</span><span class="nav-texto nav-label">Equipos</span></button>
+          <button class="nav-item" data-vista="contratos"><span class="nav-icono">◷</span><span class="nav-texto nav-label">Contratos y Garantías</span></button>
+          <button class="nav-item" data-vista="acta"><span class="nav-icono">▣</span><span class="nav-texto nav-label">Acta de Asignación</span></button>
+          <button class="nav-item" data-vista="boveda"><span class="nav-icono">◫</span><span class="nav-texto nav-label">Bóveda PDF</span></button>
+          <button class="nav-item" data-vista="admin" data-admin hidden><span class="nav-icono">⚙</span><span class="nav-texto nav-label">Administración TI</span></button>
         </nav>
         <div class="sidebar-pie">
           <button id="btnInstalar" class="boton instalar" hidden>Instalar App en Equipo</button>
         </div>
-        <div class="seccion-titulo">MENÚ</div>
       </aside>
 
       <div class="principal main-content">
-        <header class="topbar">
-          <div class="titulo-vista" id="tituloVista">Resumen y Gráficas 360°</div>
-          <div class="fecha" id="fechaHoy">Viernes, 27 de noviembre de 2026</div>
-          <div class="acciones-top">
+        <header class="barra-superior">
+          <div class="barra-fila1">
+            <h2 id="tituloVista">Ecosistemas de TI</h2>
+            <div class="acciones-top">
+              <button id="btnEscanear" class="boton mini" title="Escanear QR o código de barras">▣ Escanear QR / Placa</button>
+              <button id="btnSalir" class="boton salir">Cerrar sesión</button>
+            </div>
+          </div>
+          <div class="barra-fila2">
             <span id="estadoConexion" class="pildora">Supabase en vivo</span>
-            <span id="usuarioNombre" class="usuario">Harold Hurtado</span>
-            <span id="usuarioRol" class="pildora rol">ADMINISTRADOR TI</span>
-            <button id="btnEscanear" class="btn-accion" title="Escanear QR o código de barras">📷</button>
-            <button id="btnSalir" class="btn-mini salir" aria-label="Cerrar sesión">Cerrar sesión</button>
+            <span id="usuarioNombre" class="usuario"></span>
+            <span id="usuarioRol" class="pildora rol"></span>
           </div>
         </header>
 
         <div class="contenido">
-          <!-- RESUMEN EJECUTIVO Y GRÁFICAS 360° -->
-          <section id="vista-resumen" class="vista activo">
-            <div class="cabecera-seccion resumen-cabecera">
-              <div class="resumen-titulo">
-                <span class="eyebrow">PANEL EJECUTIVO · DATOS EN VIVO</span>
-                <h2>Resumen y Gráficas 360°</h2>
-                <p>Inventario, identidad Microsoft Entra ID, telemetría HP WXP y contratos en una sola lectura.</p>
-              </div>
-              <button id="btnRefrescarResumen" class="boton primario" type="button">↻ Actualizar panel</button>
-            </div>
-
-            <!-- Fila 1: 4 KPIs Horizontales -->
-<div class="kpis-resumenerp" aria-label="Indicadores ejecutivos">
-  <!-- KPI Total Activos (Carmesi) -->
-  <article class="kpi tarjeta-kpi carmesi">
-    <div class="kpi-icono-cuadro carmesi">
-      <svg class="icono-carmesi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=""><path d="M12 2v2M12 22v2M2 12h2M22 12h2"/></svg>
-    </div>
-    <div class="kpi-derecho">
-      <span class="kpi-etiqueta">Total Activos TI</span>
-      <span class="kpi-cifra" id="kpiTotal">324</span>
-      <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#38d964" d="M2 0l6 6-6 6"/></svg></span>
-    </div>
-    <div class="kpi-sub">
-      <span class="p-pillo verde">+100%</span>
-      <span class="p-pillo-texto">En vivo</span>
-    </div>
-  </article>
-
-  <!-- KPI Equipos Asignados (Blanco) -->
-  <article class="kpi tarjeta-kpi">
-    <div class="kpi-icono-cuadro gris">
-      <svg class="icono-gris" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=""><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-    </div>
-    <div class="kpi-derecho">
-      <span class="kpi-etiqueta">Equipos Asignados</span>
-      <span class="kpi-cifra" id="kpiAsignados">240</span>
-      <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#3b82f6" d="M2 0l6 6-6 6"/></svg></span>
-    </div>
-    <div class="kpi-sub">
-      <span class="p-pillo verde">Asignados</span>
-      <span class="p-pillo-texto">Equipos en operación</span>
-    </div>
-  </article>
-
-  <!-- KPI Disponibles (Blanco) -->
-  <article class="kpi tarjeta-kpi">
-    <div class="kpi-icono-cuadro gris">
-      <svg class="icono-gris" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=""><path d="M12 2v2M12 20v2M2 12h2M22 12h2"/></svg>
-    </div>
-    <div class="kpi-derecho">
-      <span class="kpi-etiqueta">Disponibles / Stock TI</span>
-      <span class="kpi-cifra" id="kpiDisponibles">84</span>
-      <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#f59e0b" d="M2 0l6 6-6 6"/></svg></span>
-    </div>
-    <div class="kpi-sub">
-      <span class="p-pillo roja">Pendientes</span>
-      <span class="p-pillo-texto">Disponibles / Stock TI</span>
-    </div>
-  </article>
-
-  <!-- KPI Alertas (Blanco) -->
-  <article class="kpi tarjeta-kpi">
-    <div class="kpi-icono-cuadro gris">
-      <svg class="icono-gris" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=""><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 4"/></svg>
-    </div>
-    <div class="kpi-derecho">
-      <span class="kpi-etiqueta">Actas firmadas y garantías</span>
-      <span class="kpi-cifra" id="kpiAlertas">73</span>
-      <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#38d964" d="M2 0l6 6-6 6"/></svg></span>
-    </div>
-    <div class="kpi-sub">
-      <span class="p-pillo verde">Actas</span>
-      <span class="p-pillo-texto">Firmadas y garantías</span>
-    </div>
-  </article>
-</div>
-
-<!-- Fila 2: Bento Grid 2fr 1fr -->
-<div class="grid-bento">
-
-  <!-- Bloque Izquierdo: Sub-rejilla 2×2 KPIs + Gráfica Barras -->
-  <div class="subgrid-kpi">
-
-    <!-- Tarjeta KPI 1 Carmesí -->
-    <article class="tarjeta-kpi carmesi">
-      <div class="icono-cuadro carmesi">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=""><path d="M12 2v2M12 22v2M2 12h2M22 12h2"/></svg>
-      </div>
-      <div class="kpi-derecho">
-        <span class="kpi-etiqueta">Total Activos TI</span>
-        <span class="kpi-cifra">324</span>
-        <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#38d964" d="M2 0l6 6-6 6"/></svg></span>
-      </div>
-      <div class="kpi-sub">
-        <span class="p-pillo verde">+100%</span>
-        <span class="p-pillo-texto">En vivo</span>
-      </div>
-    </article>
-
-    <!-- Tarjeta KPI 2 Blanca -->
-    <article class="tarjeta-kpi">
-      <div class="icono-cuadro gris">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=""><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-      </div>
-      <div class="kpi-derecho">
-        <span class="kpi-etiqueta">Equipos Asignados</span>
-        <span class="kpi-cifra">240</span>
-        <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#3b82f6" d="M2 0l6 6-6 6"/></svg></span>
-      </div>
-      <div class="kpi-sub">
-        <span class="p-pillo verde">Asignados</span>
-        <span class="p-pillo-texto">Equipos en operación</span>
-      </div>
-    </article>
-
-    <!-- Tarjeta KPI 3 Blanca -->
-    <article class="tarjeta-kpi">
-      <div class="icono-cuadro gris">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=""><path d="M12 2v2M12 20v2M2 12h2M22 12h2"/></svg>
-      </div>
-      <div class="kpi-derecho">
-        <span class="kpi-etiqueta">Disponibles / Stock TI</span>
-        <span class="kpi-cifra">84</span>
-        <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#f59e0b" d="M2 0l6 6-6 6"/></svg></span>
-      </div>
-      <div class="kpi-sub">
-        <span class="p-pillo roja">Pendientes</span>
-        <span class="p-pillo-texto">Disponibles / Stock TI</span>
-      </div>
-    </article>
-
-    <!-- Tarjeta KPI 4 Blanca -->
-    <article class="tarjeta-kpi">
-      <div class="icono-cuadro gris">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=""><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 4"/></svg>
-      </div>
-      <div class="kpi-derecho">
-        <span class="kpi-etiqueta">Actas firmadas y garantías</span>
-        <span class="kpi-cifra">73</span>
-        <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#38d964" d="M2 0l6 6-6 6"/></svg></span>
-      </div>
-      <div class="kpi-sub">
-        <span class="p-pillo verde">Actas</span>
-        <span class="p-pillo-texto">Firmadas y garantías</span>
-      </div>
-    </article>
-
-  </div>
-
-  <!-- Gráfica de Barras Redondeadas -->
-  <div class="tarjeta-grafica-barras">
-    <h4 style="color: var(--crimson-verydeep); margin-bottom: 12px;">Distribución por Ecosistema y Sede</h4>
-    <select id="selectorGraficaBarras" class="selector" style="position: absolute; right: 12px; top: 12px; background: #f8fafc; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 8px; font-size: .72rem; color: var(--ink-primary);">
-      <option>Todos</option>
-      <option>Sede Central</option>
-      <option>Sede Planta</option>
-      <option>Sede Oficinas</option>
-    </select>
-    <canvas id="graficaEcosistemas" class="grafica-lienzo" style="height: 220px;"></canvas>
-  </div>
-
-</div>
-
-<!-- Bloque Derecho: 2 tarjetas apiladas -->
-
-<div style="display: flex; flex-direction: column; gap: 16px;">
-
-  <!-- Tarjeta Superior - Gráfica Circular -->
-  <div class="tarjeta-derecha">
-    <h5 style="color: var(--crimson-verydeep); margin-bottom: 16px;">Estadística de Activos 360°</h5>
-    <select id="selectorGraficaEstado" class="selector" style="position: absolute; right: 12px; top: 12px; background: #f8fafc; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 8px; font-size: .72rem; color: var(--ink-primary);">
-      <option>Hoy</option>
-      <option>Todo</option>
-    </select>
-    <canvas id="graficaEstado" class="grafica-lienzo" style="height: 140px;"></canvas>
-    <div class="filas-conteo">
-      <div class="fila-conteo"><span>Asignados</span><span class="pill verde">85%</span></div>
-      <div class="fila-conteo"><span>Disponibles</span><span class="pill roja">15%</span></div>
-      <div class="fila-conteo"><span>Alertas</span><span class="pill verde">73</span></div>
-    </div>
-  </div>
-
-  <!-- Tarjeta Inferior - Burbujas Superpuestas -->
-  <div class="tarjeta-burbujas">
-    <h5 style="color: var(--crimson-verydeep); margin-bottom: 12px;">Cobertura por Sedes</h5>
-    <select id="selectorBurbujas" class="selector" style="width: 100%; padding: 8px; border: 1px solid var(--border-subtle); border-radius: 10px; background: #f8fafc; font-size: .78rem; color: var(--ink-primary); margin-bottom: 12px;">
-      <option>Top Sedes</option>
-      <option>Todas</option>
-    </select>
-    <div class="burbujas" style="display: flex; gap: 8px; align-items: center; justify-content: center;">
-      <div class="burbuja" style="width: 56px; height: 56px; background: #59060d;">87%</div>
-      <div class="burbuja" style="width: 46px; height: 46px; background: #8f0c11;">57%</div>
-      <div class="burbuja" style="width: 36px; height: 36px; background: #c4161c;">37%</div>
-      <div class="burbuja" style="width: 28px; height: 28px; background: #e03145;">17%</div>
-    </div>
-    <div style="margin-top: 8px; font-size: .66rem; color: var(--ink-muted); text-align: center;">
-      Sedes: Central · Planta · Oficinas · Norte
-    </div>
-  </div>
-
-</div>
-
-<!-- Fila 3: Tabla Ejecutiva Inferior -->
-<div style="margin-top: 24px;">
-  <div class="titulo-tabla flex-between">
-    <h3 style="color: var(--ink-primary);">Últimos Activos y Actas</h3>
-    <button class="boton" style="background: var(--crimson-mid); color: #ffffff; border: none; border-radius: 10px; padding: 6px 12px; font-size: .76rem;">+ Nueva Acta</button>
-  </div>
-  <table style="width: 100%; border-collapse: separate; border-spacing: 0 8px;">
-    <thead>
-      <tr style="background: #f8fafc;">
-        <th style="padding: 8px 12px; color: var(--ink-muted); font-size: .72rem;">Equipo / Modelo</th>
-        <th style="padding: 8px 12px; color: var(--ink-muted); font-size: .72rem;">Placa / Serial</th>
-        <th style="padding: 8px 12px; color: var(--ink-muted); font-size: .72rem;">Responsable</th>
-        <th style="padding: 8px 12px; color: var(--ink-muted); font-size: .72rem;">Sede</th>
-        <th style="padding: 8px 12px; color: var(--ink-muted); font-size: .72rem;">Estado</th>
-        <th style="padding: 8px 12px; color: var(--ink-muted); font-size: .72rem; text-align: center;">Acción</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr style="transition: background .2s;">
-        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle); color: var(--ink-primary);</td>
-        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle); color: var(--ink-primary);</td>
-        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle); color: var(--ink-primary);</td>
-        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle); color: var(--ink-primary);</td>
-        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle); color: var(--ink-primary);</td>
-        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle); text-align: center; color: var(--ink-primary);</td>
-      </tr>
-      <tr style="background: #f1f5f9;">
-        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle);</td>
-        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle);</td>
-        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle);</td>
-        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle);</td>
-        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle);</td>
-        <td style="padding: 10px 12px; border: 1px solid var(--border-subtle); text-align: center; color: var(--ink-primary);</td>
-      </tr>
-    </tbody>
-  </table>
-</div>
-
-<!-- Gráficas complementarias 360° (alimentadas por app.js) -->
-<div class="grid-graficas" style="margin-top: 16px;">
-  <article class="tarjeta grafica-card" data-spotlight>
-    <header><div><span class="eyebrow">VEREDICTO CRUZADO</span><h3>Inventario vs. Entra ID vs. HP WXP</h3></div><span class="grafica-pista">Clic para filtrar</span></header>
-    <div class="grafica-lienzo"><canvas id="graficaVeredicto" aria-label="Gráfica comparativa del veredicto 360"></canvas></div>
-  </article>
-  <article class="tarjeta grafica-card" data-spotlight>
-    <header><div><span class="eyebrow">CONTRATOS Y GARANTÍAS</span><h3>Semáforo de Vencimientos</h3></div><span class="grafica-pista">Clic para filtrar</span></header>
-    <div class="grafica-lienzo"><canvas id="graficaContratos" aria-label="Gráfica del semáforo de contratos"></canvas></div>
-  </article>
-</div>
-
           <!-- SISTEMAS -->
-          <section id="vista-sistemas" class="vista" hidden>
+          <section id="vista-sistemas" class="vista activo">
             <div class="cabecera-seccion">
               <p>Cada placa pertenece a un ecosistema crítico. Entra por el sistema y baja hasta el contrato y el acta.</p>
               <button class="boton primario" data-accion="nuevo-sistema">+ Nuevo sistema</button>
@@ -384,7 +121,6 @@
               <select id="filtroCeco" class="input"><option value="">Todos los CECO</option></select>
               <select id="filtroEstado" class="input"><option value="">Todos los estados</option></select>
             </div>
-            <div id="filtroGraficaActivo" class="filtro-grafica" hidden></div>
             <div class="acciones">
               <button class="boton primario" data-accion="nuevo-equipo">+ Nuevo equipo</button>
             </div>
@@ -424,13 +160,6 @@
               </div>
               <span id="estadoActa" class="pildora">SUPABASE EN VIVO</span>
             </div>
-
-            <ol id="progresoActa" class="acta-progreso" aria-label="Progreso de captura del acta">
-              <li class="paso completado" data-paso="0"><span class="paso-numero">1</span><span class="paso-texto">Datos Personales</span></li>
-              <li class="paso" data-paso="1"><span class="paso-numero">2</span><span class="paso-texto">Equipo</span></li>
-              <li class="paso" data-paso="2"><span class="paso-numero">3</span><span class="paso-texto">Accesorios / Software</span></li>
-              <li class="paso" data-paso="3"><span class="paso-numero">4</span><span class="paso-texto">Fotos y Firmas</span></li>
-            </ol>
 
             <form id="formActa" class="acta-form">
               <input type="hidden" id="documentoTiAutofill" />
@@ -522,13 +251,13 @@
                   <label class="check"><input type="checkbox" data-software="7zip" checked /> 7zip</label>
                   <label class="check"><input type="checkbox" data-software="Antivirus" checked /> Antivirus</label>
                   <label class="check"><input type="checkbox" data-software="Adobe Reader" checked /> Adobe Reader</label>
-                  <label class="check"><input type="checkbox" data-software="VPN" checked /> VPN</label>
+                  <label class="check"><input type="checkbox" data-software="VPN" /> VPN</label>
                   <label class="check"><input type="checkbox" data-software="Impresora" checked /> Impresora</label>
-                  <label class="check"><input type="checkbox" data-software="Foxit Reader" checked /> Foxit Reader</label>
+                  <label class="check"><input type="checkbox" data-software="Foxit Reader" /> Foxit Reader</label>
                   <label class="check"><input type="checkbox" data-software="Team Viewer" checked /> Team Viewer</label>
-                  <label class="check"><input type="checkbox" data-software="Softphone" checked /> Softphone</label>
+                  <label class="check"><input type="checkbox" data-software="Softphone" /> Softphone</label>
                   <label class="check"><input type="checkbox" data-software="SAP GUI" checked /> SAP GUI</label>
-                  <label class="check"><input type="checkbox" data-software="Sofsin" checked /> Sofsin</label>
+                  <label class="check"><input type="checkbox" data-software="Sofsin" /> Sofsin</label>
                   <label class="check"><input type="checkbox" data-software="Google Chrome" checked /> Google Chrome</label>
                   <label class="check"><input type="checkbox" data-software="Adobe Creative Cloud" checked /> Adobe Creative Cloud</label>
                   <label class="check"><input type="checkbox" data-software="Otro" id="actaOtroSoftwareChk" /> Otro</label>
@@ -607,9 +336,9 @@
           </section>
         </div>
       </div>
-    </div>
+    </main>
 
-    <!-- Modal Equipo -->
+    <!-- MODAL EQUIPO -->
     <div id="modalEquipo" class="modal" hidden>
       <div class="modal-caja">
         <header><h2 id="tituloModalEquipo">Registrar equipo</h2><button class="cerrar" data-cerrar="modalEquipo">×</button></header>
@@ -674,7 +403,7 @@
       </div>
     </div>
 
-    <!-- Modal Sistema -->
+    <!-- MODAL SISTEMA -->
     <div id="modalSistema" class="modal" hidden>
       <div class="modal-caja pequeno">
         <header><h2>Ecosistema de TI</h2><button class="cerrar" data-cerrar="modalSistema">×</button></header>
@@ -693,7 +422,7 @@
       </div>
     </div>
 
-    <!-- Asistente TI -->
+    <!-- ASISTENTE TI -->
     <div id="fondoAsistente" class="fondo-asistente" hidden></div>
     <div id="asistente" class="asistente">
       <button id="btnAsistente" class="boton-asistente" aria-label="Abrir Asistente TI">

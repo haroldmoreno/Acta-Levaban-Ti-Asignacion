@@ -1,6 +1,6 @@
-/* Levapan TI PWA — Network-First para estáticos, Network-Only para Supabase/Auth. */
-const CACHE_NAME = "levapan-ti-v35-layout-recovery";
-const SHELL = ["./", "./index.html", "./css/styles.css", "./js/config.js", "./js/app.js", "./js/asistente-ti.js", "./js/acta-pdf.js", "./template.pdf", "./manifest.json", "./assets/icon.svg", "./assets/icon-192.png", "./assets/icon-512.png", "./assets/logo.svg", "./assets/isotipo.svg", "./assets/fondo.svg"];
+﻿/* Levapan TI PWA â€” Network-First para estÃ¡ticos, Network-Only para Supabase/Auth. */
+const CACHE_NAME = "levapan-ti-v36-restore-stable";
+const SHELL = ["./", "./index.html", "./css/styles.css", "./js/config.js", "./js/app.js", "./js/asistente-ti.js", "./js/acta-pdf.js", "./template.pdf", "./manifest.json", "./assets/icon.svg", "./assets/logo.svg", "./assets/fondo.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -17,7 +17,7 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
 
-  // OAuth / Supabase / Microsoft: jamás se interceptan ni se sirven desde caché.
+  // OAuth / Supabase / Microsoft: jamÃ¡s se interceptan ni se sirven desde cachÃ©.
   if (
     url.searchParams.has("code") ||
     url.searchParams.has("error") ||
