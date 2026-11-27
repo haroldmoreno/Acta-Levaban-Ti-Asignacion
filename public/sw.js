@@ -1,5 +1,5 @@
 /* Levapan TI PWA — Network-First para estáticos, Network-Only para Supabase/Auth. */
-const CACHE_NAME = "levapan-ti-v27-sidebar-sync";
+const CACHE_NAME = "levapan-ti-v28-clean-sidebar-no-eco";
 const SHELL = ["./", "./index.html", "./css/styles.css", "./js/config.js", "./js/app.js", "./js/asistente-ti.js", "./js/acta-pdf.js", "./template.pdf", "./manifest.json", "./assets/icon.svg", "./assets/icon-192.png", "./assets/icon-512.png", "./assets/logo.svg", "./assets/isotipo.svg", "./assets/fondo.svg"];
 
 self.addEventListener("install", (event) => {

@@ -267,7 +267,7 @@
 
     await cargarSistemas();
     await Promise.all([cargarEquipos(), cargarBoveda(), cargarUsuarios()]);
-    irAVista("sistemas");
+    irAVista("resumen");
     suscribirRealtime();
   }
 
@@ -2423,9 +2423,10 @@
 
     // Delegación global: el ≡ funciona siempre y tocar fuera cierra el cajón móvil.
     document.addEventListener("click", (evento) => {
-      // Funciona al hacer clic en cualquier parte del botón ≡ (incluyendo su icono)
+      // Manejador único con stopPropagation para evitar doble toggle
       const btnToggle = evento.target.closest("#btnToggleSidebar");
       if (btnToggle) {
+        evento.stopPropagation();
         alternarSidebar();
         return;
       }
