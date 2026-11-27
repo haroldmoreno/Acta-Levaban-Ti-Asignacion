@@ -20,7 +20,7 @@
   </head>
   <body>
     <!-- Pantalla de login clásica centrada -->
-    <section id="pantallaLogin" class="pantalla-login" style="display: block;">
+    <section id="pantallaLogin" class="pantalla-login">
       <form id="formLogin" class="tarjeta-login" autocomplete="off" novalidate>
         <div class="marca-login" style="justify-content: center;">
           <img src="assets/logo.svg" alt="Levapan" style="width: min(140px, 80%); height: auto; filter: drop-shadow(0 8px 24px rgba(208,0,24,.3));" />
@@ -57,8 +57,10 @@
       </form>
     </section>
 
+    <div id="fondoCajon" class="fondo-cajon" hidden></div>
+
     <!-- Contenedor principal de la app (oculto hasta login) -->
-    <div id="app" class="app app-shell" style="margin-top: 0; display: none;">
+    <div id="app" class="app app-shell" hidden>
       <aside id="sidebar" class="sidebar">
         <div class="marca-sidebar">
           <button id="btnToggleSidebar" class="sidebar-toggle" type="button" title="Contraer menú" aria-label="Contraer menú">≡</button>
@@ -83,11 +85,14 @@
 
       <div class="principal main-content">
         <header class="topbar">
-          <div class="titulo-vista" id="tituloVista">Ecosistemas de TI</div>
+          <div class="titulo-vista" id="tituloVista">Resumen y Gráficas 360°</div>
           <div class="fecha" id="fechaHoy">Viernes, 27 de noviembre de 2026</div>
           <div class="acciones-top">
-            <button id="btnEscanear" class="btn-mini" title="Escanear QR o código de barras">▣</button>
-            <button id="btnSalir" class="btn-mini salir" aria-label="Cerrar sesión">Salir</div>
+            <span id="estadoConexion" class="pildora">Supabase en vivo</span>
+            <span id="usuarioNombre" class="usuario">Harold Hurtado</span>
+            <span id="usuarioRol" class="pildora rol">ADMINISTRADOR TI</span>
+            <button id="btnEscanear" class="btn-accion" title="Escanear QR o código de barras">📷</button>
+            <button id="btnSalir" class="btn-mini salir" aria-label="Cerrar sesión">Cerrar sesión</button>
           </div>
         </header>
 
@@ -112,7 +117,7 @@
     </div>
     <div class="kpi-derecho">
       <span class="kpi-etiqueta">Total Activos TI</span>
-      <span class="kpi-cifra">324</span>
+      <span class="kpi-cifra" id="kpiTotal">324</span>
       <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#38d964" d="M2 0l6 6-6 6"/></svg></span>
     </div>
     <div class="kpi-sub">
@@ -128,7 +133,7 @@
     </div>
     <div class="kpi-derecho">
       <span class="kpi-etiqueta">Equipos Asignados</span>
-      <span class="kpi-cifra">240</span>
+      <span class="kpi-cifra" id="kpiAsignados">240</span>
       <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#3b82f6" d="M2 0l6 6-6 6"/></svg></span>
     </div>
     <div class="kpi-sub">
@@ -144,7 +149,7 @@
     </div>
     <div class="kpi-derecho">
       <span class="kpi-etiqueta">Disponibles / Stock TI</span>
-      <span class="kpi-cifra">84</span>
+      <span class="kpi-cifra" id="kpiDisponibles">84</span>
       <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#f59e0b" d="M2 0l6 6-6 6"/></svg></span>
     </div>
     <div class="kpi-sub">
@@ -160,8 +165,8 @@
     </div>
     <div class="kpi-derecho">
       <span class="kpi-etiqueta">Actas firmadas y garantías</span>
-      <span class="kpi-cifra">73</span>
-      <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill:#38d964" d="M2 0l6 6-6 6"/></svg></span>
+      <span class="kpi-cifra" id="kpiAlertas">73</span>
+      <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#38d964" d="M2 0l6 6-6 6"/></svg></span>
     </div>
     <div class="kpi-sub">
       <span class="p-pillo verde">Actas</span>
@@ -232,7 +237,7 @@
       <div class="kpi-derecho">
         <span class="kpi-etiqueta">Actas firmadas y garantías</span>
         <span class="kpi-cifra">73</span>
-        <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill:#38d964" d="M2 0l6 6-6 6"/></svg></span>
+        <span class="kpi-flecha"><svg width="12" height="8" viewBox="0 0 12 8"><path fill="#38d964" d="M2 0l6 6-6 6"/></svg></span>
       </div>
       <div class="kpi-sub">
         <span class="p-pillo verde">Actas</span>
@@ -245,13 +250,13 @@
   <!-- Gráfica de Barras Redondeadas -->
   <div class="tarjeta-grafica-barras">
     <h4 style="color: var(--crimson-verydeep); margin-bottom: 12px;">Distribución por Ecosistema y Sede</h4>
-    <select class="selector" style="position: absolute; right: 12px; top: 12px; background: #f8fafc; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 8px; font-size: .72rem; color: var(--ink-primary);">
+    <select id="selectorGraficaBarras" class="selector" style="position: absolute; right: 12px; top: 12px; background: #f8fafc; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 8px; font-size: .72rem; color: var(--ink-primary);">
       <option>Todos</option>
       <option>Sede Central</option>
       <option>Sede Planta</option>
       <option>Sede Oficinas</option>
     </select>
-    <canvas id="graficaEcosistema" class="grafica-pie" style="height: 220px;"></canvas>
+    <canvas id="graficaEcosistemas" class="grafica-lienzo" style="height: 220px;"></canvas>
   </div>
 
 </div>
@@ -263,11 +268,11 @@
   <!-- Tarjeta Superior - Gráfica Circular -->
   <div class="tarjeta-derecha">
     <h5 style="color: var(--crimson-verydeep); margin-bottom: 16px;">Estadística de Activos 360°</h5>
-    <select class="selector" style="position: absolute; right: 12px; top: 12px; background: #f8fafc; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 8px; font-size: .72rem; color: var(--ink-primary);">
+    <select id="selectorGraficaEstado" class="selector" style="position: absolute; right: 12px; top: 12px; background: #f8fafc; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 8px; font-size: .72rem; color: var(--ink-primary);">
       <option>Hoy</option>
       <option>Todo</option>
     </select>
-    <canvas id="graficaEstado360" class="grafica-pie" style="height: 140px;"></canvas>
+    <canvas id="graficaEstado" class="grafica-lienzo" style="height: 140px;"></canvas>
     <div class="filas-conteo">
       <div class="fila-conteo"><span>Asignados</span><span class="pill verde">85%</span></div>
       <div class="fila-conteo"><span>Disponibles</span><span class="pill roja">15%</span></div>
@@ -276,17 +281,17 @@
   </div>
 
   <!-- Tarjeta Inferior - Burbujas Superpuestas -->
-  <div style="background: #ffffff; border: 1px solid var(--border-card); border-radius: 16px; padding: 20px;">
+  <div class="tarjeta-burbujas">
     <h5 style="color: var(--crimson-verydeep); margin-bottom: 12px;">Cobertura por Sedes</h5>
-    <select class="selector" style="width: 100%; padding: 8px; border: 1px solid var(--border-subtle); border-radius: 10px; background: #f8fafc; font-size: .78rem; color: var(--ink-primary); margin-bottom: 12px;">
+    <select id="selectorBurbujas" class="selector" style="width: 100%; padding: 8px; border: 1px solid var(--border-subtle); border-radius: 10px; background: #f8fafc; font-size: .78rem; color: var(--ink-primary); margin-bottom: 12px;">
       <option>Top Sedes</option>
       <option>Todas</option>
     </select>
-    <div style="display: flex; gap: 8px; align-items: center; justify-content: center;">
-      <div style="width: 28px; height: 28px; border-radius: 50%; background: #59060d; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #ffffff; font-size: .6rem; font-weight: 600;;">87%</div>
-      <div style="width: 22px; height: 22px; border-radius: 50%; background: #8f0c11; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #ffffff; font-size: .6rem; font-weight: 600;;">57%</div>
-      <div style="width: 18px; height: 18px; border-radius: 50%; background: #c4161c; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #ffffff; font-size: .6rem; font-weight: 600;;">37%</div>
-      <div style="width: 14px; height: 14px; border-radius: 50%; background: #e03145; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #ffffff; font-size: .6rem; font-weight: 600;;">17%</div>
+    <div class="burbujas" style="display: flex; gap: 8px; align-items: center; justify-content: center;">
+      <div class="burbuja" style="width: 56px; height: 56px; background: #59060d;">87%</div>
+      <div class="burbuja" style="width: 46px; height: 46px; background: #8f0c11;">57%</div>
+      <div class="burbuja" style="width: 36px; height: 36px; background: #c4161c;">37%</div>
+      <div class="burbuja" style="width: 28px; height: 28px; background: #e03145;">17%</div>
     </div>
     <div style="margin-top: 8px; font-size: .66rem; color: var(--ink-muted); text-align: center;">
       Sedes: Central · Planta · Oficinas · Norte
@@ -331,6 +336,18 @@
       </tr>
     </tbody>
   </table>
+</div>
+
+<!-- Gráficas complementarias 360° (alimentadas por app.js) -->
+<div class="grid-graficas" style="margin-top: 16px;">
+  <article class="tarjeta grafica-card" data-spotlight>
+    <header><div><span class="eyebrow">VEREDICTO CRUZADO</span><h3>Inventario vs. Entra ID vs. HP WXP</h3></div><span class="grafica-pista">Clic para filtrar</span></header>
+    <div class="grafica-lienzo"><canvas id="graficaVeredicto" aria-label="Gráfica comparativa del veredicto 360"></canvas></div>
+  </article>
+  <article class="tarjeta grafica-card" data-spotlight>
+    <header><div><span class="eyebrow">CONTRATOS Y GARANTÍAS</span><h3>Semáforo de Vencimientos</h3></div><span class="grafica-pista">Clic para filtrar</span></header>
+    <div class="grafica-lienzo"><canvas id="graficaContratos" aria-label="Gráfica del semáforo de contratos"></canvas></div>
+  </article>
 </div>
 
           <!-- SISTEMAS -->

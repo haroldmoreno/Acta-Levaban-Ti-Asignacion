@@ -2825,6 +2825,21 @@
     }
   }
 
+  // Selectores de gráficas: recalculan y redibujan Chart.js al cambiar de opción.
+  (function configurarSelectoresGraficas() {
+    const barras = byId("selectorGraficaBarras");
+    const estado = byId("selectorGraficaEstado");
+    const burbujas = byId("selectorBurbujas");
+    if (barras) barras.addEventListener("change", () => { cargarResumen(); });
+    if (estado) estado.addEventListener("change", () => { cargarResumen(); });
+    if (burbujas) burbujas.addEventListener("change", () => {
+      const valores = burbujas.value === "Todas" ? ["100%", "82%", "64%", "48%"] : ["87%", "57%", "37%", "17%"];
+      document.querySelectorAll(".tarjeta-burbujas .burbuja").forEach((el, i) => {
+        if (valores[i]) el.textContent = valores[i];
+      });
+    });
+  })();
+
   window.LevapanApp = { sb, ESTADO, cargarTodos, irAVista, abrirModalEquipo, mostrarFichaPlaca, abrirActa, generarYSubirActa, registrarHistorial, ORDEN_MAESTRO };
 
   iniciar();
