@@ -25,24 +25,41 @@
       <span class="orbe orbe-vino"></span>
     </div>
 
-    <!-- ================= LOGIN ================= -->
+    <!-- ================= LOGIN Dark Crimson Liquid Glass ================= -->
     <section id="pantallaLogin" class="pantalla-login">
-      <form id="formLogin" class="tarjeta-login" autocomplete="off">
-        <div class="marca-login">
-          <img src="assets/logo.svg" alt="Levapan" />
+      <form id="formLogin" class="tarjeta-login" autocomplete="off" novalidate>
+        <div class="marca-login" style="justify-content: center;">
+          <img src="assets/logo.svg" alt="Levapan" style="width: min(140px, 80%); height: auto; filter: drop-shadow(0 8px 24px rgba(208,0,24,.3));" />
         </div>
-        <h1>Arquitectura Inversa de TI</h1>
-        <p class="sub">Gestión corporativa de activos · CORP-TEC-FR-002</p>
+        <h1 style="text-align: center; margin: 24px 0 12px; font-size: clamp(1.75rem, 5vw, 2.2rem); color: var(--crimson-100);">Levapan TI</h1>
+        <p style="text-align: center; margin-bottom: 24px; color: var(--texto-subtle); font-size: .88rem;">Arquitectura Inversa de Activos</p>
 
-        <label for="loginEmail">Correo corporativo</label>
-        <input id="loginEmail" type="email" placeholder="admin@levapan.com" autocomplete="username" required value="admin@levapan.com" />
+        <div style="display: flex; gap: 12px; margin-bottom: 16px; justify-content: center;">
+          <label for="loginEmail" style="order: 2; width: 100%; min-width: 200px;">Correo corporativo</label>
+          <div style="order: 1; width: min(260px, 100%);">
+            <input id="loginEmail" type="email" placeholder="admin@levapan.com" autocomplete="username" required value="admin@levapan.com"
+              style="width: 100%; background: rgba(255,255,255,.28); backdrop-filter: blur(12px) saturate(180%); border: 1px solid rgba(208,0,24,.22); color: var(--crimson-100); border-radius: 14px; padding: 12px 14px; font-size: 14px;"
+              />
+          </div>
+        </div>
 
-        <label for="loginPassword">Contraseña</label>
-        <input id="loginPassword" type="password" placeholder="Tu contraseña corporativa" autocomplete="current-password" required />
+        <div style="display: flex; gap: 12px; margin-bottom: 24px; justify-content: center;">
+          <label for="loginPassword" style="order: 2; width: 100%; min-width: 200px;">Contraseña</label>
+          <div style="order: 1; width: min(260px, 100%);">
+            <div style="position: relative;">
+              <input id="loginPassword" type="password" placeholder="Tu contraseña corporativa" autocomplete="current-password" required
+                style="width: 100%; background: rgba(255,255,255,.28); backdrop-filter: blur(12px) saturate(180%); border: 1px solid rgba(208,0,24,.22); color: var(--crimson-100); border-radius: 14px; padding: 12px 14px; font-size: 14px;"
+                />
+              <button type="button" id="togglePassword" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: rgba(255,255,255,.5); font-size: 1rem; padding: 0; cursor: pointer;"
+                aria-label="Mostrar contraseña">👁️</button>
+            </div>
+          </div>
+        </div>
 
-        <p id="loginError" class="error" role="alert" hidden></p>
-        <button id="btnLogin" type="submit" class="boton primario">Ingresar</button>
-        <p class="nota">Solo personal autorizado de Tecnología e Infraestructura.</p>
+        <p id="loginError" class="error" role="alert" style="text-align: center; margin: 16px 0; font-size: .82rem; min-height: 16px;" hidden></p>
+        <button id="btnLogin" type="submit" class="boton primario w-100" style="background: linear-gradient(135deg, var(--crimson-100), var(--crimson-300)); border: none; color: var(--blanco); font-weight: 700; padding: 14px 24px; font-size: 1rem; border-radius: 14px; width: 100%; max-width: 280px; margin: 0 auto; display: block;"
+          >Ingresar</button>
+        <p class="nota" style="text-align: center; margin-top: 20px; font-size: .74rem; color: var(--texto-subtle);">Solo personal autorizado de Tecnología e Infraestructura.</p>
       </form>
     </section>
 
